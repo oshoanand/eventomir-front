@@ -50,5 +50,5 @@ lerna-debug.log*
 # Cache files
 .eslintcache
 .turbo
-src/generated
+/src/generated
 generated
