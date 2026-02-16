@@ -1,63 +1,85 @@
-'use client'; // Directive for client hook // Директива для клиентского хука
+"use client";
 
-import * as React from 'react';
-
-// Type definition for the event listener callback function
-// Определение типа для функции обратного вызова слушателя событий
-type EventListenerCallback = (event: E) => void;
+import * as React from "react";
 
 /**
  * Custom React hook to manage event listeners on a specified target.
- * Automatically adds and removes the listener on mount/unmount or when dependencies change.
  *
- * Кастомный React хук для управления слушателями событий на указанной цели.
- * Автоматически добавляет и удаляет слушатель при монтировании/размонтировании или при изменении зависимостей.
- *
- * @template K - The type of the event name (e.g., 'click', 'keydown'). // Тип имени события (например, 'click', 'keydown').
- * @template T - The type of the event target (e.g., Window, Document, HTMLElement). // Тип цели события (например, Window, Document, HTMLElement).
- * @param {K} eventName - The name of the event to listen for. // Имя события для прослушивания.
- * @param {EventListenerCallback} handler - The callback function to execute when the event occurs. // Функция обратного вызова для выполнения при возникновении события.
- * @param {T | null} [element=global?.window] - The target element to attach the listener to (defaults to window). // Целевой элемент для прикрепления слушателя (по умолчанию window).
- * @param {boolean | AddEventListenerOptions} [options] - Optional event listener options. // Необязательные параметры слушателя событий.
+ * Overload 1: For Window events (default)
  */
-export function useEventListener(
+export function useEventListener<K extends keyof WindowEventMap>(
   eventName: K,
-  handler: EventListenerCallback, // Handler function type // Тип функции-обработчика
-  element?: T | null, // Optional target element // Необязательный целевой элемент
-  options?: boolean | AddEventListenerOptions // Optional listener options // Необязательные параметры слушателя
+  handler: (event: WindowEventMap[K]) => void,
+  element?: undefined,
+  options?: boolean | AddEventListenerOptions,
+): void;
+
+/**
+ * Overload 2: For HTML Elements (e.g., div, button)
+ */
+export function useEventListener<
+  K extends keyof HTMLElementEventMap,
+  T extends HTMLElement = HTMLElement,
+>(
+  eventName: K,
+  handler: (event: HTMLElementEventMap[K]) => void,
+  element: T | null,
+  options?: boolean | AddEventListenerOptions,
+): void;
+
+/**
+ * Overload 3: For Document events
+ */
+export function useEventListener<K extends keyof DocumentEventMap>(
+  eventName: K,
+  handler: (event: DocumentEventMap[K]) => void,
+  element: Document,
+  options?: boolean | AddEventListenerOptions,
+): void;
+
+/**
+ * Implementation
+ */
+export function useEventListener<
+  KW extends keyof WindowEventMap,
+  KH extends keyof HTMLElementEventMap,
+  T extends HTMLElement | Document | Window | null,
+>(
+  eventName: KW | KH | string,
+  handler: (
+    event: WindowEventMap[KW] | HTMLElementEventMap[KH] | Event,
+  ) => void,
+  element?: T,
+  options?: boolean | AddEventListenerOptions,
 ) {
   // Store the handler in a ref to avoid re-adding the listener on every render
-  // Сохраняем обработчик в ref, чтобы избежать повторного добавления слушателя при каждом рендере
   const savedHandler = React.useRef(handler);
 
   // Update the ref whenever the handler changes
-  // Обновляем ref всякий раз, когда обработчик изменяется
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     savedHandler.current = handler;
   }, [handler]);
 
   React.useEffect(() => {
-    // Determine the target element (use window if not provided or in SSR)
-    // Определяем целевой элемент (используем window, если не предоставлен или при SSR)
+    // Define the target element (use window if not provided)
     const targetElement: T | Window = element ?? window;
 
-    // Ensure the target element supports addEventListener // Убеждаемся, что целевой элемент поддерживает addEventListener
+    // Ensure the target element supports addEventListener
     if (!(targetElement && targetElement.addEventListener)) {
-      return; // Exit if the element is not valid // Выходим, если элемент невалиден
+      return;
     }
 
-    // Create the event listener function that calls the saved handler
-    // Создаем функцию слушателя событий, которая вызывает сохраненный обработчик
-    const eventListener: EventListener = (event) => savedHandler.current(event as WindowEventMap[K]);
+    // Create the event listener wrapper
+    const eventListener: EventListener = (event) => {
+      savedHandler.current(event);
+    };
 
-    // Add the event listener // Добавляем слушатель событий
+    // Add the event listener
     targetElement.addEventListener(eventName, eventListener, options);
 
-    // Cleanup function to remove the listener when the component unmounts or dependencies change
-    // Функция очистки для удаления слушателя при размонтировании компонента или изменении зависимостей
-    // eslint-disable-next-line consistent-return
+    // Cleanup function
     return () => {
       targetElement.removeEventListener(eventName, eventListener, options);
     };
-  }, [eventName, element, options]); // Re-run the effect if eventName, element, or options change // Перезапускаем эффект, если изменяются eventName, element или options
+  }, [eventName, element, options]);
 }

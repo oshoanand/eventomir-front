@@ -240,3 +240,12 @@ export const initiateCheckout = async (
 export interface PaymentResponse {
   checkoutUrl: string;
 }
+
+export const getPaidRequestPrice = async (): Promise<number> => {
+  // Robust: Fetch the current price setting from the server
+  const response = await apiRequest<{ price: number }>({
+    method: "get",
+    url: "/api/payments/request-price",
+  });
+  return response.price;
+};

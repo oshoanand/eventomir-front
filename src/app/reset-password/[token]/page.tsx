@@ -1,193 +1,388 @@
+"use client";
 
-'use client';
-
-import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useState, useEffect } from "react";
+import Image from "next/image";
+import { useRouter, useParams } from "next/navigation";
 import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card';
-import {
-    Form,
-    FormControl,
-    FormField,
-    FormItem,
-    FormLabel,
-    FormMessage,
-} from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { useToast } from '@/hooks/use-toast';
-import * as z from 'zod';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { verifyPasswordResetToken, resetPassword } from '@/services/auth'; // Import auth services
-import Link from 'next/link';
-import { Loader2, CheckCircle, XCircle } from 'lucide-react'; // Icons
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  Loader2,
+  AlertCircle,
+  ArrowLeft,
+  RefreshCw,
+  Clock,
+} from "lucide-react";
+import { clsx } from "clsx";
+import { toast } from "sonner";
+import Link from "next/link";
 
-// Схема валидации формы сброса пароля
-const formSchema = z.object({
-    newPassword: z.string().min(8, { message: "Новый пароль должен содержать не менее 8 символов." }),
-    confirmPassword: z.string(),
-}).refine(data => data.newPassword === data.confirmPassword, {
-    message: "Пароли не совпадают.",
-    path: ["confirmPassword"],
-});
+export default function ResetPasswordPage() {
+  const router = useRouter();
+  const params = useParams<{ token: string }>();
+  const token = params.token;
 
-const ResetPasswordPage = () => {
-    const params = useParams<{ token?: string }>();
-    const token = params?.token;
-    const router = useRouter();
-    const { toast } = useToast();
+  // --- STATE ---
+  const [isExpired, setIsExpired] = useState(false); // State to track expiration
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
-    const [verificationStatus, setVerificationStatus] = useState<'loading' | 'valid' | 'invalid'>('loading');
-    const [verificationMessage, setVerificationMessage] = useState('Проверка токена...');
-    const [isSubmitting, setIsSubmitting] = useState(false);
+  // Visibility Toggles
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-    // Инициализация формы
-    const form = useForm<z.infer<typeof formSchema>>({
-        resolver: zodResolver(formSchema),
-        defaultValues: {
-            newPassword: '',
-            confirmPassword: '',
-        },
-    });
+  // UI States
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-    // Проверка токена при загрузке страницы
-    useEffect(() => {
-        const verifyToken = async () => {
-            if (!token) {
-                setVerificationMessage('Токен сброса пароля не найден.');
-                setVerificationStatus('invalid');
-                return;
-            }
+  // --- 1. CHECK TOKEN EXPIRATION ON LOAD ---
+  useEffect(() => {
+    if (token) {
+      try {
+        // Decode JWT payload (Part 2 of the token)
+        const base64Url = token.split(".")[1];
+        const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+        const jsonPayload = decodeURIComponent(
+          window
+            .atob(base64)
+            .split("")
+            .map(function (c) {
+              return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2);
+            })
+            .join(""),
+        );
 
-            try {
-                const result = await verifyPasswordResetToken(token);
-                if (result.success) {
-                    setVerificationStatus('valid');
-                    setVerificationMessage(''); // Clear message on success
-                } else {
-                    setVerificationMessage(result.message);
-                    setVerificationStatus('invalid');
-                }
-            } catch (error) {
-                console.error("Ошибка проверки токена:", error);
-                setVerificationMessage('Ошибка при проверке токена.');
-                setVerificationStatus('invalid');
-            }
-        };
+        const payload = JSON.parse(jsonPayload);
+        const now = Date.now() / 1000;
 
-        verifyToken();
-    }, [token]);
-
-    // Функция обработки отправки формы нового пароля
-    const onSubmit = async (values: z.infer<typeof formSchema>) => {
-        if (verificationStatus !== 'valid' || !token) return; // Double-check token validity
-
-        setIsSubmitting(true);
-        try {
-            const result = await resetPassword(token, values.newPassword);
-
-            if (result.success) {
-                toast({
-                    title: 'Успех!',
-                    description: result.message,
-                });
-                router.push('/login'); // Перенаправляем на страницу входа
-            } else {
-                toast({
-                    variant: 'destructive',
-                    title: 'Ошибка',
-                    description: result.message,
-                });
-            }
-        } catch (error) {
-            console.error("Ошибка сброса пароля:", error);
-            toast({
-                variant: 'destructive',
-                title: 'Ошибка',
-                description: 'Не удалось сбросить пароль. Пожалуйста, попробуйте еще раз.',
-            });
-        } finally {
-            setIsSubmitting(false);
+        // If current time > expiration time, set expired state immediately
+        if (payload.exp && now > payload.exp) {
+          setIsExpired(true);
         }
-    };
+      } catch (e) {
+        // If token is malformed, treat as expired/invalid
+        setIsExpired(true);
+      }
+    }
+  }, [token]);
 
+  // --- HANDLERS ---
+
+  // Handler for Resending Link (When Expired)
+  const handleResendLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+
+    // Validate Email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email)) {
+      setError("Введите корректный Email адрес");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/auth/forgot-password`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        },
+      );
+
+      if (res.status === 200) {
+        toast.success("Новая ссылка отправлена на вашу почту");
+        // Optional: Redirect to login or show success message static
+        router.push("/login");
+      } else {
+        setError("Не удалось отправить ссылку");
+      }
+    } catch (err) {
+      setError("Ошибка соединения");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handler for Resetting Password (Normal Flow)
+  const handleResetSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+
+    // Validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email)) {
+      setError("Введите корректный Email адрес");
+      setLoading(false);
+      return;
+    }
+    if (password.length < 8) {
+      setError("Пароль должен содержать не менее 8 символов");
+      setLoading(false);
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError("Пароли не совпадают");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/auth/reset-password/${token}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: email,
+            password: password,
+          }),
+        },
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        // If backend says invalid/expired, switch UI to expired view
+        if (res.status === 400 || data.message?.includes("expired")) {
+          setIsExpired(true);
+          throw new Error("Ссылка устарела. Пожалуйста, запросите новую.");
+        }
+        throw new Error(data.message || "Ошибка сброса пароля");
+      }
+
+      toast.success("Пароль успешно изменен");
+      router.push("/login");
+    } catch (err: any) {
+      setError(err.message || "Произошла ошибка");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- RENDER: EXPIRED VIEW ---
+  if (isExpired) {
     return (
-        <div className="container mx-auto py-10 flex justify-center">
-            <Card className="w-full max-w-md">
-                <CardHeader>
-                    <CardTitle>Установка нового пароля</CardTitle>
-                    <CardDescription>
-                        {verificationStatus === 'valid' ? 'Введите новый пароль для вашего аккаунта.' : ''}
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    {verificationStatus === 'loading' && (
-                        <div className="flex flex-col items-center gap-4">
-                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                            <p className="text-muted-foreground">{verificationMessage}</p>
-                        </div>
-                    )}
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6 py-8">
+        <div className="w-full max-w-sm flex flex-col items-center text-center">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-6">
+            <Clock className="h-8 w-8 text-red-600" />
+          </div>
 
-                    {verificationStatus === 'invalid' && (
-                        <Alert variant="destructive">
-                            <XCircle className="h-5 w-5" />
-                            <AlertTitle>Ошибка!</AlertTitle>
-                            <AlertDescription>{verificationMessage}</AlertDescription>
-                            <Button variant="link" asChild className="mt-4 text-destructive">
-                                <Link href="/forgot-password">Запросить сброс снова</Link>
-                            </Button>
-                        </Alert>
-                    )}
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            Ссылка устарела
+          </h2>
+          <p className="text-gray-500 text-sm mb-8">
+            Срок действия ссылки истек (2 часа). Введите ваш Email, чтобы мы
+            отправили новую.
+          </p>
 
-                    {verificationStatus === 'valid' && (
-                        <Form {...form}>
-                            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                                {/* Поле Новый пароль */}
-                                <FormField
-                                    control={form.control}
-                                    name="newPassword"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel>Новый пароль</FormLabel>
-                                            <FormControl>
-                                                <Input placeholder="••••••••" {...field} type="password" />
-                                            </FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-                                {/* Поле Подтверждение пароля */}
-                                <FormField
-                                    control={form.control}
-                                    name="confirmPassword"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel>Подтвердите новый пароль</FormLabel>
-                                            <FormControl>
-                                                <Input placeholder="••••••••" {...field} type="password" />
-                                            </FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-                                {/* Кнопка "Установить пароль" */}
-                                <Button variant="destructive" type="submit" disabled={isSubmitting} className="w-full">
-                                    {isSubmitting ? 'Сохранение...' : 'Установить новый пароль'}
-                                </Button>
-                            </form>
-                        </Form>
-                    )}
-                </CardContent>
-            </Card>
+          <form onSubmit={handleResendLink} className="w-full space-y-5">
+            <div className="space-y-1">
+              <div className="relative group">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Mail className="h-5 w-5 text-gray-400" />
+                </div>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    setError("");
+                  }}
+                  placeholder="Email адрес"
+                  className={clsx(
+                    "block w-full pl-10 pr-3 py-3.5 border rounded-xl text-gray-900 outline-none transition-all",
+                    error
+                      ? "border-red-500 bg-red-50"
+                      : "border-gray-200 focus:border-green-500 focus:ring-4 focus:ring-green-100",
+                  )}
+                />
+              </div>
+              {error && (
+                <div className="flex items-center text-red-500 text-xs mt-1">
+                  <AlertCircle className="w-3 h-3 mr-1" />
+                  <span>{error}</span>
+                </div>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <Loader2 className="animate-spin w-5 h-5" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+              Отправить новую ссылку
+            </button>
+
+            <div className="text-center mt-4">
+              <Link
+                href="/login"
+                className="text-sm font-medium text-gray-500 hover:text-green-600 inline-flex items-center"
+              >
+                <ArrowLeft className="w-4 h-4 mr-1" /> Вернуться ко входу
+              </Link>
+            </div>
+          </form>
         </div>
+      </div>
     );
-};
+  }
 
-export default ResetPasswordPage;
+  // --- RENDER: NORMAL RESET VIEW ---
+  return (
+    <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6 py-8">
+      {/* LOGO */}
+      <div className="w-full h-[130px] flex items-center justify-center mb-6">
+        <div className="relative w-[120px] h-[120px]">
+          <Image
+            src="/images/logo.svg"
+            alt="Logo"
+            fill
+            className="object-contain"
+            priority={true}
+          />
+        </div>
+      </div>
+
+      <div className="w-full max-w-sm flex flex-col items-center">
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">Новый пароль</h2>
+        <p className="text-gray-500 text-sm text-center mb-8">
+          Подтвердите ваш Email и придумайте новый надежный пароль
+        </p>
+
+        <form onSubmit={handleResetSubmit} className="w-full space-y-5">
+          {/* EMAIL CONFIRMATION */}
+          <div className="space-y-1">
+            <div className="relative group">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Mail className="h-5 w-5 text-gray-400 group-focus-within:text-green-600 transition-colors" />
+              </div>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (error) setError("");
+                }}
+                placeholder="Подтвердите ваш Email"
+                className={clsx(
+                  "block w-full pl-10 pr-10 py-3.5 border rounded-xl text-gray-900 outline-none transition-all",
+                  error && !email.includes("@")
+                    ? "border-red-500 bg-red-50"
+                    : "border-gray-200 focus:border-green-500 focus:ring-4 focus:ring-green-100",
+                )}
+              />
+            </div>
+          </div>
+
+          {/* NEW PASSWORD */}
+          <div className="space-y-1">
+            <div className="relative group">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Lock className="h-5 w-5 text-gray-400 group-focus-within:text-green-600 transition-colors" />
+              </div>
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Новый пароль (мин. 8 символов)"
+                className={clsx(
+                  "block w-full pl-10 pr-10 py-3.5 border rounded-xl text-gray-900 outline-none transition-all",
+                  error && password.length < 8
+                    ? "border-red-500 bg-red-50"
+                    : "border-gray-200 focus:border-green-500 focus:ring-4 focus:ring-green-100",
+                )}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute inset-y-0 right-0 pr-3 flex items-center hover:text-green-600 transition-colors"
+              >
+                {showPassword ? (
+                  <EyeOff className="h-5 w-5 text-gray-400" />
+                ) : (
+                  <Eye className="h-5 w-5 text-gray-400" />
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* CONFIRM PASSWORD */}
+          <div className="space-y-1">
+            <div className="relative group">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Lock className="h-5 w-5 text-gray-400 group-focus-within:text-green-600 transition-colors" />
+              </div>
+              <input
+                type={showConfirmPassword ? "text" : "password"}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Подтвердите пароль"
+                className={clsx(
+                  "block w-full pl-10 pr-10 py-3.5 border rounded-xl text-gray-900 outline-none transition-all",
+                  error && password !== confirmPassword
+                    ? "border-red-500 bg-red-50"
+                    : "border-gray-200 focus:border-green-500 focus:ring-4 focus:ring-green-100",
+                )}
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                className="absolute inset-y-0 right-0 pr-3 flex items-center hover:text-green-600 transition-colors"
+              >
+                {showConfirmPassword ? (
+                  <EyeOff className="h-5 w-5 text-gray-400" />
+                ) : (
+                  <Eye className="h-5 w-5 text-gray-400" />
+                )}
+              </button>
+            </div>
+
+            <div className="flex justify-between items-start pt-1 px-1 min-h-[24px]">
+              {error ? (
+                <div className="flex items-center text-red-500 text-xs mt-0.5 animate-in slide-in-from-left-2">
+                  <AlertCircle className="w-3 h-3 mr-1" />
+                  <span>{error}</span>
+                </div>
+              ) : (
+                <div />
+              )}
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full flex items-center justify-center py-3.5 px-4 border border-transparent rounded-xl shadow-sm text-base font-bold text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-70 transition-all active:scale-[0.98]"
+          >
+            {loading ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              "Сохранить пароль"
+            )}
+          </button>
+
+          <div className="text-center mt-4">
+            <Link
+              href="/login"
+              className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-green-600 transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4 mr-1" /> Вернуться ко входу
+            </Link>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}

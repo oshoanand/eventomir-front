@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Providers } from "@/lib/providers";
 import { getSiteSettings } from "@/services/settings";
 import type { SiteSettings } from "@/types/globals.d";
+import { Suspense } from "react";
 
 // SEO metadata
 export const metadata: Metadata = {
@@ -111,7 +112,7 @@ export default async function RootLayout({ children }: RootLayoutProps) {
       </head>
       <body className="antialiased flex flex-col min-h-screen">
         <Providers initialSettings={siteSettings}>
-          {children}
+          <Suspense> {children}</Suspense>
           <Toaster />
         </Providers>
       </body>

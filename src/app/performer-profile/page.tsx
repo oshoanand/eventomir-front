@@ -699,7 +699,7 @@ import {
 import { User, Star, BookOpen, Gem, Loader2, CalendarIcon } from "lucide-react";
 
 import ChatDialog from "@/components/ChatDialog";
-import AgencyDashboard from "@/components/performer-profile/AgencyDashboard";
+// /import AgencyDashboard from "@/components/performer-profile/AgencyDashboard";
 import ProfileHeader from "@/components/performer-profile/ProfileHeader";
 import AboutSection from "@/components/performer-profile/AboutSection";
 import GalleryManager from "@/components/performer-profile/GalleryManager";
@@ -1028,13 +1028,13 @@ export default function PerformerProfilePage() {
     );
   }
 
-  if (isOwnProfile && profile.accountType === "agency") {
-    return (
-      <div className="container mx-auto py-10">
-        <AgencyDashboard profile={profile} />
-      </div>
-    );
-  }
+  // if (isOwnProfile && profile.accountType === "agency") {
+  //   return (
+  //     <div className="container mx-auto py-10">
+  //       <AgencyDashboard profile={profile} />
+  //     </div>
+  //   );
+  // }
 
   return (
     <>

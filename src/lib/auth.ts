@@ -44,7 +44,7 @@ export const authOptions: NextAuthOptions = {
             throw new Error("Неверный адрес электронной почты или пароль!");
           }
 
-          const secret = process.env.NEXT_PUBLIC_SECRET!!;
+          const secret = process.env.NEXTAUTH_SECRET!!;
           const token = jwt.sign(
             {
               id: user.id,
@@ -68,10 +68,6 @@ export const authOptions: NextAuthOptions = {
           };
         } catch (error: any) {
           throw new Error(error.message);
-        } finally {
-          async () => {
-            await prisma.$disconnect();
-          };
         }
       },
     }),
@@ -93,17 +89,19 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
     async session({ session, token }) {
-      session.user.id = token.id;
-      session.user.image = token.image;
-      session.user.name = token.name;
-      session.user.email = token.email;
-      session.user.role = token.role;
-      session.accessToken = token.accessToken;
+      if (session.user) {
+        session.user.id = token.id;
+        session.user.image = token.image as string;
+        session.user.name = token.name as string;
+        session.user.email = token.email as string;
+        session.user.role = token.role as string;
+        session.user.accessToken = token.accessToken as string;
+      }
       return session;
     },
   },
   pages: {
     signIn: "/login", // Custom sign-in page path
   },
-  secret: process.env.NEXT_PUBLIC_SECRET,
+  secret: process.env.NEXTAUTH_SECRET,
 };

@@ -76,9 +76,6 @@ const ChartContainer = React.forwardRef<
         {/* Component to inject CSS variables for colors */}{" "}
         {/* Компонент для внедрения CSS-переменных для цветов */}
         <RechartsPrimitive.ResponsiveContainer>
-          {" "}
-          {/* Responsive container for the chart */}{" "}
-          {/* Адаптивный контейнер для диаграммы */}
           {children}
         </RechartsPrimitive.ResponsiveContainer>
       </div>

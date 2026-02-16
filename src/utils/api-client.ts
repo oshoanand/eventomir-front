@@ -17,7 +17,7 @@
 //   async (config: InternalAxiosRequestConfig) => {
 //     if (typeof window !== "undefined") {
 //       const session = await getSession();
-//       const token = session?.accessToken;
+//       const token = session?.user?.accessToken;
 
 //       if (token) {
 //         config.headers.Authorization = `Bearer ${token}`;
@@ -87,7 +87,7 @@ apiClient.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
     if (typeof window !== "undefined") {
       const session = await getSession();
-      const token = session?.accessToken;
+      const token = session?.user?.accessToken;
 
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;

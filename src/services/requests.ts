@@ -54,24 +54,24 @@ export interface PerformerFeedParams {
 /**
  * Creates a new paid request.
  */
-const createPaidRequestFn = async (
-  data: CreateRequestParams,
-): Promise<PaidRequest> => {
-  const result = (await apiRequest({
-    method: "post",
-    url: "/api/requests",
-    data: data,
-  })) as CreateRequestResponse;
+// const createPaidRequestFn = async (
+//   data: CreateRequestParams,
+// ): Promise<PaidRequest> => {
+//   const result = (await apiRequest({
+//     method: "post",
+//     url: "/api/requests",
+//     data: data,
+//   })) as CreateRequestResponse;
 
-  // Transform ISO string to Date object
-  return {
-    ...result.request,
-    createdAt: new Date(result.request.createdAt), // Convert string to Date
-    // Handle potential nulls from backend
-    city: result.request.city || undefined,
-    budget: result.request.budget || undefined,
-  };
-};
+//   // Transform ISO string to Date object
+//   return {
+//     ...result.request,
+//     createdAt: new Date(result.request.createdAt), // Convert string to Date
+//     // Handle potential nulls from backend
+//     city: result.request.city || undefined,
+//     budget: result.request.budget || undefined,
+//   };
+// };
 
 /**
  * Fetches requests created by a specific customer.
@@ -179,3 +179,21 @@ export interface CreateRequestParams {
   budget?: string;
   city?: string;
 }
+
+const createPaidRequestFn = async (data: CreateRequestParams): Promise<any> => {
+  // 1. Call API
+  const result = await apiRequest<{ success: boolean; checkoutUrl: string }>({
+    method: "post",
+    url: "/api/requests",
+    data: data,
+  });
+
+  // 2. Redirect to Payment Gateway
+  if (result.success && result.checkoutUrl) {
+    window.location.href = result.checkoutUrl;
+    // Return a never-resolving promise to keep the UI in "loading" state during redirect
+    return new Promise(() => {});
+  }
+
+  throw new Error("Failed to initiate payment");
+};

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react"; // Added Suspense
 import { useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -27,10 +27,32 @@ import {
   UserSubscription,
 } from "@/services/payment";
 
-const PricingPage = () => {
+// --- 1. Skeletons (Moved outside to be used in Fallback) ---
+const PlanSkeleton = () => (
+  <Card className="flex flex-col h-[500px]">
+    <CardHeader className="p-6 space-y-4">
+      <Skeleton className="h-8 w-1/2 mx-auto" />
+      <Skeleton className="h-4 w-3/4 mx-auto" />
+    </CardHeader>
+    <CardContent className="p-6 flex-grow space-y-6">
+      <Skeleton className="h-12 w-1/3 mx-auto" />
+      <div className="space-y-3 pt-4">
+        {[1, 2, 3, 4].map((i) => (
+          <Skeleton key={i} className="h-5 w-full" />
+        ))}
+      </div>
+    </CardContent>
+    <CardFooter className="p-6">
+      <Skeleton className="h-12 w-full" />
+    </CardFooter>
+  </Card>
+);
+
+// --- 2. Inner Component (Uses useSearchParams) ---
+const PricingContent = () => {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const searchParams = useSearchParams(); // This usage requires Suspense
   const { toast } = useToast();
 
   // --- State ---
@@ -113,10 +135,7 @@ const PricingPage = () => {
     const { price } = getPriceDetails(plan);
 
     // 3. Handle Free/Zero Price Logic
-    // If it's free or user is just switching to a free tier
     if (price === 0 || plan.tier === "FREE") {
-      // If user already has this specific free plan active, do nothing (handled by button disable)
-      // Otherwise, redirect to profile or specific activation logic
       router.push("/performer-profile");
       return;
     }
@@ -124,10 +143,7 @@ const PricingPage = () => {
     // 4. Initiate Payment
     setProcessingPlanId(plan.id);
     try {
-      // Pass plan ID and the selected interval (month, year, etc.)
       const { checkoutUrl } = await initiateCheckout(plan.id, interval);
-
-      // Redirect to Payment Gateway
       window.location.href = checkoutUrl;
     } catch (error) {
       console.error(error);
@@ -150,7 +166,6 @@ const PricingPage = () => {
     if (interval === "half_year" && plan.priceHalfYearly) {
       price = plan.priceHalfYearly;
       periodLabel = "/ 6 мес";
-      // Calculate savings vs (Monthly * 6)
       const theoretical = plan.priceMonthly * 6;
       if (theoretical > 0) {
         savingsPercent = Math.round(
@@ -160,7 +175,6 @@ const PricingPage = () => {
     } else if (interval === "year" && plan.priceYearly) {
       price = plan.priceYearly;
       periodLabel = "/ год";
-      // Calculate savings vs (Monthly * 12)
       const theoretical = plan.priceMonthly * 12;
       if (theoretical > 0) {
         savingsPercent = Math.round(
@@ -171,28 +185,6 @@ const PricingPage = () => {
 
     return { price, periodLabel, savingsPercent };
   };
-
-  // --- Render Components ---
-
-  const PlanSkeleton = () => (
-    <Card className="flex flex-col h-[500px]">
-      <CardHeader className="p-6 space-y-4">
-        <Skeleton className="h-8 w-1/2 mx-auto" />
-        <Skeleton className="h-4 w-3/4 mx-auto" />
-      </CardHeader>
-      <CardContent className="p-6 flex-grow space-y-6">
-        <Skeleton className="h-12 w-1/3 mx-auto" />
-        <div className="space-y-3 pt-4">
-          {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-5 w-full" />
-          ))}
-        </div>
-      </CardContent>
-      <CardFooter className="p-6">
-        <Skeleton className="h-12 w-full" />
-      </CardFooter>
-    </Card>
-  );
 
   return (
     <div className="container mx-auto py-16 px-4">
@@ -433,6 +425,25 @@ const PricingPage = () => {
         </Button>
       </div>
     </div>
+  );
+};
+
+// --- 3. Wrapper Component (Exported as Page) ---
+const PricingPage = () => {
+  return (
+    <Suspense
+      fallback={
+        <div className="container mx-auto py-16 px-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-7xl mx-auto">
+            <PlanSkeleton />
+            <PlanSkeleton />
+            <PlanSkeleton />
+          </div>
+        </div>
+      }
+    >
+      <PricingContent />
+    </Suspense>
   );
 };
 

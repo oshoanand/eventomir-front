@@ -99,7 +99,7 @@ export const useCustomerProfile = () => {
   return useQuery({
     queryKey: ["customer", "profile"],
     queryFn: fetchProfile,
-    enabled: !!session?.accessToken, // Only fetch if logged in
+    enabled: !!session?.user?.accessToken, // Only fetch if logged in
   });
 };
 
@@ -123,6 +123,6 @@ export const useCustomerOrders = () => {
   return useQuery({
     queryKey: ["customer", "orders"],
     queryFn: fetchOrderHistory,
-    enabled: !!session?.accessToken,
+    enabled: !!session?.user?.accessToken,
   });
 };
