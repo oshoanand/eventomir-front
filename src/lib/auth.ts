@@ -19,7 +19,9 @@ export const authOptions: NextAuthOptions = {
         try {
           // 1. Validate credentials
           if (!credentials?.email || !credentials?.password) {
-            throw new Error("Email and Password are required");
+            throw new Error(
+              "Требуется указать адрес электронной почты и пароль",
+            );
           }
 
           // 2. Find user in database
@@ -67,7 +69,8 @@ export const authOptions: NextAuthOptions = {
             accessToken: token,
           };
         } catch (error: any) {
-          throw new Error(error.message);
+          console.log(error.message);
+          throw new Error("Что-то пошло не так!");
         }
       },
     }),

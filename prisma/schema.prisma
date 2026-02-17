@@ -56,7 +56,7 @@ model User {
   subscription_plan_id        String?   @default("econom")
   subscription_end_date       DateTime?
   moderation_status           String    @default("pending_approval")
-  parent_agency_id            String?
+  // parent_agency_id            String?
   sub_profile_ids             String[]
   created_at                  DateTime  @default(now())
   updated_at                  DateTime  @updatedAt
@@ -103,9 +103,13 @@ model User {
   sessions                      Session[]
   verificationTokens            VerificationToken[]
 
-  parent_agency User?  @relation("SubAgencies", fields: [parent_agency_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  sub_agencies  User[] @relation("SubAgencies")
-  chats         Chat[]
+  parentAgencyId String?
+  parentAgency   User?   @relation("AgencySpecialists", fields: [parentAgencyId], references: [id])
+  subProfiles    User[]  @relation("AgencySpecialists")
+
+  // parent_agency User?  @relation("SubAgencies", fields: [parent_agency_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  // sub_agencies  User[] @relation("SubAgencies")
+  chats Chat[]
 }
 
 model Review {
@@ -152,21 +156,26 @@ model Notification {
 }
 
 model PaidRequest {
-  id                  String   @id @default(cuid())
-  customer_id         String // Maps to customerId from frontend
-  category            String
-  service_description String // Maps to serviceDescription from frontend
-  city                String?
-  budget              String?
-  status              String   @default("open") // 'open' or 'closed'
-  views               Int      @default(0)
-  responses           Int      @default(0)
-  created_at          DateTime @default(now())
+  id         String @id @default(uuid())
+  customerId String
+  customer   User   @relation(fields: [customerId], references: [id])
 
-  // Relation to User (Customer)
-  customer User @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+  category           String
+  serviceDescription String
+  city               String? // Optional: null implies Remote/Online
+  budget             String?
 
-  @@map("paid_requests")
+  // Status flow: PENDING_PAYMENT -> OPEN -> CLOSED
+  status String @default("PENDING_PAYMENT")
+
+  paymentId String?  @unique
+  payment   Payment? @relation(fields: [paymentId], references: [id])
+
+  views     Int @default(0)
+  responses Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model GalleryItem {
@@ -363,10 +372,11 @@ model Payment {
   providerTxId String? // Transaction ID from the provider
   metadata     Json?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  booking   Booking? @relation(fields: [bookingId], references: [id])
-  bookingId String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  booking     Booking?     @relation(fields: [bookingId], references: [id])
+  bookingId   String?
+  paidRequest PaidRequest?
 }
 
 // model Payment {

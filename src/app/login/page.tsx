@@ -42,8 +42,13 @@ const formSchema = z.object({
   // Поле password: строка, не должна быть пустой
   password: z
     .string()
-    .min(8, { message: "Password must be at least 8 characters." })
-    .regex(/[A-Z]/, { message: "Must contain at least one uppercase letter." }),
+    .min(8, {
+      message:
+        "Пароль должен состоять как минимум из 8 символов и одной заглавной латинской буквы.",
+    })
+    .regex(/[A-Z]/, {
+      message: "Должно содержать как минимум одну заглавную букву",
+    }),
 });
 
 // Login page component // Компонент страницы входа
@@ -82,7 +87,6 @@ const LoginPage = () => {
       if (result?.ok) {
         const session = await getSession();
         const userRole = session?.user?.role;
-
         let roleDescription = "";
         switch (userRole) {
           case "customer":
@@ -101,13 +105,14 @@ const LoginPage = () => {
         // Show success notification
         // Показ уведомления об успешном входе
         toast({
+          variant: "success",
           title: "Вход успешен!", // Login successful!
           description: `Вы успешно вошли как ${roleDescription}.`, // You have successfully logged in as ${roleDescription}.
         });
 
         // Redirect user based on role
         // Перенаправляем пользователя в зависимости от роли
-        console.log(userRole);
+
         if (userRole === "customer") {
           router.push("/customer-profile"); // Navigate to customer profile // Переход в профиль заказчика
         } else if (userRole === "performer") {
