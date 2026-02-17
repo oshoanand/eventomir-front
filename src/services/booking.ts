@@ -17,6 +17,7 @@ export interface BookingRequest {
   status: BookingStatus;
   customerId: string;
   customerName?: string;
+  customerPhone?: string;
   performerId: string;
   performerName?: string;
   price?: number;
@@ -30,6 +31,7 @@ export interface CreateBookingPayload {
     date: Date;
     customerId: string;
     customerName?: string;
+    customerPhone?: string;
     details?: string;
   };
 }

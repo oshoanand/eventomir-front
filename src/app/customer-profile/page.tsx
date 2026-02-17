@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useSession, signOut } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import {
   Card,
@@ -163,10 +163,6 @@ const CustomerProfilePage = () => {
   // --- 5. Handlers ---
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
-
-  const handleLogout = () => {
-    signOut({ callbackUrl: "/login" });
   };
 
   const handlePictureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -454,10 +450,10 @@ const CustomerProfilePage = () => {
                     </Form>
                   </DialogContent>
                 </Dialog>
-                {/* Logout Profile */}
+                {/* Logout Profile
                 <Button variant="ghost" size="icon" onClick={handleLogout}>
                   <LogOut className="h-4 w-4" />
-                </Button>
+                </Button> */}
                 {/* Delete Account Dialog */}
                 <Dialog
                   open={isDeleteAccountOpen}

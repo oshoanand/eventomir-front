@@ -36,7 +36,7 @@ interface ProfileHeaderProps {
   onToggleFavorite: () => void;
   onOpenChat: () => void;
   onDeleteProfile: () => void;
-  onLogout: () => void;
+
   onBook: () => void;
   getImageUrl: (path: string | undefined | null) => string;
 }
@@ -55,7 +55,7 @@ export default function ProfileHeader({
   onToggleFavorite,
   onOpenChat,
   onDeleteProfile,
-  onLogout,
+
   onBook,
   getImageUrl,
 }: ProfileHeaderProps) {
@@ -276,14 +276,7 @@ export default function ProfileHeader({
                       >
                         <Edit2 className="h-4 w-4 mr-2" /> Редактировать
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={onLogout}
-                        title="Выйти"
-                      >
-                        <LogOut className="h-4 w-4 text-muted-foreground" />
-                      </Button>
+
                       <Button
                         variant="ghost"
                         size="icon"
