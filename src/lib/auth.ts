@@ -7,17 +7,20 @@ import jwt from "jsonwebtoken";
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
+  session: {
+    strategy: "jwt",
+  },
   providers: [
     CredentialsProvider({
       name: "Credentials",
       credentials: {
         email: { label: "Email", type: "text" },
         password: { label: "Password", type: "password" },
-      } as const,
+      },
 
       async authorize(credentials) {
         try {
-          // 1. Validate credentials
+          // 1. Validate credentials input
           if (!credentials?.email || !credentials?.password) {
             throw new Error(
               "Требуется указать адрес электронной почты и пароль",
@@ -31,7 +34,8 @@ export const authOptions: NextAuthOptions = {
             },
           });
 
-          // 3. Verify user exists
+          // 3. Verify user exists AND has a password
+          // We combine these checks to prevent user enumeration (security best practice)
           if (!user || !user.password) {
             throw new Error("Неверный адрес электронной почты или пароль!");
           }
@@ -46,13 +50,19 @@ export const authOptions: NextAuthOptions = {
             throw new Error("Неверный адрес электронной почты или пароль!");
           }
 
-          const secret = process.env.NEXTAUTH_SECRET!!;
+          // 5. Generate Token
+          const secret = process.env.NEXTAUTH_SECRET;
+
+          if (!secret) {
+            throw new Error("Server configuration error");
+          }
+
           const token = jwt.sign(
             {
               id: user.id,
               name: user.name,
               email: user.email,
-              iat: Date.now() / 1000,
+              iat: Math.floor(Date.now() / 1000),
               exp: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
             },
             secret,
@@ -60,6 +70,7 @@ export const authOptions: NextAuthOptions = {
               algorithm: "HS256",
             },
           );
+
           return {
             id: user.id,
             name: user.name,
@@ -69,15 +80,26 @@ export const authOptions: NextAuthOptions = {
             accessToken: token,
           };
         } catch (error: any) {
-          console.log(error.message);
-          throw new Error("Что-то пошло не так!");
+          // 1. Log the actual technical error to the server console for the developer
+          console.error("Authorize Error:", error);
+
+          // 2. Determine if it's an error we manually threw above (User-friendly)
+          // or a system error (Prisma/DB crash)
+          const isCustomError =
+            error.message ===
+              "Требуется указать адрес электронной почты и пароль" ||
+            error.message === "Неверный адрес электронной почты или пароль!";
+
+          if (isCustomError) {
+            throw new Error(error.message);
+          }
+
+          // 3. If it's a database/prisma error, mask it with a generic message
+          throw new Error("Проверьте свой адрес электронной почты еще раз!");
         }
       },
     }),
   ],
-  session: {
-    strategy: "jwt",
-  },
 
   callbacks: {
     async jwt({ token, user }) {
@@ -93,7 +115,7 @@ export const authOptions: NextAuthOptions = {
     },
     async session({ session, token }) {
       if (session.user) {
-        session.user.id = token.id;
+        session.user.id = token.id as string;
         session.user.image = token.image as string;
         session.user.name = token.name as string;
         session.user.email = token.email as string;
@@ -104,7 +126,7 @@ export const authOptions: NextAuthOptions = {
     },
   },
   pages: {
-    signIn: "/login", // Custom sign-in page path
+    signIn: "/login",
   },
   secret: process.env.NEXTAUTH_SECRET,
 };
