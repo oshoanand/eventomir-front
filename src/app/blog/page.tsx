@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useArticles } from "@/services/article"; // Hook from your updated service
+import { useArticles } from "@/services/article";
 import {
   Card,
   CardContent,
