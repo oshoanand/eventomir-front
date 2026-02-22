@@ -12,6 +12,12 @@ export default {
   ],
   theme: {
     extend: {
+      // --- NEW: Map Tailwind's default font to your dynamic CSS variable ---
+      fontFamily: {
+        sans: ["var(--font-main)", "sans-serif"],
+      },
+      // -------------------------------------------------------------------
+
       // Extend the default Tailwind theme // Расширяем стандартную тему Tailwind
       colors: {
         // Define custom colors using CSS variables from globals.css // Определяем кастомные цвета, используя CSS-переменные из globals.css

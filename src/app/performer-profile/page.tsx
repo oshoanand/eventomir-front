@@ -1,7 +1,11 @@
 "use client";
+
 import { useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+
+// --- 1. Import Socket Hook ---
+import { useSocket } from "@/components/providers/socket-provider";
 
 // Services
 import {
@@ -88,6 +92,10 @@ export default function PerformerProfilePage() {
   const router = useRouter();
   const { toast } = useToast();
 
+  // --- 2. Consume Socket Context for Real-Time Status ---
+  // Safely get onlineUsers (default to empty if provider missing or user logged out)
+  const { onlineUsers } = useSocket() || { onlineUsers: [] };
+
   // --- Identity Logic ---
   const urlProfileId = searchParams.get("id");
   const sessionUser = session?.user;
@@ -108,6 +116,10 @@ export default function PerformerProfilePage() {
     isError,
     refetch: refetchProfile,
   } = usePerformerProfile(targetProfileId || null);
+
+  // --- 3. Compute Online Status ---
+  // Check if the displayed profile's ID is in the list of online users
+  const isPerformerOnline = profile ? onlineUsers.includes(profile.id) : false;
 
   // --- Mutations ---
   const updateMutation = useUpdatePerformerProfile();
@@ -156,7 +168,6 @@ export default function PerformerProfilePage() {
   }, [profile, sessionUser]);
 
   // --- Handlers ---
-
   const handleFileChange = (
     e: React.ChangeEvent<HTMLInputElement>,
     fileType: "profilePicture" | "backgroundPicture",
@@ -299,8 +310,10 @@ export default function PerformerProfilePage() {
       return;
     }
     try {
+      // 1. Create or Get Chat Room from API
       const chatId = await createOrGetChat(sessionUser.id, profile.id);
       setCurrentChatId(chatId);
+      // 2. Open Chat Modal
       setIsChatOpen(true);
     } catch (e) {
       toast({ variant: "destructive", title: "Ошибка чата" });
@@ -394,6 +407,7 @@ export default function PerformerProfilePage() {
           isEditing={isEditing}
           formData={formData}
           isFavorite={isFavorite}
+          isOnline={isPerformerOnline}
           onEditToggle={() => setIsEditing(!isEditing)}
           onSaveChanges={handleSaveChanges}
           onCancelEdit={handleCancelEdit}
@@ -611,6 +625,7 @@ export default function PerformerProfilePage() {
         </DialogContent>
       </Dialog>
 
+      {/* --- 5. Real-Time Chat Dialog --- */}
       {isChatOpen && sessionUser && (
         <ChatDialog
           isOpen={isChatOpen}
@@ -618,7 +633,6 @@ export default function PerformerProfilePage() {
           chatId={currentChatId}
           performerName={profile.name}
           currentUserId={sessionUser.id}
-          performerId={profile.id}
         />
       )}
 

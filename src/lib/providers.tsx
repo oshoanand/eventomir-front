@@ -5,11 +5,15 @@ import { SessionProvider } from "next-auth/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { type SiteSettings } from "@/services/settings";
 import ClientLayout from "@/components/ClientLayout";
+
+// Providers
+import { SocketProvider } from "@/components/providers/socket-provider";
 import { NotificationProvider } from "@/context/NotificationContext";
+import { ClientNotificationProvider } from "@/components/providers/ClientNotificationProvider";
+import { SiteThemeProvider } from "@/components/providers/SiteThemeProvider";
 
-export const SettingsContext = React.createContext<SiteSettings | null>(null);
+export { SettingsContext } from "@/components/providers/SiteThemeProvider";
 
-// The Providers component now simply receives the settings and provides them
 export function Providers({
   children,
   initialSettings,
@@ -19,8 +23,6 @@ export function Providers({
 }) {
   const [queryClient] = React.useState(() => new QueryClient());
 
-  // If for some reason settings are not available, we could show a loader,
-  // but they should always be passed from the server layout.
   if (!initialSettings) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -32,11 +34,15 @@ export function Providers({
   return (
     <SessionProvider>
       <QueryClientProvider client={queryClient}>
-        <NotificationProvider>
-          <SettingsContext.Provider value={initialSettings}>
-            <ClientLayout>{children}</ClientLayout>
-          </SettingsContext.Provider>
-        </NotificationProvider>
+        <SocketProvider>
+          <NotificationProvider>
+            <ClientNotificationProvider>
+              <SiteThemeProvider settings={initialSettings}>
+                <ClientLayout>{children}</ClientLayout>
+              </SiteThemeProvider>
+            </ClientNotificationProvider>
+          </NotificationProvider>
+        </SocketProvider>
       </QueryClientProvider>
     </SessionProvider>
   );

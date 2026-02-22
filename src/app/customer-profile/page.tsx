@@ -31,6 +31,7 @@ import {
   LogOut,
   User,
   CreditCard,
+  MessageCircle, // Import Message Icon
 } from "lucide-react";
 
 import { format } from "date-fns";
@@ -60,8 +61,12 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Badge } from "@/components/ui/badge";
 import { formatPhoneNumber } from "@/utils/helper";
-// 1. Ensure this component is imported
 import SubscriptionStatusCard from "@/components/profile/SubscriptionStatusCard";
+
+// --- 1. New Imports for Real-Time Functionality ---
+import { useSocket } from "@/components/providers/socket-provider";
+import ChatDialog from "@/components/ChatDialog";
+import { createOrGetChat } from "@/services/chat";
 
 // --- Custom Hooks & Services ---
 import {
@@ -94,7 +99,10 @@ const CustomerProfilePage = () => {
   const router = useRouter();
   const { toast } = useToast();
 
-  // --- 1. Data Fetching Hooks (TanStack Query) ---
+  // --- 2. Consume Socket Context ---
+  const { onlineUsers } = useSocket();
+
+  // --- Data Fetching Hooks (TanStack Query) ---
   const {
     data: profile,
     isLoading: isProfileLoading,
@@ -109,7 +117,10 @@ const CustomerProfilePage = () => {
 
   const updateProfileMutation = useUpdateCustomerProfile();
 
-  // --- 2. State Management ---
+  // --- 3. Compute Online Status ---
+  const isCustomerOnline = profile ? onlineUsers.includes(profile.id) : false;
+
+  // --- State Management ---
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<Partial<CustomerProfile>>({});
   const [profilePictureFile, setProfilePictureFile] = useState<File | null>(
@@ -122,9 +133,14 @@ const CustomerProfilePage = () => {
   const [isDeleteAccountOpen, setIsDeleteAccountOpen] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
 
+  // Chat States
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [currentChatId, setCurrentChatId] = useState("");
+  const [chatPartnerName, setChatPartnerName] = useState(""); // Useful if admin opens chat
+
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
 
-  // --- 3. Effects ---
+  // --- Effects ---
   useEffect(() => {
     if (profile) {
       setFormData(profile);
@@ -141,7 +157,7 @@ const CustomerProfilePage = () => {
     }
   }, [session?.user?.id]);
 
-  // --- 4. Forms ---
+  // --- Forms ---
   const changePasswordForm = useForm<z.infer<typeof changePasswordSchema>>({
     resolver: zodResolver(changePasswordSchema),
     defaultValues: {
@@ -160,7 +176,7 @@ const CustomerProfilePage = () => {
     return `${API_BASE}${path}`;
   };
 
-  // --- 5. Handlers ---
+  // --- Handlers ---
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
@@ -266,7 +282,23 @@ const CustomerProfilePage = () => {
     }
   };
 
-  // --- 6. Loading Skeletons ---
+  // Function to open chat (e.g., if we add a Support button or click on order history)
+  const handleOpenChat = async (
+    targetUserId: string,
+    targetUserName: string,
+  ) => {
+    if (!session?.user?.id) return;
+    try {
+      const chatId = await createOrGetChat(session.user.id, targetUserId);
+      setCurrentChatId(chatId);
+      setChatPartnerName(targetUserName);
+      setIsChatOpen(true);
+    } catch (e) {
+      toast({ variant: "destructive", title: "Ошибка чата" });
+    }
+  };
+
+  // --- Loading Skeletons ---
   const ProfileSkeleton = () => (
     <Card>
       <CardHeader className="flex flex-col items-center text-center">
@@ -303,7 +335,7 @@ const CustomerProfilePage = () => {
     </div>
   );
 
-  // --- 7. Main Render ---
+  // --- Main Render ---
   if (status === "loading" || isProfileLoading) {
     return (
       <div className="container mx-auto py-10">
@@ -324,377 +356,422 @@ const CustomerProfilePage = () => {
       : "??";
 
   return (
-    <div className="container mx-auto py-10 space-y-8 max-w-4xl">
-      {/* --- Profile Card --- */}
-      <Card>
-        <CardHeader className="flex flex-col items-center text-center relative">
-          <div className="absolute top-4 right-4 flex gap-2">
-            {isEditing ? (
-              <>
-                <Button
-                  variant="default"
-                  onClick={handleSaveChanges}
-                  disabled={updateProfileMutation.isPending}
-                  size="sm"
-                >
-                  {updateProfileMutation.isPending
-                    ? "Сохранение..."
-                    : "Сохранить"}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setIsEditing(false);
-                    setFormData(profile);
-                  }}
-                  size="sm"
-                >
-                  Отмена
-                </Button>
-              </>
-            ) : (
-              <>
-                <Link href="/notifications">
-                  <Button variant="ghost" size="icon" className="relative">
-                    <Bell className="h-4 w-4" />
-                    {unreadNotificationsCount > 0 && (
-                      <Badge
-                        variant="destructive"
-                        className="absolute -top-1 -right-1 h-3 w-3 p-0 flex items-center justify-center rounded-full text-[10px]"
-                      >
-                        {unreadNotificationsCount}
-                      </Badge>
-                    )}
+    <>
+      <div className="container mx-auto py-10 space-y-8 max-w-4xl">
+        {/* --- Profile Card --- */}
+        <Card>
+          <CardHeader className="flex flex-col items-center text-center relative">
+            <div className="absolute top-4 right-4 flex gap-2">
+              {isEditing ? (
+                <>
+                  <Button
+                    variant="default"
+                    onClick={handleSaveChanges}
+                    disabled={updateProfileMutation.isPending}
+                    size="sm"
+                  >
+                    {updateProfileMutation.isPending
+                      ? "Сохранение..."
+                      : "Сохранить"}
                   </Button>
-                </Link>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setIsEditing(true)}
-                >
-                  <Edit className="h-4 w-4" />
-                </Button>
-                {/* Change Password Dialog */}
-                <Dialog
-                  open={isChangePasswordOpen}
-                  onOpenChange={setIsChangePasswordOpen}
-                >
-                  <DialogTrigger asChild>
-                    <Button variant="ghost" size="icon" title="Сменить пароль">
-                      <KeyRound className="h-4 w-4" />
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setIsEditing(false);
+                      setFormData(profile);
+                    }}
+                    size="sm"
+                  >
+                    Отмена
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Link href="/notifications">
+                    <Button variant="ghost" size="icon" className="relative">
+                      <Bell className="h-4 w-4" />
+                      {unreadNotificationsCount > 0 && (
+                        <Badge
+                          variant="destructive"
+                          className="absolute -top-1 -right-1 h-3 w-3 p-0 flex items-center justify-center rounded-full text-[10px]"
+                        >
+                          {unreadNotificationsCount}
+                        </Badge>
+                      )}
                     </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-[425px]">
-                    <DialogHeader>
-                      <DialogTitle>Смена пароля</DialogTitle>
-                      <DialogDescription>
-                        Введите текущий и новый пароль.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <Form {...changePasswordForm}>
-                      <form
-                        onSubmit={changePasswordForm.handleSubmit(
-                          handleChangePasswordSubmit,
-                        )}
-                        className="space-y-4 py-4"
-                      >
-                        <FormField
-                          control={changePasswordForm.control}
-                          name="currentPassword"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Текущий пароль</FormLabel>
-                              <FormControl>
-                                <Input type="password" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={changePasswordForm.control}
-                          name="newPassword"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Новый пароль</FormLabel>
-                              <FormControl>
-                                <Input type="password" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={changePasswordForm.control}
-                          name="confirmPassword"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Подтвердите новый пароль</FormLabel>
-                              <FormControl>
-                                <Input type="password" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <DialogFooter>
-                          <Button
-                            type="submit"
-                            variant="destructive"
-                            disabled={isChangingPassword}
-                          >
-                            {isChangingPassword ? "Смена..." : "Сменить пароль"}
-                          </Button>
-                        </DialogFooter>
-                      </form>
-                    </Form>
-                  </DialogContent>
-                </Dialog>
-                {/* Logout Profile
-                <Button variant="ghost" size="icon" onClick={handleLogout}>
-                  <LogOut className="h-4 w-4" />
-                </Button> */}
-                {/* Delete Account Dialog */}
-                <Dialog
-                  open={isDeleteAccountOpen}
-                  onOpenChange={setIsDeleteAccountOpen}
-                >
-                  <DialogTrigger asChild>
-                    <Button
-                      variant="destructive"
-                      size="icon"
-                      title="Удалить аккаунт"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Удаление аккаунта</DialogTitle>
-                      <DialogDescription>
-                        Это действие необратимо.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter>
+                  </Link>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setIsEditing(true)}
+                  >
+                    <Edit className="h-4 w-4" />
+                  </Button>
+                  {/* Change Password Dialog */}
+                  <Dialog
+                    open={isChangePasswordOpen}
+                    onOpenChange={setIsChangePasswordOpen}
+                  >
+                    <DialogTrigger asChild>
                       <Button
-                        variant="outline"
-                        onClick={() => setIsDeleteAccountOpen(false)}
+                        variant="ghost"
+                        size="icon"
+                        title="Сменить пароль"
                       >
-                        Отмена
+                        <KeyRound className="h-4 w-4" />
                       </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-[425px]">
+                      <DialogHeader>
+                        <DialogTitle>Смена пароля</DialogTitle>
+                        <DialogDescription>
+                          Введите текущий и новый пароль.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <Form {...changePasswordForm}>
+                        <form
+                          onSubmit={changePasswordForm.handleSubmit(
+                            handleChangePasswordSubmit,
+                          )}
+                          className="space-y-4 py-4"
+                        >
+                          <FormField
+                            control={changePasswordForm.control}
+                            name="currentPassword"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Текущий пароль</FormLabel>
+                                <FormControl>
+                                  <Input type="password" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={changePasswordForm.control}
+                            name="newPassword"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Новый пароль</FormLabel>
+                                <FormControl>
+                                  <Input type="password" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={changePasswordForm.control}
+                            name="confirmPassword"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Подтвердите новый пароль</FormLabel>
+                                <FormControl>
+                                  <Input type="password" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <DialogFooter>
+                            <Button
+                              type="submit"
+                              variant="destructive"
+                              disabled={isChangingPassword}
+                            >
+                              {isChangingPassword
+                                ? "Смена..."
+                                : "Сменить пароль"}
+                            </Button>
+                          </DialogFooter>
+                        </form>
+                      </Form>
+                    </DialogContent>
+                  </Dialog>
+
+                  {/* Delete Account Dialog */}
+                  <Dialog
+                    open={isDeleteAccountOpen}
+                    onOpenChange={setIsDeleteAccountOpen}
+                  >
+                    <DialogTrigger asChild>
                       <Button
                         variant="destructive"
-                        onClick={handleDeleteAccount}
-                        disabled={isDeletingAccount}
+                        size="icon"
+                        title="Удалить аккаунт"
                       >
-                        {isDeletingAccount ? "Удаление..." : "Удалить"}
+                        <Trash2 className="h-4 w-4" />
                       </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-              </>
-            )}
-          </div>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Удаление аккаунта</DialogTitle>
+                        <DialogDescription>
+                          Это действие необратимо.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <DialogFooter>
+                        <Button
+                          variant="outline"
+                          onClick={() => setIsDeleteAccountOpen(false)}
+                        >
+                          Отмена
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          onClick={handleDeleteAccount}
+                          disabled={isDeletingAccount}
+                        >
+                          {isDeletingAccount ? "Удаление..." : "Удалить"}
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </>
+              )}
+            </div>
 
-          <div className="relative mb-4 mt-12">
-            <Avatar className="h-24 w-24 border-2 border-primary">
-              <AvatarImage
-                src={
-                  profilePictureFile
-                    ? formData.profilePicture
-                    : getImageUrl(profile.profilePicture)
-                }
-                alt={formData.name || profile.name}
-              />
-
-              <AvatarFallback>
-                {getInitials(formData.name || profile.name)}
-              </AvatarFallback>
-            </Avatar>
-            {isEditing && (
-              <label
-                htmlFor="profilePictureInput"
-                className="absolute bottom-0 right-0 bg-secondary text-secondary-foreground rounded-full p-1 cursor-pointer hover:bg-secondary/80 transition-colors"
-              >
-                <Camera className="h-4 w-4" />
-                <Input
-                  id="profilePictureInput"
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handlePictureChange}
+            <div className="relative mb-4 mt-12">
+              <Avatar className="h-24 w-24 border-2 border-primary">
+                <AvatarImage
+                  src={
+                    profilePictureFile
+                      ? formData.profilePicture
+                      : getImageUrl(profile.profilePicture)
+                  }
+                  alt={formData.name || profile.name}
                 />
-              </label>
-            )}
-          </div>
 
-          {isEditing ? (
-            <Input
-              name="name"
-              value={formData.name || ""}
-              onChange={handleFormChange}
-              className="text-xl font-semibold mt-2 text-center max-w-xs"
-              placeholder="Ваше имя"
-            />
-          ) : (
-            <CardTitle>{profile.name}</CardTitle>
-          )}
-          <CardDescription>{profile.email}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-3 justify-center sm:justify-start">
-            <Phone className="h-4 w-4 text-muted-foreground" />
+                <AvatarFallback>
+                  {getInitials(formData.name || profile.name)}
+                </AvatarFallback>
+              </Avatar>
+
+              {/* 4. ONLINE STATUS INDICATOR */}
+              {!isEditing && (
+                <span
+                  className={cn(
+                    "absolute bottom-1 right-1 h-5 w-5 rounded-full border-2 border-background z-20 transition-all duration-300",
+                    isCustomerOnline
+                      ? "bg-green-500 animate-pulse"
+                      : "bg-gray-300",
+                  )}
+                  title={isCustomerOnline ? "В сети" : "Не в сети"}
+                />
+              )}
+
+              {isEditing && (
+                <label
+                  htmlFor="profilePictureInput"
+                  className="absolute bottom-0 right-0 bg-secondary text-secondary-foreground rounded-full p-1 cursor-pointer hover:bg-secondary/80 transition-colors"
+                >
+                  <Camera className="h-4 w-4" />
+                  <Input
+                    id="profilePictureInput"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handlePictureChange}
+                  />
+                </label>
+              )}
+            </div>
+
             {isEditing ? (
               <Input
-                name="phone"
-                value={formData.phone || ""}
+                name="name"
+                value={formData.name || ""}
                 onChange={handleFormChange}
-                placeholder="+7..."
-                className="max-w-[200px]"
+                className="text-xl font-semibold mt-2 text-center max-w-xs"
+                placeholder="Ваше имя"
               />
             ) : (
-              <span>{formatPhoneNumber(profile.phone) || "Не указан"}</span>
+              <CardTitle>{profile.name}</CardTitle>
             )}
-          </div>
-          <div className="flex items-center gap-3 justify-center sm:justify-start">
-            <MapPin className="h-4 w-4 text-muted-foreground" />
-            {isEditing ? (
-              <Input
-                name="city"
-                value={formData.city || ""}
-                onChange={handleFormChange}
-                placeholder="Город"
-                className="max-w-[200px]"
-              />
+            <CardDescription>{profile.email}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center gap-3 justify-center sm:justify-start">
+              <Phone className="h-4 w-4 text-muted-foreground" />
+              {isEditing ? (
+                <Input
+                  name="phone"
+                  value={formData.phone || ""}
+                  onChange={handleFormChange}
+                  placeholder="+7..."
+                  className="max-w-[200px]"
+                />
+              ) : (
+                <span>{formatPhoneNumber(profile.phone) || "Не указан"}</span>
+              )}
+            </div>
+            <div className="flex items-center gap-3 justify-center sm:justify-start">
+              <MapPin className="h-4 w-4 text-muted-foreground" />
+              {isEditing ? (
+                <Input
+                  name="city"
+                  value={formData.city || ""}
+                  onChange={handleFormChange}
+                  placeholder="Город"
+                  className="max-w-[200px]"
+                />
+              ) : (
+                <span>{profile.city || "Не указан"}</span>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* --- Subscription Section (New) --- */}
+        <SubscriptionStatusCard />
+
+        {/* --- Paid Requests Section --- */}
+        <Card>
+          <CardHeader className="flex flex-row justify-between items-center">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Send className="h-5 w-5" /> Мои платные запросы
+              </CardTitle>
+              <CardDescription>Запросы, видимые исполнителям.</CardDescription>
+            </div>
+            <Link href="/create-request">
+              <Button variant="destructive">Создать новый</Button>
+            </Link>
+          </CardHeader>
+          <CardContent>
+            {isRequestsLoading ? (
+              <ListSkeleton />
+            ) : paidRequests.length === 0 ? (
+              <p className="text-center text-muted-foreground">
+                У вас пока нет активных запросов.
+              </p>
             ) : (
-              <span>{profile.city || "Не указан"}</span>
+              <div className="space-y-4">
+                {paidRequests.map((request) => (
+                  <Card key={request.id}>
+                    <CardContent className="pt-6 grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
+                      <div className="col-span-2 space-y-1">
+                        <p className="font-medium">
+                          {request.serviceDescription}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {request.category}{" "}
+                          {request.city ? `• ${request.city}` : ""}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Создан:{" "}
+                          {format(request.createdAt, "d MMMM yyyy", {
+                            locale: ru,
+                          })}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <Badge
+                          variant={
+                            request.status === "open" ? "default" : "secondary"
+                          }
+                        >
+                          {request.status === "open" ? "Открыт" : "Закрыт"}
+                        </Badge>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Просмотров: {request.views}
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
             )}
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      {/* --- Subscription Section (New) --- */}
-      <SubscriptionStatusCard />
-
-      {/* --- Paid Requests Section --- */}
-      <Card>
-        <CardHeader className="flex flex-row justify-between items-center">
-          <div>
+        {/* --- Order History Section --- */}
+        <Card>
+          <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Send className="h-5 w-5" /> Мои платные запросы
+              <History className="h-5 w-5" /> История заказов
             </CardTitle>
-            <CardDescription>Запросы, видимые исполнителям.</CardDescription>
-          </div>
-          <Link href="/create-request">
-            <Button variant="destructive">Создать новый</Button>
-          </Link>
-        </CardHeader>
-        <CardContent>
-          {isRequestsLoading ? (
-            <ListSkeleton />
-          ) : paidRequests.length === 0 ? (
-            <p className="text-center text-muted-foreground">
-              У вас пока нет активных запросов.
-            </p>
-          ) : (
-            <div className="space-y-4">
-              {paidRequests.map((request) => (
-                <Card key={request.id}>
-                  <CardContent className="pt-6 grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
-                    <div className="col-span-2 space-y-1">
-                      <p className="font-medium">
-                        {request.serviceDescription}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {request.category}{" "}
-                        {request.city ? `• ${request.city}` : ""}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Создан:{" "}
-                        {format(request.createdAt, "d MMMM yyyy", {
-                          locale: ru,
-                        })}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <Badge
-                        variant={
-                          request.status === "open" ? "default" : "secondary"
-                        }
-                      >
-                        {request.status === "open" ? "Открыт" : "Закрыт"}
-                      </Badge>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        Просмотров: {request.views}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardHeader>
+          <CardContent>
+            {isHistoryLoading ? (
+              <ListSkeleton />
+            ) : orderHistory.length === 0 ? (
+              <p className="text-center text-muted-foreground">
+                История заказов пуста.
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {orderHistory.map((order) => (
+                  <Card key={order.id}>
+                    <CardContent className="pt-6 grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
+                      <div className="space-y-1">
+                        <Link
+                          href={`/performer-profile?id=${order.performerId}`}
+                          className="font-medium hover:underline"
+                        >
+                          {order.performerName}
+                        </Link>
+                        <p className="text-sm text-muted-foreground">
+                          {order.service}
+                        </p>
+                        {/* Optional: Add a quick chat button for past orders */}
+                        <Button
+                          variant="link"
+                          size="sm"
+                          className="h-auto p-0 text-xs text-blue-600 flex items-center gap-1"
+                          onClick={() =>
+                            handleOpenChat(
+                              order.performerId,
+                              order.performerName,
+                            )
+                          }
+                        >
+                          <MessageCircle className="h-3 w-3" /> Написать
+                          сообщение
+                        </Button>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-sm">
+                          {format(order.date, "d MMMM yyyy, HH:mm", {
+                            locale: ru,
+                          })}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {order.price
+                            ? `${order.price.toLocaleString()} руб.`
+                            : "Цена не указана"}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <Badge
+                          variant={
+                            order.status === "completed" ? "outline" : "default"
+                          }
+                        >
+                          {order.status}
+                        </Badge>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
-      {/* --- Order History Section --- */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <History className="h-5 w-5" /> История заказов
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isHistoryLoading ? (
-            <ListSkeleton />
-          ) : orderHistory.length === 0 ? (
-            <p className="text-center text-muted-foreground">
-              История заказов пуста.
-            </p>
-          ) : (
-            <div className="space-y-4">
-              {orderHistory.map((order) => (
-                <Card key={order.id}>
-                  <CardContent className="pt-6 grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
-                    <div className="space-y-1">
-                      <Link
-                        href={`/performer-profile?id=${order.performerId}`}
-                        className="font-medium hover:underline"
-                      >
-                        {order.performerName}
-                      </Link>
-                      <p className="text-sm text-muted-foreground">
-                        {order.service}
-                      </p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-sm">
-                        {format(order.date, "d MMMM yyyy, HH:mm", {
-                          locale: ru,
-                        })}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {order.price
-                          ? `${order.price.toLocaleString()} руб.`
-                          : "Цена не указана"}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <Badge
-                        variant={
-                          order.status === "completed" ? "outline" : "default"
-                        }
-                      >
-                        {order.status}
-                      </Badge>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+      {/* 5. GLOBAL CHAT DIALOG FOR THIS PAGE */}
+      {isChatOpen && session?.user && (
+        <ChatDialog
+          isOpen={isChatOpen}
+          onClose={() => setIsChatOpen(false)}
+          chatId={currentChatId}
+          performerName={chatPartnerName} // Showing name of person we are chatting with
+          currentUserId={session.user.id}
+        />
+      )}
+    </>
   );
 };
 

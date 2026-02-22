@@ -1,263 +1,296 @@
-
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogDescription,
-    DialogFooter,
-    DialogClose,
-} from "@/components/ui/dialog";
+import { useEffect, useState, useRef } from "react";
+import { useSocket } from "@/components/providers/socket-provider";
+// 1. Import your API utility
+import { apiRequest } from "@/utils/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Send, Loader2, User, Check, Clock, AlertCircle } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Send, User, ShieldQuestion } from "@/components/icons"; // Import icons // Импорт иконок
-import { getMessages, sendMessage, requestSupport } from '@/services/chat'; // Import chat services // Импорт сервисов чата
-import type { ChatMessage } from '@/services/chat'; // Import message type // Импорт типа сообщения
-import { useToast } from '@/hooks/use-toast'; // Import hook for notifications // Импорт хука для уведомлений
-import { format } from 'date-fns'; // Import format function // Импорт функции format
+import { format } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
 
-interface ChatDialogProps {
-    isOpen: boolean; // Whether the dialog is open // Открыт ли диалог
-    onClose: () => void; // Function to close the dialog // Функция закрытия диалога
-    chatId: string; // ID of the chat // ID чата
-    performerName: string; // Performer's name for the title // Имя исполнителя для заголовка
-    currentUserId: string; // ID of the current user (customer) // ID текущего пользователя (заказчика)
-    performerId: string; // ID of the performer // ID исполнителя
+interface Message {
+  id: string;
+  content: string;
+  senderId: string;
+  createdAt: string;
+  isRead?: boolean;
+  status?: "sending" | "sent" | "error";
 }
 
-const ChatDialog: React.FC<ChatDialogProps> = ({
-    isOpen,
-    onClose,
-    chatId,
-    performerName,
-    currentUserId,
-    performerId,
-}) => {
-    const [messages, setMessages] = useState<ChatMessage[]>([]); // State for storing messages // Состояние для хранения сообщений
-    const [newMessage, setNewMessage] = useState(''); // State for the new message input // Состояние для нового сообщения
-    const [isLoading, setIsLoading] = useState(false); // Message loading state // Состояние загрузки сообщений
-    const [isSending, setIsSending] = useState(false); // Message sending state // Состояние отправки сообщения
-    const [isRequestingSupport, setIsRequestingSupport] = useState(false); // Support request state // Состояние запроса поддержки
-    const scrollAreaRef = useRef<HTMLDivElement>(null); // Ref for the scroll area // Ref для области прокрутки
-    const { toast } = useToast(); // Hook for notifications // Хук для уведомлений
+interface ChatDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  chatId: string;
+  performerName: string;
+  currentUserId: string;
+  performerId?: string;
+  performerImage?: string;
+}
 
-    // Function to load messages // Функция для загрузки сообщений
-    const fetchMessages = useCallback(async () => {
-        if (!chatId) return;
-        setIsLoading(true);
+export default function ChatDialog({
+  isOpen,
+  onClose,
+  chatId,
+  performerName,
+  currentUserId,
+  performerImage,
+}: ChatDialogProps) {
+  const { socket } = useSocket();
+  const { toast } = useToast();
+
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [newMessage, setNewMessage] = useState("");
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // --- 2. Fetch Chat History on Open ---
+  useEffect(() => {
+    if (isOpen && chatId) {
+      const fetchHistory = async () => {
+        setIsLoadingHistory(true);
         try {
-            const fetchedMessages = await getMessages(chatId);
-            setMessages(fetchedMessages);
-            // Scroll down after loading messages // Прокрутка вниз после загрузки сообщений
-             setTimeout(() => scrollToBottom(), 100); // Small delay for rendering // Небольшая задержка для рендера
+          // apiRequest automatically adds Auth headers and BaseURL
+          const data = await apiRequest<Message[]>({
+            method: "get",
+            url: `/api/chats/${chatId}/messages`,
+          });
+          setMessages(data);
         } catch (error) {
-            console.error("Ошибка загрузки сообщений:", error); // Error loading messages:
-            toast({ variant: "destructive", title: "Ошибка", description: "Не удалось загрузить сообщения." }); // Error // Could not load messages.
+          console.error("Failed to fetch messages", error);
+          toast({
+            variant: "destructive",
+            title: "Ошибка",
+            description: "Не удалось загрузить историю сообщений",
+          });
         } finally {
-            setIsLoading(false);
+          setIsLoadingHistory(false);
         }
-    }, [chatId, toast]); // Dependencies: chatId, toast // Зависимости: chatId, toast
+      };
 
-    // Function to scroll to the bottom of the message list
-    // Функция для прокрутки в конец списка сообщений
-    const scrollToBottom = () => {
-        if (scrollAreaRef.current) {
-            // Use scrollIntoView for the last element
-            // Используем scrollIntoView для последнего элемента
-            const lastMessageElement = scrollAreaRef.current.querySelector('[data-last-message="true"]');
-             if (lastMessageElement) {
-                 lastMessageElement.scrollIntoView({ behavior: 'smooth' });
-             }
-        }
+      fetchHistory();
+    }
+  }, [isOpen, chatId, toast]);
+
+  // --- 3. Real-Time Listener (Socket.io) ---
+  useEffect(() => {
+    if (!socket || !chatId) return;
+
+    // Join Room
+    socket.emit("join_chat", chatId);
+
+    const handleReceiveMessage = (msg: any) => {
+      // Logic Check: Ensure message belongs to THIS chat
+      if (msg.chatId === chatId) {
+        setMessages((prev) => {
+          const exists = prev.find((m) => m.id === msg.id);
+          if (exists) return prev;
+          // Mark incoming as 'sent'
+          return [...prev, { ...msg, status: "sent" }];
+        });
+      }
     };
 
+    socket.on("receive_message", handleReceiveMessage);
 
-    // Load messages when the dialog opens or chatId changes
-    // Загрузка сообщений при открытии диалога и при изменении chatId
-    useEffect(() => {
-        if (isOpen && chatId) {
-            fetchMessages();
+    return () => {
+      socket.off("receive_message", handleReceiveMessage);
+      // socket.emit("leave_chat", chatId);
+    };
+  }, [socket, chatId]);
 
-             // Set interval for periodic message updates (optional)
-             // Установка интервала для периодического обновления сообщений (опционально)
-             const intervalId = setInterval(fetchMessages, 5000); // Update every 5 seconds // Обновлять каждые 5 секунд
+  // --- 4. Auto-Scroll to Bottom ---
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, isOpen]);
 
-            // Clear interval when the dialog closes or chatId changes
-            // Очистка интервала при закрытии диалога или изменении chatId
-            return () => clearInterval(intervalId);
-        }
-    }, [isOpen, chatId, fetchMessages]); // Dependencies: isOpen, chatId, fetchMessages // Зависимости: isOpen, chatId, fetchMessages
+  // --- 5. Send Message Handler ---
+  const handleSend = async () => {
+    if (!newMessage.trim()) return;
 
-     // Scroll down when a new message is added
-     // Прокрутка вниз при добавлении нового сообщения
-     useEffect(() => {
-        if (messages.length > 0) {
-            scrollToBottom();
-        }
-     }, [messages]); // Dependency: messages // Зависимость: messages
+    const tempId = Date.now().toString();
+    const content = newMessage.trim();
 
-
-    // Function to send a message // Функция отправки сообщения
-    const handleSendMessage = async () => {
-        if (!newMessage.trim() || !chatId || isSending) return;
-
-        // Check for links // Проверка на наличие ссылок
-        const urlRegex = /(https?:\/\/[^\s]+)/g;
-        if (urlRegex.test(newMessage)) {
-            toast({ variant: "destructive", title: "Ошибка", description: "Отправка ссылок запрещена." }); // Error // Sending links is prohibited.
-            return;
-        }
-        // Add checks for other forbidden elements if necessary
-        // Добавить проверку на другие запрещенные элементы, если необходимо
-
-        setIsSending(true);
-        try {
-            const sentMessage = await sendMessage(chatId, currentUserId, newMessage);
-            setMessages(prev => [...prev, sentMessage]); // Add new message to the list // Добавляем новое сообщение в список
-            setNewMessage(''); // Clear input field // Очищаем поле ввода
-            scrollToBottom(); // Scroll down after sending // Прокрутка вниз после отправки
-        } catch (error) {
-            console.error("Ошибка отправки сообщения:", error); // Error sending message:
-            toast({ variant: "destructive", title: "Ошибка", description: "Не удалось отправить сообщение." }); // Error // Could not send message.
-        } finally {
-            setIsSending(false);
-        }
+    // Optimistic Update
+    const optimisticMsg: Message = {
+      id: tempId,
+      content: content,
+      senderId: currentUserId,
+      createdAt: new Date().toISOString(),
+      status: "sending",
     };
 
-    // Function to request support // Функция запроса поддержки
-    const handleRequestSupport = async () => {
-        if (!chatId || isRequestingSupport) return;
-        setIsRequestingSupport(true);
-        try {
-            await requestSupport(chatId, currentUserId);
-            toast({ title: "Поддержка запрошена", description: "Менеджер скоро подключится к чату." }); // Support requested // A manager will join the chat soon.
-            // Can add a system message to the chat about the support request
-            // Можно добавить системное сообщение в чат о запросе поддержки
-             const supportMessage: ChatMessage = {
-                id: `support-${Date.now()}`,
-                chatId: chatId,
-                senderId: 'system', // Special ID for system messages // Специальный ID для системных сообщений
-                senderName: 'Система', // System
-                content: 'Пользователь запросил помощь поддержки.', // User requested support.
-                timestamp: new Date(),
-            };
-            setMessages(prev => [...prev, supportMessage]);
-            scrollToBottom();
-        } catch (error) {
-            console.error("Ошибка запроса поддержки:", error); // Error requesting support:
-            toast({ variant: "destructive", title: "Ошибка", description: "Не удалось запросить поддержку." }); // Error // Could not request support.
-        } finally {
-            setIsRequestingSupport(false);
-        }
-    };
+    setMessages((prev) => [...prev, optimisticMsg]);
+    setNewMessage("");
+    setIsSending(true);
 
-    return (
-        <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="sm:max-w-[600px] flex flex-col h-[80vh]">
-                <DialogHeader>
-                    <DialogTitle>Чат с {performerName}</DialogTitle> {/* Chat with {performerName} */}
-                    <DialogDescription>
-                        Обсудите детали вашего мероприятия. Отправка ссылок и файлов запрещена. {/* Discuss the details of your event. Sending links and files is prohibited. */}
-                    </DialogDescription>
-                </DialogHeader>
-            
-                {/* Message Area */} {/* Область сообщений */}
-                <ScrollArea className="flex-grow border rounded-md p-4 mb-4" ref={scrollAreaRef}>
-                    {isLoading ? (
-                        <p className="text-center text-muted-foreground">Загрузка сообщений...</p> // Loading messages...
-                    ) : messages.length === 0 ? (
-                        <p className="text-center text-muted-foreground">Нет сообщений. Начните диалог первым!</p> // No messages. Start the conversation first!
-                    ) : (
-                        <div className="space-y-4">
-                            {messages.map((msg, index) => (
-                                <div
-                                    key={msg.id} 
-                                    className={`flex items-start gap-3 ${msg.senderId === currentUserId ? 'justify-end' : ''}`} // Align current user's messages to the right // Выравниваем сообщения текущего пользователя справа
-                                     // Add attribute for the last message // Добавляем атрибут для последнего сообщения
-                                    data-last-message={index === messages.length - 1 ? 'true' : undefined}
-                                >
-                                     {/* Sender Avatar (if not current user and not system) */}
-                                     {/* Аватар отправителя (если это не текущий пользователь и не система) */}
-                                     {msg.senderId !== currentUserId && msg.senderId !== 'system' && (
-                                         <Avatar className="h-8 w-8">
-                                             {/* Get performer's avatar URL */} {/* Получить URL аватара исполнителя */}
-                                             {/*  <AvatarImage src={performerAvatarUrl} alt={performerName} /> */}
-                                             <AvatarFallback>{performerName.substring(0, 1).toUpperCase()}</AvatarFallback>
-                                         </Avatar> 
-                                      )}
+    try {
+      // Call API using apiRequest
+      const savedMsg = await apiRequest<Message>({
+        method: "post",
+        url: `/api/chats/${chatId}/messages`,
+        data: { content },
+      });
 
-                                    {/* Message Block */}                                 
-                                    <div className={`rounded-lg p-3 max-w-[75%] ${
-                                            msg.senderId === currentUserId
-                                                ? 'bg-primary text-primary-foreground' // Current user's message // Сообщение текущего пользователя
-                                                : msg.senderId === 'system'
-                                                    ? 'bg-yellow-100 text-yellow-800 w-full text-center text-sm italic' // System message // Системное сообщение
-                                                    : 'bg-muted' // Other user's message // Сообщение собеседника
-                                        }`}>
-                                         {/* Sender Name (for other user's messages) */}
-                                         {/* Имя отправителя (для сообщений собеседника) */}
-                                        {msg.senderId !== currentUserId && msg.senderId !== 'system' && (                                          
-                                             <p className="text-xs font-medium mb-1">{msg.senderName}</p>
-                                         )}
-                                        <p className="text-sm">{msg.content}</p>
-                                         {/* Timestamp */} {/* Временная метка */}
-                                         <p className={`text-xs mt-1 ${
-                                             msg.senderId === currentUserId ? 'text-primary-foreground/70' : msg.senderId === 'system' ? 'text-yellow-600' : 'text-muted-foreground'
-                                          } ${msg.senderId !== 'system' ? (msg.senderId === currentUserId ? 'text-right' : 'text-left') : 'text-center'}`}>
-                                            {format(new Date(msg.timestamp), 'HH:mm')}
-                                        </p>
-                                    </div>
+      // Success: Update temporary message with real data
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === tempId ? { ...savedMsg, status: "sent" } : m,
+        ),
+      );
+    } catch (error) {
+      console.error("Send error", error);
 
-                                     {/* Current User Avatar */} {/* Аватар текущего пользователя */}
-                                    {msg.senderId === currentUserId && (
-                                        <Avatar className="h-8 w-8">
-                                             {/* Get current user's avatar URL */} {/* Получить URL аватара текущего пользователя */}
-                                            {/* <AvatarImage src={currentUserAvatarUrl} alt="Вы" /> */} {/* You */}
-                                            <AvatarFallback><User className="h-4 w-4" /></AvatarFallback>
-                                        </Avatar>
-                                    )}                                    
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </ScrollArea>
+      // Error: Mark message as error so user can retry or see failure
+      setMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? { ...m, status: "error" } : m)),
+      );
 
-                {/* Input Field and Buttons */} {/* Поле ввода и кнопки */}
-                <DialogFooter className="flex-col sm:flex-row sm:items-center gap-2">
-                    <div className="flex-grow flex items-center gap-2">
-                        <Input
-                            placeholder="Введите сообщение..." // Enter message...
-                            value={newMessage}
-                            onChange={(e) => setNewMessage(e.target.value)}
-                            onKeyPress={(e) => e.key === 'Enter' && !isSending && handleSendMessage()} // Send on Enter key press // Отправка по нажатию Enter
-                            disabled={isSending || isRequestingSupport} // Disable while sending or requesting support // Отключить во время отправки или запроса поддержки
-                            className="flex-grow"
-                        />                      
-                         <Button onClick={handleSendMessage} disabled={isSending || !newMessage.trim() || isRequestingSupport} variant="destructive" size="icon">
-                             <Send className="h-4 w-4" />
-                             <span className="sr-only">Отправить</span> {/* Send */}
-                         </Button>
+      toast({
+        variant: "destructive",
+        title: "Ошибка",
+        description: "Не удалось отправить сообщение",
+      });
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[500px] h-[80vh] sm:h-[600px] flex flex-col p-0 gap-0 overflow-hidden bg-background">
+        {/* Header */}
+        <DialogHeader className="px-6 py-4 border-b bg-secondary/20">
+          <div className="flex items-center gap-3">
+            <Avatar className="h-10 w-10 border border-border">
+              <AvatarImage src={performerImage} />
+              <AvatarFallback className="bg-primary/10 text-primary font-bold">
+                {performerName?.charAt(0).toUpperCase() || (
+                  <User className="h-5 w-5" />
+                )}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex flex-col justify-center">
+              <DialogTitle className="text-base font-semibold leading-none mb-1">
+                {performerName}
+              </DialogTitle>
+              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                </span>
+                В сети
+              </p>
+            </div>
+          </div>
+        </DialogHeader>
+
+        {/* Messages Area */}
+        <ScrollArea className="flex-1 p-4 bg-slate-50/50 dark:bg-black/20">
+          {isLoadingHistory ? (
+            <div className="flex h-full items-center justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : messages.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center text-muted-foreground opacity-50 space-y-2 mt-10">
+              <div className="bg-muted p-4 rounded-full">
+                <User className="h-8 w-8 text-muted-foreground/50" />
+              </div>
+              <p className="text-sm">История сообщений пуста</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {messages.map((msg, index) => {
+                const isMe = msg.senderId === currentUserId;
+                return (
+                  <div
+                    key={msg.id || index}
+                    className={`flex ${isMe ? "justify-end" : "justify-start"}`}
+                  >
+                    <div
+                      className={`flex flex-col ${isMe ? "items-end" : "items-start"} max-w-[80%]`}
+                    >
+                      <div
+                        className={`px-4 py-2 rounded-2xl text-sm shadow-sm ${
+                          isMe
+                            ? "bg-primary text-primary-foreground rounded-tr-none"
+                            : "bg-white dark:bg-zinc-900 border rounded-tl-none"
+                        } ${msg.status === "error" ? "border-red-500 border-2" : ""}`}
+                      >
+                        <p className="leading-relaxed whitespace-pre-wrap">
+                          {msg.content}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1 mt-1 px-1">
+                        <span className="text-[10px] text-muted-foreground opacity-70">
+                          {format(new Date(msg.createdAt), "HH:mm")}
+                        </span>
+                        {isMe && (
+                          <span className="text-muted-foreground">
+                            {msg.status === "sending" ? (
+                              <Clock className="h-3 w-3 animate-pulse" />
+                            ) : msg.status === "error" ? (
+                              <AlertCircle className="h-3 w-3 text-red-500" />
+                            ) : (
+                              <Check className="h-3 w-3" />
+                            )}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    {/* Support Request Button */} {/* Кнопка запроса поддержки */}
-                    <Button onClick={handleRequestSupport} disabled={isRequestingSupport || isSending} variant="outline" size="sm">
-                        <ShieldQuestion className="mr-2 h-4 w-4" />
-                        Поддержка {/* Support */}
-                    </Button>
-                     {/* Close Button */} {/* Кнопка Закрыть */}
-                     <DialogClose asChild>
-                        <Button type="button" variant="secondary" onClick={onClose}>
-                            Закрыть {/* Close */}
-                        </Button>
-                    </DialogClose>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    );
-};
+                  </div>
+                );
+              })}
+              <div ref={scrollRef} />
+            </div>
+          )}
+        </ScrollArea>
 
-export default ChatDialog;
+        {/* Input Area */}
+        <DialogFooter className="p-3 border-t bg-background">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSend();
+            }}
+            className="flex w-full items-center gap-2"
+          >
+            <Input
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              placeholder="Напишите сообщение..."
+              className="flex-1 rounded-full px-4 border-muted-foreground/20 focus-visible:ring-1"
+              autoFocus
+            />
+            <Button
+              type="submit"
+              size="icon"
+              disabled={!newMessage.trim() || isSending}
+              className="rounded-full h-10 w-10 shrink-0 shadow-sm"
+            >
+              {isSending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4 ml-0.5" />
+              )}
+            </Button>
+          </form>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

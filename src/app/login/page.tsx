@@ -112,13 +112,15 @@ const LoginPage = () => {
 
         // Redirect user based on role
         // Перенаправляем пользователя в зависимости от роли
-
+        console.log(userRole);
         if (userRole === "customer") {
           router.push("/customer-profile"); // Navigate to customer profile // Переход в профиль заказчика
         } else if (userRole === "performer") {
           router.push("/performer-profile"); // Navigate to performer profile // Переход в профиль исполнителя
         } else if (userRole === "support") {
           router.push("/support"); // Navigate to support profile // Переход в профиль поддержки
+        } else if (userRole === "partner") {
+          window.open(process.env.NEXT_PUBLIC_PARTNER_APP_URL, "_blank"); // Navigate to support profile // Переход в профиль поддержки
         } else {
           router.push("/"); // Fallback to home page // Запасной вариант - на главную
         }

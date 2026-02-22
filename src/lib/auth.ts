@@ -4,7 +4,6 @@ import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { prisma } from "@/utils/prisma";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import Credentials from "next-auth/providers/credentials";
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
@@ -63,6 +62,7 @@ export const authOptions: NextAuthOptions = {
               id: user.id,
               name: user.name,
               email: user.email,
+              role: user.role,
               iat: Math.floor(Date.now() / 1000),
               exp: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
             },

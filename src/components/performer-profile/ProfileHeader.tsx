@@ -11,7 +11,6 @@ import {
   Heart,
   MessageCircle,
   CalendarCheck,
-  LogOut,
   Camera,
   DollarSign,
   Share2,
@@ -25,6 +24,8 @@ interface ProfileHeaderProps {
   isEditing: boolean;
   formData: Partial<PerformerProfile>;
   isFavorite: boolean;
+  isOnline?: boolean;
+
   onEditToggle: () => void;
   onSaveChanges: () => void;
   onCancelEdit: () => void;
@@ -47,6 +48,7 @@ export default function ProfileHeader({
   isEditing,
   formData,
   isFavorite,
+  isOnline = false, // Default to false
   onEditToggle,
   onSaveChanges,
   onCancelEdit,
@@ -152,45 +154,44 @@ export default function ProfileHeader({
         <div className="flex flex-col md:flex-row gap-6">
           {/* --- Avatar Section (Updated Positioning) --- */}
           <div className="-mt-16 md:-mt-20 relative flex-shrink-0 mx-auto md:mx-0">
-            <Avatar className="w-32 h-32 md:w-40 md:h-40 border-4 border-background shadow-lg bg-background">
-              <AvatarImage
-                src={
-                  isEditing && formData.profilePicture
-                    ? formData.profilePicture
-                    : getImageUrl(profile.profilePicture)
-                }
-                className="object-cover"
-              />
-              <AvatarFallback className="text-4xl font-bold text-muted-foreground bg-muted">
-                {profile.name?.[0]?.toUpperCase() || "U"}
-              </AvatarFallback>
-              {isEditing && (
-                <label className="absolute inset-0 flex items-center justify-center bg-black/50 text-white rounded-full cursor-pointer transition-colors hover:bg-black/60 z-10">
-                  <Camera className="h-10 w-10 opacity-90" />
-                  <span className="sr-only">Изменить фото</span>
-                  <input
-                    type="file"
-                    hidden
-                    accept="image/*"
-                    onChange={(e) => onFileChange(e, "profilePicture")}
-                  />
-                </label>
-              )}
-            </Avatar>
-
-            {/* CENTERED CAMERA ICON */}
-            {/* {isEditing && (
-              <label className="absolute inset-0 flex items-center justify-center bg-black/50 text-white rounded-full cursor-pointer transition-colors hover:bg-black/60 z-10">
-                <Camera className="h-10 w-10 opacity-90" />
-                <span className="sr-only">Изменить фото</span>
-                <input
-                  type="file"
-                  hidden
-                  accept="image/*"
-                  onChange={(e) => onFileChange(e, "profilePicture")}
+            <div className="relative">
+              <Avatar className="w-32 h-32 md:w-40 md:h-40 border-4 border-background shadow-lg bg-background">
+                <AvatarImage
+                  src={
+                    isEditing && formData.profilePicture
+                      ? formData.profilePicture
+                      : getImageUrl(profile.profilePicture)
+                  }
+                  className="object-cover"
                 />
-              </label>
-            )} */}
+                <AvatarFallback className="text-4xl font-bold text-muted-foreground bg-muted">
+                  {profile.name?.[0]?.toUpperCase() || "U"}
+                </AvatarFallback>
+                {isEditing && (
+                  <label className="absolute inset-0 flex items-center justify-center bg-black/50 text-white rounded-full cursor-pointer transition-colors hover:bg-black/60 z-30">
+                    <Camera className="h-10 w-10 opacity-90" />
+                    <span className="sr-only">Изменить фото</span>
+                    <input
+                      type="file"
+                      hidden
+                      accept="image/*"
+                      onChange={(e) => onFileChange(e, "profilePicture")}
+                    />
+                  </label>
+                )}
+              </Avatar>
+
+              {/* ONLINE STATUS INDICATOR */}
+              {!isEditing && (
+                <span
+                  className={cn(
+                    "absolute bottom-2 right-2 md:bottom-4 md:right-4 h-5 w-5 md:h-6 md:w-6 rounded-full border-4 border-background z-20 transition-all duration-300",
+                    isOnline ? "bg-green-500" : "bg-gray-300",
+                  )}
+                  title={isOnline ? "В сети" : "Не в сети"}
+                />
+              )}
+            </div>
           </div>
 
           {/* --- Main Info --- */}
@@ -209,9 +210,20 @@ export default function ProfileHeader({
                       placeholder="Ваше имя"
                     />
                   ) : (
-                    <h1 className="text-3xl font-bold tracking-tight text-foreground">
-                      {profile.name}
-                    </h1>
+                    <div className="flex items-center justify-center md:justify-start gap-3 flex-wrap">
+                      <h1 className="text-3xl font-bold tracking-tight text-foreground">
+                        {profile.name}
+                      </h1>
+                      {/* Optional Online Badge next to name */}
+                      {isOnline && (
+                        <Badge
+                          variant="secondary"
+                          className="bg-green-100 text-green-700 hover:bg-green-200 border-green-200 px-2 py-0.5 h-6"
+                        >
+                          Online
+                        </Badge>
+                      )}
+                    </div>
                   )}
 
                   <div className="flex flex-wrap gap-2 justify-center md:justify-start">

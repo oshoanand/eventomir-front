@@ -19,6 +19,8 @@ enum NotificationType {
   BOOKING_REQUEST
   BOOKING_UPDATE
   SYSTEM
+  PARTNER_REQUEST
+  PARTNER_UPDATE
 }
 
 enum SubscriptionTier {
@@ -32,6 +34,13 @@ enum PaymentStatus {
   COMPLETED
   FAILED
   REFUNDED
+}
+
+enum Status {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
 }
 
 model User {
@@ -56,7 +65,6 @@ model User {
   subscription_plan_id        String?   @default("econom")
   subscription_end_date       DateTime?
   moderation_status           String    @default("pending_approval")
-  // parent_agency_id            String?
   sub_profile_ids             String[]
   created_at                  DateTime  @default(now())
   updated_at                  DateTime  @updatedAt
@@ -73,43 +81,63 @@ model User {
   resetPasswordExpires        DateTime?
   favorite_performers         Json?
 
-  // Fields for Partner role
-  balance         Float?
-  total_earned    Float?
-  referral_id     String? @unique
-  payment_details String?
+  // --- NEW: 1-to-1 Relation with Partner Profile ---
+  partner_profile Partner?
 
-  reviews_written               Review[]               @relation("CustomerReviews")
-  reviews_received              Review[]               @relation("PerformerReviews")
-  bookings_as_customer          Booking[]              @relation("CustomerBookings")
-  bookings_as_performer         Booking[]              @relation("PerformerBookings")
-  paid_requests                 PaidRequest[]
-  gallery_items                 GalleryItem[]
-  sent_messages                 Message[]
-  support_requests_as_requester SupportRequest[]       @relation("RequesterSupport")
-  support_requests_as_manager   SupportRequest[]       @relation("ManagerSupport")
-  referral_events_as_partner    ReferralEvent[]        @relation("PartnerReferral")
-  referral_events_as_referred   ReferralEvent[]        @relation("ReferredUser")
-  favorites_given               Favorite[]             @relation("CustomerFavorites")
-  favorites_received            Favorite[]             @relation("PerformerFavorites")
-  certificates                  Certificate[]
-  recommendation_letters        RecommendationLetter[]
-  prompts                       Prompt[]
-  notifications                 Notification[]
-  payout_requests               PayoutRequest[]
-  subscription                  UserSubscription?
-  payments                      Payment[]
-  accounts                      Account[]
-  sessions                      Session[]
-  verificationTokens            VerificationToken[]
+  reviews_written       Review[]      @relation("CustomerReviews")
+  reviews_received      Review[]      @relation("PerformerReviews")
+  bookings_as_customer  Booking[]     @relation("CustomerBookings")
+  bookings_as_performer Booking[]     @relation("PerformerBookings")
+  paid_requests         PaidRequest[]
+  gallery_items         GalleryItem[]
+
+  support_requests_as_requester SupportRequest[] @relation("RequesterSupport")
+  support_requests_as_manager   SupportRequest[] @relation("ManagerSupport")
+
+  // Notice: partner referral events removed, only keeping the referred user relation
+  referral_events_as_referred ReferralEvent[] @relation("ReferredUser")
+
+  favorites_given        Favorite[]             @relation("CustomerFavorites")
+  favorites_received     Favorite[]             @relation("PerformerFavorites")
+  certificates           Certificate[]
+  recommendation_letters RecommendationLetter[]
+  prompts                Prompt[]
+  chats                  Chat[]                 @relation("ChatParticipants")
+  messages               Message[]
+  notifications          Notification[]
+  subscription           UserSubscription?
+  payments               Payment[]
+  accounts               Account[]
+  sessions               Session[]
+  verificationTokens     VerificationToken[]
 
   parentAgencyId String?
   parentAgency   User?   @relation("AgencySpecialists", fields: [parentAgencyId], references: [id])
   subProfiles    User[]  @relation("AgencySpecialists")
+}
 
-  // parent_agency User?  @relation("SubAgencies", fields: [parent_agency_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  // sub_agencies  User[] @relation("SubAgencies")
-  chats Chat[]
+// --- NEW PARTNER MODEL ---
+model Partner {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  referralId           String  @unique
+  balance              Float   @default(0)
+  totalEarned          Float   @default(0)
+  totalRegistrations   Int     @default(0)
+  totalPaidConversions Int     @default(0)
+  clicks               Int     @default(0)
+  minPayout            Float   @default(1500)
+  paymentDetails       String? @db.Text
+
+  referralEvents ReferralEvent[]
+  payoutRequests PayoutRequest[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("partners")
 }
 
 model Review {
@@ -131,7 +159,6 @@ model Booking {
   details String?
   status  BookingStatus @default(PENDING)
 
-  // Relations
   customerId String
   customer   User   @relation("CustomerBookings", fields: [customerId], references: [id])
 
@@ -143,11 +170,23 @@ model Booking {
   Payment   Payment[]
 }
 
+model PartnershipRequest {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  website   String
+  status    Status   @default(PENDING)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("partnership_requests")
+}
+
 model Notification {
   id        String           @id @default(uuid())
   userId    String
   user      User             @relation(fields: [userId], references: [id])
-  type      NotificationType // e.g., BOOKING_REQUEST, BOOKING_ACCEPTED, BOOKING_REJECTED
+  type      NotificationType
   message   String
   data      Json?
   link      String?
@@ -162,10 +201,9 @@ model PaidRequest {
 
   category           String
   serviceDescription String
-  city               String? // Optional: null implies Remote/Online
+  city               String?
   budget             String?
 
-  // Status flow: PENDING_PAYMENT -> OPEN -> CLOSED
   status String @default("PENDING_PAYMENT")
 
   paymentId String?  @unique
@@ -195,23 +233,26 @@ model GalleryItem {
 }
 
 model Chat {
-  id         String   @id @default(cuid())
-  created_at DateTime @default(now())
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  users           User[]
+  participants    User[]          @relation("ChatParticipants")
   messages        Message[]
   support_request SupportRequest?
 }
 
 model Message {
-  id         String   @id @default(cuid())
-  chat_id    String
-  sender_id  String
-  content    String
-  created_at DateTime @default(now())
+  id        String   @id @default(cuid())
+  content   String
+  createdAt DateTime @default(now())
+  isRead    Boolean  @default(false)
 
-  chat   Chat @relation(fields: [chat_id], references: [id])
-  sender User @relation(fields: [sender_id], references: [id])
+  chatId String
+  chat   Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  senderId String
+  sender   User   @relation(fields: [senderId], references: [id], onDelete: Cascade)
 }
 
 model SupportRequest {
@@ -238,8 +279,26 @@ model ReferralEvent {
   status            String?  @default("pending")
   created_at        DateTime @default(now())
 
-  partner       User @relation("PartnerReferral", fields: [partner_id], references: [id])
-  referred_user User @relation("ReferredUser", fields: [referred_user_id], references: [id])
+  // FIXED: Partner ID now correctly points to Partner model
+  partner       Partner @relation(fields: [partner_id], references: [id], onDelete: Cascade)
+  referred_user User    @relation("ReferredUser", fields: [referred_user_id], references: [id], onDelete: Cascade)
+
+  @@map("referral_events")
+}
+
+model PayoutRequest {
+  id              String   @id @default(cuid())
+  partner_id      String
+  amount          Float
+  status          String   @default("pending")
+  payment_details String?  @db.Text
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  // FIXED: Partner ID now correctly points to Partner model
+  partner Partner @relation(fields: [partner_id], references: [id], onDelete: Cascade)
+
+  @@map("payout_requests")
 }
 
 model Favorite {
@@ -257,7 +316,7 @@ model Favorite {
 model Article {
   id               String   @id @default(uuid())
   title            String
-  content          String   @db.Text // Stores HTML from Tiptap
+  content          String   @db.Text
   slug             String   @unique
   media_url        String?
   media_type       String?
@@ -265,20 +324,32 @@ model Article {
   image_alt_text   String?
   meta_description String?
   keywords         String?
-  isActive         Boolean  @default(false) // Draft vs Published
+  isActive         Boolean  @default(false)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 }
 
 model SiteSettings {
-  id            String   @id @default("general_settings") // Single row approach
-  settings_data Json? // Stores: siteName, logoUrl, theme, contacts, categories, etc.
-  updated_at    DateTime @updatedAt
+  id          String  @id @default("general_settings")
+  siteName    String  @default("Eventomir")
+  logoUrl     String?
+  logoAltText String?
+  faviconUrl  String?
+  fontFamily  String  @default("Inter, sans-serif")
+  contacts    Json?   @default("{}")
+  theme       Json?   @default("{\"backgroundColor\": \"#ffffff\", \"primaryColor\": \"#3b82f6\", \"accentColor\": \"#f59e0b\"}")
+
+  siteCategories  Json @default("[]")
+  pageSpecificSEO Json @default("[]")
+
+  updatedAt DateTime @updatedAt
+
+  @@map("site_settings")
 }
 
 model PricingConfig {
-  id          String   @id @default("pricing_config") // Single row approach
-  config_data Json? // Stores: plans array, paidRequestPrice
+  id          String   @id @default("pricing_config")
+  config_data Json?
   updated_at  DateTime @updatedAt
 }
 
@@ -315,28 +386,16 @@ model Prompt {
   user User @relation(fields: [userId], references: [id])
 }
 
-model PayoutRequest {
-  id              String   @id @default(cuid())
-  partner_id      String
-  amount          Float
-  status          String   @default("pending") // pending, completed, rejected
-  payment_details String?
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
-
-  partner User @relation(fields: [partner_id], references: [id])
-}
-
 model SubscriptionPlan {
   id              String           @id @default(uuid())
   name            String
   description     String
   tier            SubscriptionTier @unique
   priceMonthly    Int              @default(0)
-  priceHalfYearly Int?             @default(0) // 6 Months
-  priceYearly     Int?             @default(0) // 12 Months
+  priceHalfYearly Int?             @default(0)
+  priceYearly     Int?             @default(0)
 
-  features  String[] // Stored as array of strings
+  features  String[]
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -346,14 +405,14 @@ model SubscriptionPlan {
 
 model UserSubscription {
   id     String @id @default(uuid())
-  userId String @unique // One active subscription per user
+  userId String @unique
   user   User   @relation(fields: [userId], references: [id])
 
   planId String
   plan   SubscriptionPlan @relation(fields: [planId], references: [id])
 
   startDate DateTime  @default(now())
-  endDate   DateTime? // Null means lifetime or indefinite if logic dictates
+  endDate   DateTime?
   isActive  Boolean   @default(true)
   autoRenew Boolean   @default(false)
 
@@ -368,8 +427,8 @@ model Payment {
   amount       Int
   currency     String        @default("RUB")
   status       PaymentStatus @default(PENDING)
-  provider     String // e.g., "stripe", "yookassa"
-  providerTxId String? // Transaction ID from the provider
+  provider     String
+  providerTxId String?
   metadata     Json?
 
   createdAt   DateTime     @default(now())
@@ -378,18 +437,6 @@ model Payment {
   bookingId   String?
   paidRequest PaidRequest?
 }
-
-// model Payment {
-//   id         String   @id @default(cuid())
-//   user_id    String
-//   booking_id String?
-//   amount     Float
-//   status     String // e.g., 'succeeded', 'failed'
-//   created_at DateTime @default(now())
-
-//   user    User     @relation(fields: [user_id], references: [id])
-//   booking Booking? @relation(fields: [booking_id], references: [id])
-// }
 
 model Account {
   id                String  @id @default(cuid())
