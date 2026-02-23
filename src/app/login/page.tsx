@@ -79,17 +79,26 @@ const LoginPage = () => {
       });
 
       if (result?.error) {
-        try {
-          const errorData = JSON.parse(result.error);
+        // --- 1. HANDLE PARTNER REDIRECT ---
+        // Since NextAuth passes the error as a string, we check if it looks like our JSON
+        if (result.error.includes("PARTNER_REDIRECT")) {
+          try {
+            const errorData = JSON.parse(result.error);
 
-          if (errorData.type === "PARTNER_REDIRECT") {
-            const partnerBaseUrl =
-              process.env.NEXT_PUBLIC_PARTNER_APP_URL ||
-              "http://localhost:3001";
+            // СТРОГАЯ ПРОВЕРКА URL
+            let partnerBaseUrl = process.env.NEXT_PUBLIC_PARTNER_APP_URL;
+            if (!partnerBaseUrl || partnerBaseUrl.trim() === "") {
+              partnerBaseUrl = "http://localhost:3001"; // Fallback гарантирован
+            }
+            // Убираем слэш на конце, если он случайно есть в .env
+            partnerBaseUrl = partnerBaseUrl.replace(/\/$/, "");
+
+            // Формируем абсолютный URL
             const targetUrl = `${partnerBaseUrl}/dashboard?v=${errorData.token}`;
 
             const newWindow = window.open(targetUrl, "_blank");
 
+            // Check if the browser blocked the popup
             if (
               !newWindow ||
               newWindow.closed ||
@@ -104,16 +113,22 @@ const LoginPage = () => {
                 description: "Открытие панели партнера в новой вкладке...",
               });
             }
-            return;
+            return; // Stop execution here, don't show any error toasts
+          } catch (e) {
+            console.error("Failed to parse partner redirect token", e);
+            // Fallback if parsing fails
           }
-        } catch (e) {
-          toast({
-            variant: "destructive",
-            title: "Ошибка входа",
-            description: result.error,
-          });
         }
+
+        // --- 2. HANDLE STANDARD ERRORS ---
+        // If we get here, it wasn't a partner redirect, so it's a real login error
+        toast({
+          variant: "destructive",
+          title: "Ошибка входа",
+          description: result.error, // This will now show "Неверный адрес..." or "Проверьте свой..."
+        });
       } else if (result?.ok) {
+        // --- 3. HANDLE SUCCESSFUL CUSTOMER/PERFORMER LOGIN ---
         const currentSession = await getSession();
         const userRole = currentSession?.user?.role;
         let roleDescription =
@@ -273,7 +288,6 @@ const LoginPage = () => {
   // --- UI STATE 4: STANDARD LOGIN FORM ---
   return (
     <div className="container mx-auto py-10 flex justify-center">
-      {/* ... Rest of your existing login form UI goes here ... */}
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle>Войти</CardTitle>
