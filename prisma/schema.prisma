@@ -81,7 +81,6 @@ model User {
   resetPasswordExpires        DateTime?
   favorite_performers         Json?
 
-  // --- NEW: 1-to-1 Relation with Partner Profile ---
   partner_profile Partner?
 
   reviews_written       Review[]      @relation("CustomerReviews")
@@ -94,7 +93,7 @@ model User {
   support_requests_as_requester SupportRequest[] @relation("RequesterSupport")
   support_requests_as_manager   SupportRequest[] @relation("ManagerSupport")
 
-  // Notice: partner referral events removed, only keeping the referred user relation
+  // partner referral events removed, only keeping the referred user relation
   referral_events_as_referred ReferralEvent[] @relation("ReferredUser")
 
   favorites_given        Favorite[]             @relation("CustomerFavorites")
@@ -116,7 +115,6 @@ model User {
   subProfiles    User[]  @relation("AgencySpecialists")
 }
 
-// --- NEW PARTNER MODEL ---
 model Partner {
   id     String @id @default(uuid())
   userId String @unique
@@ -136,8 +134,6 @@ model Partner {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  @@map("partners")
 }
 
 model Review {
@@ -178,8 +174,6 @@ model PartnershipRequest {
   status    Status   @default(PENDING)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  @@map("partnership_requests")
 }
 
 model Notification {
@@ -279,11 +273,9 @@ model ReferralEvent {
   status            String?  @default("pending")
   created_at        DateTime @default(now())
 
-  // FIXED: Partner ID now correctly points to Partner model
+  //  Partner ID now correctly points to Partner model
   partner       Partner @relation(fields: [partner_id], references: [id], onDelete: Cascade)
   referred_user User    @relation("ReferredUser", fields: [referred_user_id], references: [id], onDelete: Cascade)
-
-  @@map("referral_events")
 }
 
 model PayoutRequest {
@@ -295,10 +287,8 @@ model PayoutRequest {
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
 
-  // FIXED: Partner ID now correctly points to Partner model
+  // Partner ID now correctly points to Partner model
   partner Partner @relation(fields: [partner_id], references: [id], onDelete: Cascade)
-
-  @@map("payout_requests")
 }
 
 model Favorite {
@@ -343,8 +333,6 @@ model SiteSettings {
   pageSpecificSEO Json @default("[]")
 
   updatedAt DateTime @updatedAt
-
-  @@map("site_settings")
 }
 
 model PricingConfig {
