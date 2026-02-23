@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { getRussianRegionsWithCities } from "@/services/geo";
 import { useToast } from "@/hooks/use-toast";
@@ -161,7 +161,41 @@ const restaurantEventStyles = [
   "Другое",
 ];
 
-const SearchPage = () => {
+// Карта для поддержки старых английских ссылок
+const legacyCategoryMap: Record<string, string> = {
+  photographers: "Фотограф",
+  djs: "DJ",
+  designers: "Дизайнер",
+  tamada: "Ведущие",
+  videographers: "Видеограф",
+  florists: "Флорист",
+  cooks: "Повар",
+  transport: "Транспорт",
+  animators: "Аниматор",
+  makeupartists: "Визажист",
+  stylists: "Стилист",
+  restaurants: "Ресторан",
+  hosts: "Ведущие",
+  artists: "Артисты",
+};
+
+// Функция для безопасного извлечения категории из URL
+const parseCategoryFromUrl = (urlVal: string | null) => {
+  if (!urlVal) return null;
+  const decoded = decodeURIComponent(urlVal).trim();
+
+  if (legacyCategoryMap[decoded.toLowerCase()]) {
+    return legacyCategoryMap[decoded.toLowerCase()];
+  }
+
+  const matched = categories.find(
+    (c) => c.toLowerCase() === decoded.toLowerCase(),
+  );
+  return matched || null;
+};
+
+// --- Внутренний компонент с логикой поиска ---
+const SearchPageContent = () => {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { toast } = useToast();
@@ -172,15 +206,24 @@ const SearchPage = () => {
     Number(searchParams.get("priceMin")) || 0,
     Number(searchParams.get("priceMax")) || 50000,
   ]);
+
+  // Используем наш парсер для начального состояния
   const [selectedService, setSelectedService] = useState<string | null>(
-    searchParams.get("category") || null,
+    parseCategoryFromUrl(searchParams.get("category")),
   );
+
   const [selectedAccountType, setSelectedAccountType] = useState<string>(
     searchParams.get("accountType") || "all",
   );
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(
     searchParams.get("date") ? new Date(searchParams.get("date")!) : undefined,
   );
+
+  // Надежная синхронизация URL и Select
+  useEffect(() => {
+    const safeCategory = parseCategoryFromUrl(searchParams.get("category"));
+    setSelectedService(safeCategory);
+  }, [searchParams]);
 
   // Sub-filters (mapped to specific categories)
   const [selectedTransportType, setSelectedTransportType] = useState<
@@ -247,18 +290,36 @@ const SearchPage = () => {
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
 
   // --- 2. Active Query State (Triggers the Hook) ---
-  // We initialize this with URL params so the first load triggers a search
   const [activeQuery, setActiveQuery] = useState<Record<string, any>>(() => {
     const params: any = {};
     searchParams.forEach((value, key) => {
       params[key] = value;
     });
-    // Ensure defaults if URL is empty but we want initial data
+    // Обеспечиваем корректное значение категории для API
+    if (params.category) {
+      params.category =
+        parseCategoryFromUrl(params.category) || params.category;
+    }
     if (Object.keys(params).length === 0) {
-      return { limit: 20 }; // Default fetch
+      return { limit: 20 };
     }
     return params;
   });
+
+  // Обновляем activeQuery, если URL изменился извне
+  useEffect(() => {
+    const params: any = {};
+    searchParams.forEach((value, key) => {
+      params[key] = value;
+    });
+    if (params.category) {
+      params.category =
+        parseCategoryFromUrl(params.category) || params.category;
+    }
+    if (Object.keys(params).length > 0) {
+      setActiveQuery(params);
+    }
+  }, [searchParams]);
 
   // --- 3. TanStack Query Hook ---
   const {
@@ -268,14 +329,11 @@ const SearchPage = () => {
   } = useSearchPerformers(activeQuery);
 
   // --- 4. Effects ---
-
-  // Load Regions on Mount
   useEffect(() => {
     getRussianRegionsWithCities().then(setRegions).catch(console.error);
   }, []);
 
   // --- 5. Handlers ---
-
   const handleCityInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const input = e.target.value;
@@ -296,9 +354,7 @@ const SearchPage = () => {
     [regions],
   );
 
-  // The Search Action: Commits UI state to Active Query
   const handleSearch = () => {
-    // 1. Construct the filters object from current UI state
     const filters: any = {
       city: cityInput,
       category: selectedService === "_all_" ? null : selectedService,
@@ -308,7 +364,6 @@ const SearchPage = () => {
       priceMax: priceRange[1],
     };
 
-    // 2. Add Category Specifics
     if (selectedService === "Транспорт") {
       if (selectedTransportType) filters.subType = selectedTransportType;
       if (selectedTransportCapacity)
@@ -342,7 +397,6 @@ const SearchPage = () => {
         filters.eventStyles = selectedRestaurantEventStyles;
     }
 
-    // 3. Update URL (Shallow push)
     const queryParams = new URLSearchParams();
     Object.entries(filters).forEach(([k, v]) => {
       if (v !== null && v !== undefined && v !== "") {
@@ -355,12 +409,10 @@ const SearchPage = () => {
     });
     router.push(`/search?${queryParams.toString()}`, { scroll: false });
 
-    // 4. Trigger Hook by updating Active Query
     setActiveQuery(filters);
     setViewMode("list");
   };
 
-  // Helper for array checkbox toggles
   const toggleArrayState = (setter: any, current: string[], item: string) => {
     setter(
       current.includes(item)
@@ -838,6 +890,7 @@ const SearchPage = () => {
                       setSelectedService(null);
                       setSelectedAccountType("all");
                       setActiveQuery({ limit: 20 }); // Reset
+                      router.push("/search"); // Убираем фильтры из URL
                     }}
                   >
                     Сбросить фильтры
@@ -852,4 +905,17 @@ const SearchPage = () => {
   );
 };
 
-export default SearchPage;
+// Экспортируем компонент, обернутый в Suspense (требование Next.js для useSearchParams)
+export default function SearchPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="container mx-auto py-20 text-center text-muted-foreground">
+          Загрузка параметров поиска...
+        </div>
+      }
+    >
+      <SearchPageContent />
+    </Suspense>
+  );
+}
