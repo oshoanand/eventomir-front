@@ -1,241 +1,5 @@
-// "use client";
-
-// import Link from "next/link";
-// import { useIsMobile } from "@/hooks/use-mobile";
-// import { signOut } from "next-auth/react"; // Import signOut
-// import {
-//   Sheet,
-//   SheetContent,
-//   SheetDescription,
-//   SheetHeader,
-//   SheetTitle,
-//   SheetTrigger,
-// } from "@/components/ui/sheet";
-// import {
-//   DropdownMenu,
-//   DropdownMenuContent,
-//   DropdownMenuItem,
-//   DropdownMenuLabel,
-//   DropdownMenuSeparator,
-//   DropdownMenuTrigger,
-// } from "@/components/ui/dropdown-menu";
-// import { Button } from "@/components/ui/button";
-// import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-// import { Menu, User, LogOut, LayoutDashboard } from "lucide-react";
-// import React, { useState, useEffect } from "react";
-
-// interface ClientMenuProps {
-//   isLoggedIn: boolean;
-//   userRole: "customer" | "performer" | "admin" | "support" | "partner" | null;
-//   userImage?: string | null;
-//   onOpenChange?: (open: boolean) => void;
-//   className?: string;
-// }
-
-// const ClientMenu: React.FC<ClientMenuProps> = ({
-//   isLoggedIn,
-//   userRole,
-//   userImage,
-//   onOpenChange,
-// }) => {
-//   const isMobile = useIsMobile();
-//   const [isMenuOpen, setIsMenuOpen] = useState(false);
-//   const [isClient, setIsClient] = useState(false);
-
-//   useEffect(() => {
-//     setIsClient(true);
-//   }, []);
-
-//   // --- Logic: Determine Profile Link based on Role ---
-//   const getProfileLink = () => {
-//     switch (userRole) {
-//       case "performer":
-//         return "/performer-profile";
-//       case "customer":
-//         return "/customer-profile";
-//       case "partner":
-//         return "/partner-dashboard";
-//       case "admin":
-//         return "/admin";
-//       case "support":
-//         return "/support";
-//       default:
-//         return "/";
-//     }
-//   };
-
-//   const profileHref = getProfileLink();
-
-//   // --- Logic: Handle Logout ---
-//   const handleLogout = () => {
-//     signOut({ callbackUrl: "/login" }); // Redirect to login after logout
-//   };
-
-//   // --- Menu Config ---
-//   const menuLinks = [
-//     { href: "/search", label: "Поиск", alwaysVisible: true },
-//     { href: "/pricing", label: "Тарифы", alwaysVisible: true },
-//     { href: "/compare", label: "Сравнение", alwaysVisible: true },
-//     { href: "/about", label: "О нас", alwaysVisible: true },
-//     { href: "/blog", label: "Блог", alwaysVisible: true },
-//     { href: "/login", label: "Войти", guestOnly: true },
-//     {
-//       href: "/register-performer",
-//       label: "Стать исполнителем",
-//       guestOnly: true,
-//     },
-//     { href: "/register-customer", label: "Стать заказчиком", guestOnly: true },
-//     { href: "/favorites", label: "Избранное", role: "customer" },
-//     { href: "/admin", label: "Админ", role: "admin" },
-//     { href: "/partner-dashboard", label: "Кабинет партнера", role: "partner" },
-//   ];
-
-//   const closeMenu = () => setIsMenuOpen(false);
-
-//   if (!isClient) return null;
-
-//   const filteredLinks = menuLinks.filter((link) => {
-//     if (link.alwaysVisible) return true;
-//     if (link.guestOnly) return !isLoggedIn;
-//     if (link.role) return isLoggedIn && userRole === link.role;
-//     return false;
-//   });
-
-//   // --- Component: Profile Dropdown Avatar ---
-//   const ProfileDropdown = () => (
-//     <DropdownMenu>
-//       <DropdownMenuTrigger asChild>
-//         <Button variant="ghost" className="relative h-10 w-10 rounded-full p-0">
-//           <Avatar className="h-9 w-9 transition-opacity hover:opacity-80 border border-border">
-//             <AvatarImage
-//               src={userImage || ""}
-//               alt="Profile"
-//               className="object-cover"
-//             />
-//             <AvatarFallback className="bg-primary/10 text-primary">
-//               <User className="h-4 w-4" />
-//             </AvatarFallback>
-//           </Avatar>
-//         </Button>
-//       </DropdownMenuTrigger>
-//       <DropdownMenuContent className="w-56" align="end" forceMount>
-//         <DropdownMenuLabel className="font-normal">
-//           <div className="flex flex-col space-y-1">
-//             <p className="text-sm font-medium leading-none">Мой аккаунт</p>
-//             <p className="text-xs leading-none text-muted-foreground capitalize">
-//               {userRole === "performer"
-//                 ? "Исполнитель"
-//                 : userRole === "customer"
-//                   ? "Заказчик"
-//                   : userRole}
-//             </p>
-//           </div>
-//         </DropdownMenuLabel>
-//         <DropdownMenuSeparator />
-
-//         {/* Option 1: Profile Dashboard */}
-//         <DropdownMenuItem asChild>
-//           <Link
-//             href={profileHref}
-//             onClick={closeMenu}
-//             className="cursor-pointer"
-//           >
-//             <LayoutDashboard className="mr-2 h-4 w-4" />
-//             <span>Личный кабинет</span>
-//           </Link>
-//         </DropdownMenuItem>
-
-//         <DropdownMenuSeparator />
-
-//         {/* Option 2: Logout */}
-//         <DropdownMenuItem
-//           onClick={handleLogout}
-//           className="text-red-600 focus:text-red-600 cursor-pointer"
-//         >
-//           <LogOut className="mr-2 h-4 w-4" />
-//           <span>Выйти</span>
-//         </DropdownMenuItem>
-//       </DropdownMenuContent>
-//     </DropdownMenu>
-//   );
-
-//   // --- MOBILE VIEW ---
-//   if (isMobile) {
-//     return (
-//       <Sheet
-//         open={isMenuOpen}
-//         onOpenChange={(open) => {
-//           setIsMenuOpen(open);
-//           if (onOpenChange) onOpenChange(open);
-//         }}
-//       >
-//         <SheetTrigger asChild>
-//           <Button variant="ghost" size="icon">
-//             <Menu className="h-5 w-5" />
-//           </Button>
-//         </SheetTrigger>
-
-//         <SheetContent side="left" className="w-3/4 bg-secondary flex flex-col">
-//           <SheetHeader>
-//             <SheetTitle>Меню</SheetTitle>
-//             <SheetDescription>Навигация по сайту.</SheetDescription>
-//           </SheetHeader>
-
-//           <nav className="grid gap-4 py-4 flex-1">
-//             {filteredLinks.map((link) => (
-//               <Link
-//                 key={link.href}
-//                 href={link.href}
-//                 className="block px-2 py-1 text-lg rounded hover:bg-accent hover:text-accent-foreground"
-//                 onClick={closeMenu}
-//               >
-//                 {link.label}
-//               </Link>
-//             ))}
-//           </nav>
-
-//           {/* Profile at the bottom of mobile menu */}
-//           {isLoggedIn && (
-//             <div className="border-t pt-4 px-2 pb-4">
-//               <div className="flex items-center justify-between">
-//                 <span className="text-sm font-medium text-muted-foreground">
-//                   Профиль
-//                 </span>
-//                 <ProfileDropdown />
-//               </div>
-//             </div>
-//           )}
-//         </SheetContent>
-//       </Sheet>
-//     );
-//   }
-
-//   // --- DESKTOP VIEW ---
-//   return (
-//     <nav className="flex items-center gap-6">
-//       {filteredLinks.map((link) => (
-//         <Link
-//           key={link.href}
-//           href={link.href}
-//           className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
-//         >
-//           {link.label}
-//         </Link>
-//       ))}
-
-//       {isLoggedIn && (
-//         <div className="ml-2">
-//           <ProfileDropdown />
-//         </div>
-//       )}
-//     </nav>
-//   );
-// };
-
-// export default ClientMenu;
-
 "use client";
-
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { signOut } from "next-auth/react";
@@ -256,13 +20,25 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Menu, User, LogOut, LayoutDashboard } from "lucide-react";
-import React, { useState, useEffect } from "react";
+import {
+  Menu,
+  ChevronDown,
+  User,
+  LogOut,
+  Heart,
+  Settings,
+  Briefcase,
+  Handshake,
+  Bell,
+  Ticket,
+  Calendar,
+} from "lucide-react";
+
+import { useNotification } from "@/context/NotificationContext";
 
 interface ClientMenuProps {
   isLoggedIn: boolean;
-  userRole: "customer" | "performer" | "admin" | "support" | null;
+  userRole: "customer" | "performer" | "partner" | null;
   userImage?: string | null;
   onOpenChange?: (open: boolean) => void;
   className?: string;
@@ -271,231 +47,368 @@ interface ClientMenuProps {
 const ClientMenu: React.FC<ClientMenuProps> = ({
   isLoggedIn,
   userRole,
-  userImage,
   onOpenChange,
 }) => {
   const isMobile = useIsMobile();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isClient, setIsClient] = useState(false);
+  const { unreadCount } = useNotification();
 
   useEffect(() => {
     setIsClient(true);
   }, []);
 
-  const getProfileLink = () => {
-    switch (userRole) {
-      case "performer":
-        return "/performer-profile";
-      case "customer":
-        return "/customer-profile";
-      case "admin":
-        return "/admin";
-      case "support":
-        return "/support";
-      default:
-        return "/";
-    }
-  };
-
-  const profileHref = getProfileLink();
-
-  const handleLogout = () => {
-    signOut({ callbackUrl: "/login" });
-  };
-
-  // Environment variable for the partner app, defaulting to localhost:3001
-  const partnerAppUrl =
-    process.env.NEXT_PUBLIC_PARTNER_APP_URL || "http://localhost:3001";
-
-  // --- Menu Config ---
-  // Added "external: true" for the partner link
-  const menuLinks = [
-    { href: "/search", label: "Поиск", alwaysVisible: true },
-    { href: "/pricing", label: "Тарифы", alwaysVisible: true },
-    { href: "/favorites", label: "Избранное", role: "customer" },
-    { href: "/compare", label: "Сравнение", alwaysVisible: true },
-    { href: "/about", label: "О нас", alwaysVisible: true },
-    { href: "/blog", label: "Блог", alwaysVisible: true },
-    { href: "/login", label: "Войти", guestOnly: true },
-    {
-      href: "/register-performer",
-      label: "Стать исполнителем",
-      guestOnly: true,
-    },
-    { href: "/register-customer", label: "Стать заказчиком", guestOnly: true },
-    {
-      href: partnerAppUrl,
-      label: "Партнерам",
-      guestOnly: true,
-      external: true, // Flag to render as standard <a> tag
-    },
-
-    { href: "/admin", label: "Админ", role: "admin" },
-  ];
+  if (!isClient) return null;
 
   const closeMenu = () => setIsMenuOpen(false);
 
-  if (!isClient) return null;
+  const handleLogout = () => {
+    signOut({ callbackUrl: "/login" });
+    closeMenu();
+  };
 
-  const filteredLinks = menuLinks.filter((link) => {
-    if (link.alwaysVisible) return true;
-    if (link.guestOnly) return !isLoggedIn;
-    if (link.role) return isLoggedIn && userRole === link.role;
-    return false;
-  });
+  const partnerAppUrl =
+    process.env.NEXT_PUBLIC_PARTNER_APP_URL || "http://localhost:3001";
 
-  const ProfileDropdown = () => (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="relative h-10 w-10 rounded-full p-0">
-          <Avatar className="h-9 w-9 transition-opacity hover:opacity-80 border border-border">
-            <AvatarImage
-              src={userImage || ""}
-              alt="Profile"
-              className="object-cover"
-            />
-            <AvatarFallback className="bg-primary/10 text-primary">
-              <User className="h-4 w-4" />
-            </AvatarFallback>
-          </Avatar>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-56" align="end" forceMount>
-        <DropdownMenuLabel className="font-normal">
-          <div className="flex flex-col space-y-1">
-            <p className="text-sm font-medium leading-none">Мой аккаунт</p>
-            <p className="text-xs leading-none text-muted-foreground capitalize">
-              {userRole === "performer"
-                ? "Исполнитель"
-                : userRole === "customer"
-                  ? "Заказчик"
-                  : userRole}
-            </p>
-          </div>
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
+  const navLinks = [
+    { href: "/events", label: "Афиша" },
+    { href: "/search", label: "Поиск" },
+    { href: "/pricing", label: "Тарифы" },
+    { href: "/compare", label: "Сравнение" },
+    { href: "/blog", label: "Блог" },
+  ];
 
-        <DropdownMenuItem asChild>
-          <Link
-            href={profileHref}
-            onClick={closeMenu}
-            className="cursor-pointer"
-          >
-            <LayoutDashboard className="mr-2 h-4 w-4" />
-            <span>Личный кабинет</span>
-          </Link>
-        </DropdownMenuItem>
+  const getProfileLink = () => {
+    switch (userRole) {
+      case "customer":
+        return { href: "/customer-profile", label: "Мой профиль" };
+      case "performer":
+        return { href: "/performer-profile", label: "Мой профиль" };
+      default:
+        return { href: "/", label: "Профиль" };
+    }
+  };
+  const profileLink = getProfileLink();
 
-        <DropdownMenuSeparator />
-
-        <DropdownMenuItem
-          onClick={handleLogout}
-          className="text-red-600 focus:text-red-600 cursor-pointer"
-        >
-          <LogOut className="mr-2 h-4 w-4" />
-          <span>Выйти</span>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+  const NotificationBell = () => (
+    <Link
+      href="/notifications"
+      className="relative flex items-center justify-center h-10 w-10 rounded-full hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-all duration-200"
+    >
+      <Bell className="h-[20px] w-[20px]" strokeWidth={2} />
+      {unreadCount > 0 && (
+        <span className="absolute top-[6px] right-[8px] flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] font-bold text-destructive-foreground ring-2 ring-background shadow-sm">
+          {unreadCount > 9 ? "9+" : unreadCount}
+        </span>
+      )}
+      <span className="sr-only">Уведомления</span>
+    </Link>
   );
 
-  // --- MOBILE VIEW ---
+  // --- МОБИЛЬНОЕ МЕНЮ ---
   if (isMobile) {
     return (
-      <Sheet
-        open={isMenuOpen}
-        onOpenChange={(open) => {
-          setIsMenuOpen(open);
-          if (onOpenChange) onOpenChange(open);
-        }}
-      >
-        <SheetTrigger asChild>
-          <Button variant="ghost" size="icon">
-            <Menu className="h-5 w-5" />
-          </Button>
-        </SheetTrigger>
-
-        <SheetContent side="left" className="w-3/4 bg-secondary flex flex-col">
-          <SheetHeader>
-            <SheetTitle>Меню</SheetTitle>
-            <SheetDescription>Навигация по сайту.</SheetDescription>
-          </SheetHeader>
-
-          <nav className="grid gap-4 py-4 flex-1">
-            {filteredLinks.map((link) => {
-              const mobileClasses =
-                "block px-2 py-1 text-lg rounded hover:bg-accent hover:text-accent-foreground";
-
-              // Render standard <a> tag for external partner link
-              if (link.external) {
-                return (
-                  <a
+      <div className="flex items-center gap-1">
+        {isLoggedIn && <NotificationBell />}
+        <Sheet
+          open={isMenuOpen}
+          onOpenChange={(open) => {
+            setIsMenuOpen(open);
+            if (onOpenChange) onOpenChange(open);
+          }}
+        >
+          <SheetTrigger asChild>
+            <Button variant="ghost" size="icon" className="hover:bg-muted/50">
+              <Menu className="h-6 w-6" />
+            </Button>
+          </SheetTrigger>
+          <SheetContent
+            side="left"
+            className="w-[300px] sm:w-[400px] flex flex-col"
+          >
+            <SheetHeader className="text-left border-b pb-4">
+              <SheetTitle>Навигация</SheetTitle>
+              <SheetDescription>
+                Управляйте вашим событием вместе с Eventomir
+              </SheetDescription>
+            </SheetHeader>
+            <nav className="flex flex-col gap-4 py-6 flex-1 overflow-y-auto">
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-muted-foreground uppercase px-2 mb-2">
+                  Разделы
+                </p>
+                {navLinks.map((link) => (
+                  <Link
                     key={link.href}
                     href={link.href}
-                    className={mobileClasses}
+                    className="block px-3 py-2.5 text-base font-medium rounded-md hover:bg-accent transition-colors"
                     onClick={closeMenu}
                   >
                     {link.label}
-                  </a>
-                );
-              }
-
-              // Render Next.js <Link> for internal routes
-              return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className={mobileClasses}
-                  onClick={closeMenu}
-                >
-                  {link.label}
-                </Link>
-              );
-            })}
-          </nav>
-
-          {isLoggedIn && (
-            <div className="border-t pt-4 px-2 pb-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-muted-foreground">
-                  Профиль
-                </span>
-                <ProfileDropdown />
+                  </Link>
+                ))}
               </div>
-            </div>
-          )}
-        </SheetContent>
-      </Sheet>
+
+              <DropdownMenuSeparator />
+
+              {!isLoggedIn ? (
+                <div className="space-y-3 pt-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase px-2">
+                    Личный кабинет
+                  </p>
+                  <Button
+                    asChild
+                    variant="outline"
+                    className="w-full justify-start h-11"
+                    onClick={closeMenu}
+                  >
+                    <Link href="/login">Войти</Link>
+                  </Button>
+                  <div className="grid grid-cols-1 gap-2 pt-2">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase px-2 mt-2">
+                      Регистрация
+                    </p>
+                    <Button
+                      asChild
+                      variant="destructive"
+                      className="w-full justify-start h-11"
+                      onClick={closeMenu}
+                    >
+                      <Link href="/register-customer">
+                        <User className="mr-2 h-4 w-4" /> Стать заказчиком
+                      </Link>
+                    </Button>
+                    <Button
+                      asChild
+                      variant="secondary"
+                      className="w-full justify-start h-11"
+                      onClick={closeMenu}
+                    >
+                      <Link href="/register-performer">
+                        <Briefcase className="mr-2 h-4 w-4" /> Стать
+                        исполнителем
+                      </Link>
+                    </Button>
+                    <Button
+                      asChild
+                      variant="ghost"
+                      className="w-full justify-start h-11 text-muted-foreground"
+                      onClick={closeMenu}
+                    >
+                      <Link href="/partnership">
+                        <Handshake className="mr-2 h-4 w-4" /> Партнерам
+                      </Link>
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-1 pt-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase px-2 mb-2">
+                    Ваш аккаунт
+                  </p>
+                  <Link
+                    href={profileLink.href}
+                    className="flex items-center px-3 py-2.5 text-base font-medium rounded-md hover:bg-accent transition-colors"
+                    onClick={closeMenu}
+                  >
+                    <Settings className="mr-2 h-4 w-4 text-muted-foreground" />{" "}
+                    {profileLink.label}
+                  </Link>
+
+                  {/* Both Customers and Performers can see "My Tickets" */}
+                  {userRole && (
+                    <Link
+                      href="/my-tickets"
+                      className="flex items-center px-3 py-2.5 text-base font-medium rounded-md hover:bg-accent transition-colors"
+                      onClick={closeMenu}
+                    >
+                      <Ticket className="mr-2 h-4 w-4 text-primary" /> Мои
+                      билеты
+                    </Link>
+                  )}
+
+                  {/* Only Customers see Favorites */}
+                  {userRole === "customer" && (
+                    <Link
+                      href="/favorites"
+                      className="flex items-center px-3 py-2.5 text-base font-medium rounded-md hover:bg-accent transition-colors"
+                      onClick={closeMenu}
+                    >
+                      <Heart className="mr-2 h-4 w-4 text-red-500" /> Избранное
+                    </Link>
+                  )}
+
+                  {/* Only Performers see Manage Events */}
+                  {userRole === "performer" && (
+                    <Link
+                      href="/manage-events"
+                      className="flex items-center px-3 py-2.5 text-base font-medium rounded-md hover:bg-accent transition-colors"
+                      onClick={closeMenu}
+                    >
+                      <Calendar className="mr-2 h-4 w-4 text-primary" /> Мои
+                      мероприятия
+                    </Link>
+                  )}
+
+                  <button
+                    className="flex w-full items-center text-left px-3 py-2.5 mt-2 text-base font-medium text-destructive hover:bg-destructive/10 rounded-md transition-colors"
+                    onClick={handleLogout}
+                  >
+                    <LogOut className="mr-2 h-4 w-4" /> Выйти
+                  </button>
+                </div>
+              )}
+            </nav>
+          </SheetContent>
+        </Sheet>
+      </div>
     );
   }
 
-  // --- DESKTOP VIEW ---
+  // --- ДЕСКТОПНОЕ МЕНЮ ---
   return (
-    <nav className="flex items-center gap-6">
-      {filteredLinks.map((link) => {
-        const desktopClasses =
-          "text-sm font-medium text-muted-foreground transition-colors hover:text-primary";
+    <nav className="flex items-center gap-2 lg:gap-4">
+      <div className="flex items-center gap-1">
+        {navLinks.map((link) => (
+          <Button
+            key={link.href}
+            variant="ghost"
+            asChild
+            className="text-sm font-medium h-9 px-3 text-foreground/80 "
+          >
+            <Link href={link.href}>{link.label}</Link>
+          </Button>
+        ))}
+      </div>
 
-        // Render standard <a> tag for external partner link
-        if (link.external) {
-          return (
-            <a key={link.href} href={link.href} className={desktopClasses}>
-              {link.label}
-            </a>
-          );
-        }
+      <div className="h-6 w-px bg-border mx-2" />
 
-        // Render Next.js <Link> for internal routes
-        return (
-          <Link key={link.href} href={link.href} className={desktopClasses}>
-            {link.label}
-          </Link>
-        );
-      })}
+      {!isLoggedIn ? (
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" asChild className="h-9 px-4 font-medium">
+            <Link href="/login">Войти</Link>
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="destructive"
+                className="h-9 px-4 font-medium shadow-md shadow-destructive/20 transition-all hover:shadow-lg hover:-translate-y-0.5"
+              >
+                Регистрация <ChevronDown className="ml-2 h-4 w-4 opacity-70" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Создать аккаунт
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild className="cursor-pointer py-3">
+                <Link href="/register-customer" className="flex items-center">
+                  <User className="mr-2 h-4 w-4" /> Я заказчик
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild className="cursor-pointer py-3">
+                <Link href="/register-performer" className="flex items-center">
+                  <Briefcase className="mr-2 h-4 w-4" /> Я исполнитель
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                asChild
+                className="cursor-pointer py-2 focus:bg-accent rounded-md"
+              >
+                <Link
+                  href={partnerAppUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center text-muted-foreground"
+                >
+                  <Handshake className="mr-2 h-4 w-4" /> Партнерская программа
+                </Link>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      ) : (
+        <div className="flex items-center gap-3">
+          <NotificationBell />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                className="h-10 gap-2 pl-2 pr-3 rounded-full hover:bg-muted/50 border-border/60 transition-colors"
+              >
+                <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                  <User className="h-4 w-4" />
+                </div>
+                <span className="max-w-[120px] truncate font-medium text-sm">
+                  {profileLink.label}
+                </span>
+                <ChevronDown className="h-4 w-4 opacity-50" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56 p-2">
+              <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Управление
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
 
-      {isLoggedIn && (
-        <div className="ml-2">
-          <ProfileDropdown />
+              <DropdownMenuItem
+                asChild
+                className="cursor-pointer py-2.5 rounded-md"
+              >
+                <Link href={profileLink.href}>
+                  <Settings className="mr-2 h-4 w-4 text-muted-foreground" />{" "}
+                  Личный кабинет
+                </Link>
+              </DropdownMenuItem>
+
+              {/* Both Customers and Performers can see "My Tickets" */}
+              {userRole && (
+                <DropdownMenuItem
+                  asChild
+                  className="cursor-pointer py-2.5 rounded-md"
+                >
+                  <Link href="/my-tickets">
+                    <Ticket className="mr-2 h-4 w-4 text-primary" /> Мои билеты
+                  </Link>
+                </DropdownMenuItem>
+              )}
+
+              {/* Only Customers see Favorites */}
+              {userRole === "customer" && (
+                <DropdownMenuItem
+                  asChild
+                  className="cursor-pointer py-2.5 rounded-md"
+                >
+                  <Link href="/favorites">
+                    <Heart className="mr-2 h-4 w-4 text-red-500" /> Избранное
+                  </Link>
+                </DropdownMenuItem>
+              )}
+
+              {/* Only Performers see Manage Events */}
+              {userRole === "performer" && (
+                <DropdownMenuItem
+                  asChild
+                  className="cursor-pointer py-2.5 rounded-md"
+                >
+                  <Link href="/manage-events">
+                    <Calendar className="mr-2 h-4 w-4 text-primary" /> Мои
+                    мероприятия
+                  </Link>
+                </DropdownMenuItem>
+              )}
+
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer py-2.5 rounded-md"
+                onClick={handleLogout}
+              >
+                <LogOut className="mr-2 h-4 w-4" /> Выйти
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       )}
     </nav>
