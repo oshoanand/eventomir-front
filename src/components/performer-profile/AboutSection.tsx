@@ -3,11 +3,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import {
-  PlusCircle,
-  Award,
-  BookCheck as BookCheckIcon,
-} from "@/components/icons";
+import { PlusCircle, Award, BookCheck as BookCheckIcon } from "lucide-react";
 import type {
   PerformerProfile,
   Certificate,

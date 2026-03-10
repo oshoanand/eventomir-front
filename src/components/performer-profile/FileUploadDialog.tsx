@@ -1,7 +1,6 @@
-
 "use client";
 
-import { useState } from 'react';
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -15,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "@/components/icons";
+import { Loader2 } from "lucide-react";
 
 interface FileUploadDialogProps {
   isOpen: boolean;
@@ -40,12 +39,25 @@ const FileUploadDialog: React.FC<FileUploadDialogProps> = ({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
-      if (selectedFile.size > 5 * 1024 * 1024) { // 5MB limit
-        toast({ variant: 'destructive', title: 'Файл слишком большой', description: 'Максимальный размер файла 5MB.' });
+      if (selectedFile.size > 5 * 1024 * 1024) {
+        // 5MB limit
+        toast({
+          variant: "destructive",
+          title: "Файл слишком большой",
+          description: "Максимальный размер файла 5MB.",
+        });
         return;
       }
-      if (!['application/pdf', 'image/jpeg', 'image/png'].includes(selectedFile.type)) {
-        toast({ variant: 'destructive', title: 'Неверный тип файла', description: 'Допустимы только PDF, JPG, PNG.' });
+      if (
+        !["application/pdf", "image/jpeg", "image/png"].includes(
+          selectedFile.type,
+        )
+      ) {
+        toast({
+          variant: "destructive",
+          title: "Неверный тип файла",
+          description: "Допустимы только PDF, JPG, PNG.",
+        });
         return;
       }
       setFile(selectedFile);
@@ -54,7 +66,7 @@ const FileUploadDialog: React.FC<FileUploadDialogProps> = ({
 
   const handleSubmit = async () => {
     if (!file) {
-      toast({ variant: 'destructive', title: 'Файл не выбран' });
+      toast({ variant: "destructive", title: "Файл не выбран" });
       return;
     }
     setIsUploading(true);
@@ -76,17 +88,41 @@ const FileUploadDialog: React.FC<FileUploadDialogProps> = ({
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="file-upload" className="text-right">Файл</Label>
-            <Input id="file-upload" type="file" className="col-span-3" onChange={handleFileChange} accept=".pdf,.jpg,.jpeg,.png" />
+            <Label htmlFor="file-upload" className="text-right">
+              Файл
+            </Label>
+            <Input
+              id="file-upload"
+              type="file"
+              className="col-span-3"
+              onChange={handleFileChange}
+              accept=".pdf,.jpg,.jpeg,.png"
+            />
           </div>
-          {file && <p className="text-sm text-center text-muted-foreground col-span-4">Выбран файл: {file.name}</p>}
+          {file && (
+            <p className="text-sm text-center text-muted-foreground col-span-4">
+              Выбран файл: {file.name}
+            </p>
+          )}
           <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="file-description" className="text-right">Описание</Label>
-            <Input id="file-description" value={fileDescription} onChange={(e) => setFileDescription(e.target.value)} className="col-span-3" placeholder="Краткое описание" />
+            <Label htmlFor="file-description" className="text-right">
+              Описание
+            </Label>
+            <Input
+              id="file-description"
+              value={fileDescription}
+              onChange={(e) => setFileDescription(e.target.value)}
+              className="col-span-3"
+              placeholder="Краткое описание"
+            />
           </div>
         </div>
         <DialogFooter>
-          <DialogClose asChild><Button variant="outline" disabled={isUploading}>Отмена</Button></DialogClose>
+          <DialogClose asChild>
+            <Button variant="outline" disabled={isUploading}>
+              Отмена
+            </Button>
+          </DialogClose>
           <Button onClick={handleSubmit} disabled={isUploading || !file}>
             {isUploading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Загрузить
@@ -98,4 +134,3 @@ const FileUploadDialog: React.FC<FileUploadDialogProps> = ({
 };
 
 export default FileUploadDialog;
-    

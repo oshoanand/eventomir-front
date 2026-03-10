@@ -5,13 +5,27 @@ import { apiRequest } from "@/utils/api-client";
 
 // --- TYPE DEFINITIONS ---
 
+export interface ArticleComment {
+  id: string;
+  content: string;
+  status: "pending" | "approved" | "rejected";
+  createdAt: string;
+  user: {
+    id: string;
+    name: string;
+    image?: string;
+  };
+  parentId?: string | null;
+  replies?: ArticleComment[];
+}
+
 export interface Article {
   id: string;
   title: string;
   content: string; // HTML content
   slug: string;
   media_url?: string;
-  media_type?: "image" | "video" | "link";
+  media_type?: "image" | "video" | "link" | string;
   image_alt_text?: string;
   meta_title?: string;
   meta_description?: string;
@@ -19,9 +33,20 @@ export interface Article {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+
+  // Relations & Aggregations added from backend
+  _count?: {
+    likes: number;
+    comments: number;
+  };
+  userHasLiked?: boolean;
+  comments?: ArticleComment[];
 }
 
-export type CreateArticleDTO = Omit<Article, "id" | "createdAt" | "updatedAt">;
+export type CreateArticleDTO = Omit<
+  Article,
+  "id" | "createdAt" | "updatedAt" | "_count" | "userHasLiked" | "comments"
+>;
 export type UpdateArticleDTO = Partial<CreateArticleDTO>;
 
 // --- API FUNCTIONS (Internal) ---
@@ -33,14 +58,23 @@ const fetchArticlesFn = async (): Promise<Article[]> => {
   });
 };
 
-const fetchArticleBySlugFn = async (slug: string): Promise<Article> => {
+const fetchArticleBySlugFn = async (
+  slug: string,
+  userId?: string,
+): Promise<Article> => {
+  const url = userId
+    ? `/api/articles/${slug}?userId=${userId}`
+    : `/api/articles/${slug}`;
   return await apiRequest<Article>({
     method: "get",
-    url: `/api/articles/${slug}`,
+    url: url,
   });
 };
 
-const createArticleFn = async (data: CreateArticleDTO): Promise<Article> => {
+// Accepts FormData for Multer file uploads or JSON DTO
+const createArticleFn = async (
+  data: FormData | CreateArticleDTO,
+): Promise<Article> => {
   return await apiRequest<Article>({
     method: "post",
     url: "/api/articles",
@@ -48,12 +82,13 @@ const createArticleFn = async (data: CreateArticleDTO): Promise<Article> => {
   });
 };
 
+// Accepts FormData for Multer file uploads or JSON DTO
 const updateArticleFn = async ({
   id,
   data,
 }: {
   id: string;
-  data: UpdateArticleDTO;
+  data: FormData | UpdateArticleDTO;
 }): Promise<Article> => {
   return await apiRequest<Article>({
     method: "patch",
@@ -69,55 +104,148 @@ const deleteArticleFn = async (id: string): Promise<void> => {
   });
 };
 
-// --- REACT QUERY HOOKS (Public) ---
+// --- USER ACTIONS (Likes & Comments) ---
+
+const toggleLikeFn = async (
+  articleId: string,
+): Promise<{ message: string; liked: boolean }> => {
+  return await apiRequest({
+    method: "post",
+    url: `/api/articles/${articleId}/like`,
+  });
+};
+
+const addCommentFn = async ({
+  articleId,
+  content,
+  parentId,
+}: {
+  articleId: string;
+  content: string;
+  parentId?: string;
+}) => {
+  return await apiRequest({
+    method: "post",
+    url: `/api/articles/${articleId}/comments`,
+    data: { content, parentId },
+  });
+};
+
+// --- ADMIN MODERATION ---
+
+const fetchAdminCommentsFn = async (status: string = "pending") => {
+  return await apiRequest<ArticleComment[]>({
+    method: "get",
+    url: `/api/articles/admin/comments?status=${status}`,
+  });
+};
+
+const moderateCommentFn = async ({
+  commentId,
+  status,
+}: {
+  commentId: string;
+  status: "approved" | "rejected";
+}) => {
+  return await apiRequest({
+    method: "patch",
+    url: `/api/articles/admin/comments/${commentId}`,
+    data: { status },
+  });
+};
+
+// ==========================================
+// REACT QUERY HOOKS
+// ==========================================
 
 // 1. Hook to fetch all active articles (Public List)
-export const useArticles = () => {
+export const useArticlesQuery = () => {
   return useQuery({
-    queryKey: ["articles"],
+    queryKey: ["articles", "public"],
     queryFn: fetchArticlesFn,
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 };
 
 // 2. Hook to fetch a single article by slug (Public Detail)
-export const useArticle = (slug: string) => {
+// Added userId parameter to check if the current user liked it
+export const useBlogQuery = (slug: string, userId?: string) => {
   return useQuery({
-    queryKey: ["articles", slug],
-    queryFn: () => fetchArticleBySlugFn(slug),
+    queryKey: ["article", slug, userId],
+    queryFn: () => fetchArticleBySlugFn(slug, userId),
     enabled: !!slug, // Only fetch if slug exists
-    staleTime: 1000 * 60 * 10, // 10 minutes
+    staleTime: 1000 * 60 * 5,
   });
 };
 
-// 3. Admin: Create Article
+// 3. User: Toggle Like
+export const useToggleLikeMutation = (slug: string) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: toggleLikeFn,
+    onSuccess: () => {
+      // Invalidate the specific article to refresh like count & heart status
+      queryClient.invalidateQueries({ queryKey: ["article", slug] });
+    },
+  });
+};
+
+// 4. User: Add Comment
+export const useAddCommentMutation = () => {
+  return useMutation({
+    mutationFn: addCommentFn,
+    // We don't necessarily invalidate the article here because the comment is "pending"
+    // and won't show up until the admin approves it anyway.
+  });
+};
+
+// 5. Admin: Fetch Pending Comments
+export const useAdminCommentsQuery = (status: string = "pending") => {
+  return useQuery({
+    queryKey: ["admin", "comments", status],
+    queryFn: () => fetchAdminCommentsFn(status),
+  });
+};
+
+// 6. Admin: Moderate Comment
+export const useModerateCommentMutation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: moderateCommentFn,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "comments"] });
+      // Clear the public article cache so the approved comment appears immediately
+      queryClient.invalidateQueries({ queryKey: ["article"] });
+    },
+  });
+};
+
+// 7. Admin: Create Article
 export const useCreateArticle = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: createArticleFn,
     onSuccess: () => {
-      // Invalidate list to show new article
       queryClient.invalidateQueries({ queryKey: ["articles"] });
     },
   });
 };
 
-// 4. Admin: Update Article
+// 8. Admin: Update Article
 export const useUpdateArticle = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: updateArticleFn,
     onSuccess: (updatedArticle) => {
       queryClient.invalidateQueries({ queryKey: ["articles"] });
-      // Also update the specific article cache if it exists
       queryClient.invalidateQueries({
-        queryKey: ["articles", updatedArticle.slug],
+        queryKey: ["article", updatedArticle.slug],
       });
     },
   });
 };
 
-// 5. Admin: Delete Article
+// 9. Admin: Delete Article
 export const useDeleteArticle = () => {
   const queryClient = useQueryClient();
   return useMutation({

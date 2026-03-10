@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { GitCompare } from "@/components/icons";
+import { GitCompare } from "lucide-react";
 import {
   addToCompare,
   removeFromCompare,

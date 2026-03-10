@@ -217,7 +217,7 @@ export function RegisterPerformerForm() {
     <Form {...form}>
       <form
         onSubmit={form.handleSubmit(onSubmit)}
-        className="space-y-5 text-left"
+        className="space-y-3 text-left"
       >
         {/* КЛАССИЧЕСКИЕ РАДИО-КНОПКИ В ДВА СТОЛБЦА */}
         <FormField
@@ -271,67 +271,65 @@ export function RegisterPerformerForm() {
           )}
         />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <FormField
-            control={form.control}
-            name="name"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  {["selfEmployed", "individualEntrepreneur"].includes(
-                    accountType,
-                  )
-                    ? "ФИО *"
-                    : "Название организации *"}
-                </FormLabel>
-                <FormControl>
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      className="pl-10 bg-muted/30 focus-visible:bg-background transition-colors"
-                      placeholder={
-                        ["selfEmployed", "individualEntrepreneur"].includes(
-                          accountType,
-                        )
-                          ? "Иван Иванов"
-                          : "Eventomir"
-                      }
-                      {...field}
-                    />
-                  </div>
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+        <FormField
+          control={form.control}
+          name="name"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>
+                {["selfEmployed", "individualEntrepreneur"].includes(
+                  accountType,
+                )
+                  ? "ФИО *"
+                  : "Название организации *"}
+              </FormLabel>
+              <FormControl>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    className="pl-10 bg-muted/30 focus-visible:bg-background transition-colors"
+                    placeholder={
+                      ["selfEmployed", "individualEntrepreneur"].includes(
+                        accountType,
+                      )
+                        ? "Иван Иванов"
+                        : "Eventomir"
+                    }
+                    {...field}
+                  />
+                </div>
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
-          <FormField
-            control={form.control}
-            name="phone"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Номер телефона *</FormLabel>
-                <FormControl>
-                  <div className="relative">
-                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      className="pl-10 bg-muted/30 focus-visible:bg-background transition-colors"
-                      placeholder="+7 999 000 00-00"
-                      value={field.value}
-                      onChange={(e) => handlePhoneChange(e, field.onChange)}
-                      onBlur={field.onBlur}
-                      name={field.name}
-                    />
-                  </div>
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
+        <FormField
+          control={form.control}
+          name="phone"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Номер телефона *</FormLabel>
+              <FormControl>
+                <div className="relative">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    className="pl-10 bg-muted/30 focus-visible:bg-background transition-colors"
+                    placeholder="+7 999 000 00-00"
+                    value={field.value}
+                    onChange={(e) => handlePhoneChange(e, field.onChange)}
+                    onBlur={field.onBlur}
+                    name={field.name}
+                  />
+                </div>
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
         {["legalEntity", "agency"].includes(accountType) && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-5 bg-muted/20 border border-border/50 rounded-xl animate-in fade-in zoom-in-95">
+          <div className="p-5 bg-muted/20 border border-border/50 rounded-xl animate-in fade-in zoom-in-95">
             <FormField
               control={form.control}
               name="companyName"
@@ -375,50 +373,48 @@ export function RegisterPerformerForm() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <FormField
-            control={form.control}
-            name="email"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Email *</FormLabel>
-                <FormControl>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      className="pl-10 bg-muted/30 focus-visible:bg-background transition-colors"
-                      type="email"
-                      placeholder="mail@example.com"
-                      {...field}
-                    />
-                  </div>
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="password"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Пароль *</FormLabel>
-                <FormControl>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      className="pl-10 bg-muted/30 focus-visible:bg-background transition-colors"
-                      type="password"
-                      placeholder="••••••••"
-                      {...field}
-                    />
-                  </div>
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
+        <FormField
+          control={form.control}
+          name="email"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Email *</FormLabel>
+              <FormControl>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    className="pl-10 bg-muted/30 focus-visible:bg-background transition-colors"
+                    type="email"
+                    placeholder="mail@example.com"
+                    {...field}
+                  />
+                </div>
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="password"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Пароль *</FormLabel>
+              <FormControl>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    className="pl-10 bg-muted/30 focus-visible:bg-background transition-colors"
+                    type="password"
+                    placeholder="••••••••"
+                    {...field}
+                  />
+                </div>
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
         <FormField
           control={form.control}

@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Edit, Trash2, PlusCircle } from "@/components/icons";
+import { Edit, Trash2, PlusCircle } from "lucide-react";
 import type { GalleryItem } from "@/services/performer";
 
 interface GalleryManagerProps {

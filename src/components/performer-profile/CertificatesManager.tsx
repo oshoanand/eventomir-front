@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Trash2, PlusCircle, Award } from "@/components/icons";
+import { Trash2, PlusCircle, Award } from "lucide-react";
 import type { Certificate } from "@/services/performer";
 
 interface CertificatesManagerProps {

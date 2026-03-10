@@ -2,11 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-  Trash2,
-  PlusCircle,
-  BookCheck as BookCheckIcon,
-} from "@/components/icons";
+import { Trash2, PlusCircle, BookCheck as BookCheckIcon } from "lucide-react";
 import type { RecommendationLetter } from "@/services/performer";
 
 interface RecommendationsManagerProps {
