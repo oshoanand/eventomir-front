@@ -1,7 +1,22 @@
 "use client";
 
+import { useState, useEffect, useCallback } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import Link from "next/link";
+import { format } from "date-fns";
+import { ru } from "date-fns/locale";
+
+// UI Components
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -9,29 +24,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Slider } from "@/components/ui/slider";
-import { Label } from "@/components/ui/label";
-import { useState, useEffect, useCallback, Suspense } from "react";
-import { Checkbox } from "@/components/ui/checkbox";
-import { getRussianRegionsWithCities } from "@/services/geo";
-import { useToast } from "@/hooks/use-toast";
-import { useRouter, useSearchParams } from "next/navigation";
-import {
-  CalendarIcon,
-  MapPin,
-  DollarSign,
-  Map as MapIcon,
-  List,
-} from "lucide-react";
-import { Calendar } from "@/components/ui/calendar";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { cn } from "@/utils/utils";
-import { format } from "date-fns";
-import { ru } from "date-fns/locale";
 import {
   Card,
   CardContent,
@@ -42,20 +34,41 @@ import {
 } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import Link from "next/link";
-import CompareButton from "@/components/CompareButton";
 import { Skeleton } from "@/components/ui/skeleton";
+import CompareButton from "@/components/CompareButton";
 
-// --- UPDATED IMPORTS ---
-import { useSearchPerformers } from "@/services/performer";
-import type { PerformerProfile } from "@/services/performer";
+// Icons
+import {
+  CalendarIcon,
+  MapPin,
+  Search,
+  List,
+  Map as MapIcon,
+  Crown,
+  Briefcase,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 
-// --- CONSTANTS ---
-const categories = [
+// Services & Hooks
+import { useToast } from "@/hooks/use-toast";
+import { useMounted } from "@/hooks/use-mounted";
+import { getRussianRegionsWithCities } from "@/services/geo";
+import {
+  getPerformersPaginated,
+  type PerformerProfile,
+} from "@/services/performer";
+import { getSiteSettings } from "@/services/settings"; // <-- Imported your settings service
+import { cn } from "@/utils/utils";
+
+// Fallback categories in case the backend API fails or settings are empty
+const FALLBACK_CATEGORIES = [
   "Фотограф",
+  "Студия",
   "DJ",
   "Ведущие",
   "Дизайнер",
+  "Декоратор",
   "Видеограф",
   "Флорист",
   "Повар",
@@ -67,445 +80,301 @@ const categories = [
   "Артисты",
   "Стендаперы",
 ];
-const transportTypes = [
-  "Легковой автомобиль",
-  "Микроавтобус",
-  "Автобус",
-  "Лимузин",
-  "Ретро автомобиль",
-];
-const transportCapacities = [
-  "До 4 человек",
-  "5-10 человек",
-  "11-20 человек",
-  "Более 20 человек",
-];
-const transportServices = [
-  "Декор",
-  "Фотосессия",
-  "Музыкальное сопровождение",
-  "Трансфер",
-];
-const transportBudgets = ["Эконом", "Средний", "Выше среднего", "Премиум"];
-const transportEventStyles = [
-  "Свадьба",
-  "Корпоратив",
-  "День рождения",
-  "Юбилей",
-  "Детский праздник",
-  "Другое",
-];
-const cookCuisines = [
-  "Русская",
-  "Европейская",
-  "Азиатская",
-  "Итальянская",
-  "Кавказская",
-  "Другая",
-];
-const cookBudgets = ["Эконом", "Средний", "Выше среднего", "Премиум"];
-const cookEventStyles = [
-  "Свадьба",
-  "Корпоратив",
-  "День рождения",
-  "Юбилей",
-  "Детский праздник",
-  "Другое",
-];
-const artistGenres = [
-  "Музыканты",
-  "Ведущие",
-  "Танцоры",
-  "Оригинальный жанр",
-  "Стендап комики",
-];
-const artistLevels = ["Начинающие", "Профессионалы", "Топовые"];
-const artistFormats = ["Классика", "Интерактив", "Шоу-программы"];
-const artistBudgets = ["Эконом", "Средний", "Премиум"];
-const artistEventTypes = [
-  "Свадьбы",
-  "Корпоративы",
-  "Детские праздники",
-  "Юбилеи/Дни рождения",
-  "Городские праздники",
-  "Другое",
-];
-const restaurantCuisines = [
-  "Русская",
-  "Европейская",
-  "Азиатская",
-  "Итальянская",
-  "Кавказская",
-  "Другая",
-];
-const restaurantCapacities = [
-  "До 50 человек",
-  "50-100 человек",
-  "100-200 человек",
-  "Более 200 человек",
-];
-const restaurantServicesList = [
-  "Кейтеринг",
-  "Декор",
-  "Живая музыка",
-  "Wi-Fi",
-  "Парковка",
-];
-const restaurantBudgets = ["Эконом", "Средний", "Выше среднего", "Премиум"];
-const restaurantEventStyles = [
-  "Свадьба",
-  "Корпоратив",
-  "День рождения",
-  "Юбилей",
-  "Детский праздник",
-  "Другое",
-];
 
-// Карта для поддержки старых английских ссылок
-const legacyCategoryMap: Record<string, string> = {
-  photographers: "Фотограф",
-  djs: "DJ",
-  designers: "Дизайнер",
-  tamada: "Ведущие",
-  videographers: "Видеограф",
-  florists: "Флорист",
-  cooks: "Повар",
-  transport: "Транспорт",
-  animators: "Аниматор",
-  makeupartists: "Визажист",
-  stylists: "Стилист",
-  restaurants: "Ресторан",
-  hosts: "Ведущие",
-  artists: "Артисты",
-};
+const PAGE_SIZE = 12;
 
-// Функция для безопасного извлечения категории из URL
-const parseCategoryFromUrl = (urlVal: string | null) => {
-  if (!urlVal) return null;
-  const decoded = decodeURIComponent(urlVal).trim();
-
-  if (legacyCategoryMap[decoded.toLowerCase()]) {
-    return legacyCategoryMap[decoded.toLowerCase()];
-  }
-
-  const matched = categories.find(
-    (c) => c.toLowerCase() === decoded.toLowerCase(),
-  );
-  return matched || null;
-};
-
-// --- Внутренний компонент с логикой поиска ---
-const SearchPageContent = () => {
+const SearchPage = () => {
+  const mounted = useMounted();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const pathname = usePathname();
   const { toast } = useToast();
 
-  // --- 1. UI States (Controlled Inputs) ---
+  // Dynamic Categories State
+  const [categories, setCategories] = useState<string[]>([]);
+  const [isLoadingCategories, setIsLoadingCategories] = useState(true);
+
+  // Filter States (Initialized from URL parameters if present)
   const [cityInput, setCityInput] = useState(searchParams.get("city") || "");
-  const [priceRange, setPriceRange] = useState<number[]>([
-    Number(searchParams.get("priceMin")) || 0,
-    Number(searchParams.get("priceMax")) || 50000,
-  ]);
-
-  // Используем наш парсер для начального состояния
+  const [minPrice, setMinPrice] = useState(searchParams.get("priceMin") || "");
+  const [maxPrice, setMaxPrice] = useState(searchParams.get("priceMax") || "");
   const [selectedService, setSelectedService] = useState<string | null>(
-    parseCategoryFromUrl(searchParams.get("category")),
+    searchParams.get("category"),
   );
-
-  const [selectedAccountType, setSelectedAccountType] = useState<string>(
+  const [selectedAccountType, setSelectedAccountType] = useState(
     searchParams.get("accountType") || "all",
   );
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(
-    searchParams.get("date") ? new Date(searchParams.get("date")!) : undefined,
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  const [onlyVip, setOnlyVip] = useState(
+    searchParams.get("onlyVip") === "true",
   );
 
-  // Надежная синхронизация URL и Select
-  useEffect(() => {
-    const safeCategory = parseCategoryFromUrl(searchParams.get("category"));
-    setSelectedService(safeCategory);
-  }, [searchParams]);
-
-  // Sub-filters (mapped to specific categories)
-  const [selectedTransportType, setSelectedTransportType] = useState<
-    string | null
-  >(null);
-  const [selectedTransportCapacity, setSelectedTransportCapacity] = useState<
-    string | null
-  >(null);
-  const [selectedTransportServices, setSelectedTransportServices] = useState<
-    string[]
-  >([]);
-  const [selectedTransportBudget, setSelectedTransportBudget] = useState<
-    string | null
-  >(null);
-  const [selectedTransportEventStyles, setSelectedTransportEventStyles] =
-    useState<string[]>([]);
-
-  const [selectedCookCuisine, setSelectedCookCuisine] = useState<string | null>(
-    null,
+  // Pagination & Results States
+  const [currentPage, setCurrentPage] = useState(
+    Number(searchParams.get("page")) || 1,
   );
-  const [selectedCookBudget, setSelectedCookBudget] = useState<string | null>(
-    null,
-  );
-  const [selectedCookEventStyles, setSelectedCookEventStyles] = useState<
-    string[]
-  >([]);
+  const [totalResults, setTotalResults] = useState(0);
+  const [searchResults, setSearchResults] = useState<PerformerProfile[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [viewMode, setViewMode] = useState<"list" | "map">("list");
 
-  const [selectedArtistGenre, setSelectedArtistGenre] = useState<string | null>(
-    null,
-  );
-  const [selectedArtistLevel, setSelectedArtistLevel] = useState<string | null>(
-    null,
-  );
-  const [selectedArtistFormat, setSelectedArtistFormat] = useState<
-    string | null
-  >(null);
-  const [selectedArtistBudget, setSelectedArtistBudget] = useState<
-    string | null
-  >(null);
-  const [selectedArtistEventTypes, setSelectedArtistEventTypes] = useState<
-    string[]
-  >([]);
-
-  const [selectedRestaurantCuisine, setSelectedRestaurantCuisine] = useState<
-    string | null
-  >(null);
-  const [selectedRestaurantCapacity, setSelectedRestaurantCapacity] = useState<
-    string | null
-  >(null);
-  const [selectedRestaurantServices, setSelectedRestaurantServices] = useState<
-    string[]
-  >([]);
-  const [selectedRestaurantBudget, setSelectedRestaurantBudget] = useState<
-    string | null
-  >(null);
-  const [selectedRestaurantEventStyles, setSelectedRestaurantEventStyles] =
-    useState<string[]>([]);
-
-  // Autocomplete & UI Layout
+  // Autocomplete States
   const [regions, setRegions] = useState<
     { name: string; cities: { name: string }[] }[]
   >([]);
   const [autocompleteResults, setAutocompleteResults] = useState<string[]>([]);
-  const [viewMode, setViewMode] = useState<"list" | "map">("list");
 
-  // --- 2. Active Query State (Triggers the Hook) ---
-  const [activeQuery, setActiveQuery] = useState<Record<string, any>>(() => {
-    const params: any = {};
-    searchParams.forEach((value, key) => {
-      params[key] = value;
-    });
-    // Обеспечиваем корректное значение категории для API
-    if (params.category) {
-      params.category =
-        parseCategoryFromUrl(params.category) || params.category;
-    }
-    if (Object.keys(params).length === 0) {
-      return { limit: 20 };
-    }
-    return params;
-  });
+  // Update URL function (Syncs state to URL for sharing)
+  const updateURLParams = useCallback(
+    (page: number) => {
+      const params = new URLSearchParams();
+      if (cityInput) params.set("city", cityInput);
+      if (selectedService && selectedService !== "_all_")
+        params.set("category", selectedService);
+      if (minPrice) params.set("priceMin", minPrice);
+      if (maxPrice) params.set("priceMax", maxPrice);
+      if (selectedAccountType !== "all")
+        params.set("accountType", selectedAccountType);
+      if (onlyVip) params.set("onlyVip", "true");
+      if (page > 1) params.set("page", page.toString());
 
-  // Обновляем activeQuery, если URL изменился извне
-  useEffect(() => {
-    const params: any = {};
-    searchParams.forEach((value, key) => {
-      params[key] = value;
-    });
-    if (params.category) {
-      params.category =
-        parseCategoryFromUrl(params.category) || params.category;
-    }
-    if (Object.keys(params).length > 0) {
-      setActiveQuery(params);
-    }
-  }, [searchParams]);
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    },
+    [
+      cityInput,
+      selectedService,
+      minPrice,
+      maxPrice,
+      selectedAccountType,
+      onlyVip,
+      pathname,
+      router,
+    ],
+  );
 
-  // --- 3. TanStack Query Hook ---
-  const {
-    data: searchResults = [],
-    isLoading: isSearching,
-    isError,
-  } = useSearchPerformers(activeQuery);
+  // Fetch Results Function
+  const fetchResults = useCallback(
+    async (page: number) => {
+      setIsSearching(true);
+      try {
+        const result = await getPerformersPaginated({
+          page,
+          pageSize: PAGE_SIZE,
+          category: selectedService === "_all_" ? undefined : selectedService,
+          city: cityInput || undefined,
+          priceMin: minPrice ? Number(minPrice) : undefined,
+          priceMax: maxPrice ? Number(maxPrice) : undefined,
+          onlyVip: onlyVip ? "true" : undefined,
+          accountType:
+            selectedAccountType === "all" ? undefined : selectedAccountType,
+        });
 
-  // --- 4. Effects ---
-  useEffect(() => {
-    getRussianRegionsWithCities().then(setRegions).catch(console.error);
-  }, []);
-
-  // --- 5. Handlers ---
-  const handleCityInputChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const input = e.target.value;
-      setCityInput(input);
-      if (input.length >= 2) {
-        const results = regions.flatMap((region) =>
-          region.cities
-            .map((city) => city.name)
-            .filter((cityName) =>
-              cityName.toLowerCase().startsWith(input.toLowerCase()),
-            ),
-        );
-        setAutocompleteResults([...new Set(results)].slice(0, 10));
-      } else {
-        setAutocompleteResults([]);
+        setSearchResults(result.items);
+        setTotalResults(result.total);
+        updateURLParams(page);
+      } catch (error) {
+        toast({
+          variant: "destructive",
+          title: "Ошибка",
+          description: "Не удалось загрузить результаты.",
+        });
+      } finally {
+        setIsSearching(false);
       }
     },
-    [regions],
+    [
+      selectedService,
+      cityInput,
+      minPrice,
+      maxPrice,
+      onlyVip,
+      selectedAccountType,
+      updateURLParams,
+      toast,
+    ],
   );
 
-  const handleSearch = () => {
-    const filters: any = {
-      city: cityInput,
-      category: selectedService === "_all_" ? null : selectedService,
-      accountType: selectedAccountType === "all" ? null : selectedAccountType,
-      date: selectedDate ? format(selectedDate, "yyyy-MM-dd") : null,
-      priceMin: priceRange[0],
-      priceMax: priceRange[1],
+  // --- FETCH DYNAMIC CATEGORIES AND REGIONS ON MOUNT ---
+  useEffect(() => {
+    // 1. Fetch Geolocation Data
+    getRussianRegionsWithCities().then(setRegions).catch(console.error);
+
+    // 2. Fetch Categories using your dedicated settings service
+    const loadCategories = async () => {
+      try {
+        const settings = await getSiteSettings();
+
+        if (
+          settings &&
+          settings.siteCategories &&
+          settings.siteCategories.length > 0
+        ) {
+          // Extract just the category names to populate the dropdown
+          const fetchedCategories = settings.siteCategories.map(
+            (cat) => cat.name,
+          );
+          setCategories(fetchedCategories);
+        } else {
+          throw new Error("Categories array was empty");
+        }
+      } catch (error) {
+        console.warn(
+          "Failed to load categories from backend. Using fallback list.",
+          error,
+        );
+        setCategories(FALLBACK_CATEGORIES);
+      } finally {
+        setIsLoadingCategories(false);
+      }
     };
 
-    if (selectedService === "Транспорт") {
-      if (selectedTransportType) filters.subType = selectedTransportType;
-      if (selectedTransportCapacity)
-        filters.capacity = selectedTransportCapacity;
-      if (selectedTransportServices.length)
-        filters.services = selectedTransportServices;
-      if (selectedTransportBudget) filters.budget = selectedTransportBudget;
-      if (selectedTransportEventStyles.length)
-        filters.eventStyles = selectedTransportEventStyles;
-    } else if (selectedService === "Повар") {
-      if (selectedCookCuisine) filters.cuisine = selectedCookCuisine;
-      if (selectedCookBudget) filters.budget = selectedCookBudget;
-      if (selectedCookEventStyles.length)
-        filters.eventStyles = selectedCookEventStyles;
-    } else if (selectedService === "Артисты") {
-      if (selectedArtistGenre) filters.subType = selectedArtistGenre;
-      if (selectedArtistLevel) filters.artistLevel = selectedArtistLevel;
-      if (selectedArtistFormat) filters.artistFormat = selectedArtistFormat;
-      if (selectedArtistBudget) filters.budget = selectedArtistBudget;
-      if (selectedArtistEventTypes.length)
-        filters.eventStyles = selectedArtistEventTypes;
-    } else if (selectedService === "Ресторан") {
-      if (selectedRestaurantCuisine)
-        filters.cuisine = selectedRestaurantCuisine;
-      if (selectedRestaurantCapacity)
-        filters.capacity = selectedRestaurantCapacity;
-      if (selectedRestaurantServices.length)
-        filters.services = selectedRestaurantServices;
-      if (selectedRestaurantBudget) filters.budget = selectedRestaurantBudget;
-      if (selectedRestaurantEventStyles.length)
-        filters.eventStyles = selectedRestaurantEventStyles;
+    loadCategories();
+  }, []);
+
+  // Initial search fetch based on URL params on Mount
+  useEffect(() => {
+    if (mounted) fetchResults(currentPage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted]);
+
+  // Handlers
+  const handleSearchClick = () => {
+    setCurrentPage(1);
+    fetchResults(1);
+  };
+
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+    fetchResults(newPage);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleCityInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target.value;
+    setCityInput(input);
+    if (input.length >= 2) {
+      const results = regions.flatMap((region) =>
+        region.cities
+          .map((city) => city.name)
+          .filter((cityName) =>
+            cityName.toLowerCase().startsWith(input.toLowerCase()),
+          ),
+      );
+      setAutocompleteResults([...new Set(results)].slice(0, 10)); // Show max 10
+    } else {
+      setAutocompleteResults([]);
     }
-
-    const queryParams = new URLSearchParams();
-    Object.entries(filters).forEach(([k, v]) => {
-      if (v !== null && v !== undefined && v !== "") {
-        if (Array.isArray(v)) {
-          if (v.length > 0) queryParams.append(k, v.join(","));
-        } else {
-          queryParams.append(k, String(v));
-        }
-      }
-    });
-    router.push(`/search?${queryParams.toString()}`, { scroll: false });
-
-    setActiveQuery(filters);
-    setViewMode("list");
   };
 
-  const toggleArrayState = (setter: any, current: string[], item: string) => {
-    setter(
-      current.includes(item)
-        ? current.filter((i) => i !== item)
-        : [...current, item],
+  // Prevent hydration errors
+  if (!mounted) {
+    return (
+      <div className="container mx-auto py-10">
+        <Skeleton className="h-[500px] w-full rounded-xl" />
+      </div>
     );
-  };
+  }
 
-  const ResultCardSkeleton = () => (
-    <Card className="flex flex-col">
-      <CardHeader>
-        <div className="flex justify-between">
-          <div className="flex gap-3">
-            <Skeleton className="h-12 w-12 rounded-full" />
-            <div className="space-y-1">
-              <Skeleton className="h-5 w-32" />
-              <Skeleton className="h-4 w-20" />
-            </div>
-          </div>
-          <Skeleton className="h-8 w-8" />
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        <Skeleton className="h-4 w-full" />
-        <Skeleton className="h-4 w-3/4" />
-        <div className="flex gap-1">
-          <Skeleton className="h-5 w-16" />
-          <Skeleton className="h-5 w-20" />
-        </div>
-      </CardContent>
-      <CardFooter className="justify-between">
-        <Skeleton className="h-5 w-24" />
-        <Skeleton className="h-8 w-24" />
-      </CardFooter>
-    </Card>
-  );
+  const totalPages = Math.ceil(totalResults / PAGE_SIZE);
 
   return (
     <div className="container mx-auto py-10">
       <div className="grid gap-6">
-        {/* --- MAIN FILTERS CARD --- */}
-        <Card>
-          <CardContent className="pt-6">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
-              {/* Service */}
-              <Select
-                value={selectedService || "_all_"}
-                onValueChange={(val) =>
-                  setSelectedService(val === "_all_" ? null : val)
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Выберите услугу..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_all_">Все услуги</SelectItem>
-                  {categories.map((cat) => (
-                    <SelectItem key={cat} value={cat}>
-                      {cat}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+        {/* --- FILTERS SECTION --- */}
+        <Card className="border-primary/10 shadow-sm">
+          <CardContent className="pt-6 space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+              {/* Dynamic Category Select */}
+              <div className="space-y-2">
+                <Label>Категория услуги</Label>
+                <Select
+                  value={selectedService || "_all_"}
+                  onValueChange={(v) =>
+                    setSelectedService(v === "_all_" ? null : v)
+                  }
+                  disabled={isLoadingCategories}
+                >
+                  <SelectTrigger>
+                    <SelectValue
+                      placeholder={
+                        isLoadingCategories ? "Загрузка..." : "Все услуги"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_all_">Все услуги</SelectItem>
+                    {categories.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-              {/* Account Type */}
-              <Select
-                value={selectedAccountType}
-                onValueChange={setSelectedAccountType}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Тип аккаунта" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Все типы</SelectItem>
-                  <SelectItem value="individual">Частный</SelectItem>
-                  <SelectItem value="agency">Агентство</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="space-y-2">
+                <Label>Дата мероприятия</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant={"outline"}
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !selectedDate && "text-muted-foreground",
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {selectedDate ? (
+                        format(selectedDate, "PPP", { locale: ru })
+                      ) : (
+                        <span>Выбрать дату</span>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={selectedDate}
+                      onSelect={setSelectedDate}
+                      initialFocus
+                      locale={ru}
+                      disabled={(date) => date < new Date()}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
 
-              {/* City Autocomplete */}
-              <div className="relative w-full">
+              <div className="space-y-2">
+                <Label>Тип исполнителя</Label>
+                <Select
+                  value={selectedAccountType}
+                  onValueChange={setSelectedAccountType}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Тип аккаунта" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Все типы</SelectItem>
+                    <SelectItem value="individual">Частный профиль</SelectItem>
+                    <SelectItem value="agency">Агентство</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2 relative">
+                <Label>Город</Label>
                 <Input
-                  placeholder="Город..."
+                  type="text"
+                  placeholder="Введите город..."
                   value={cityInput}
                   onChange={handleCityInputChange}
-                  className="w-full"
                 />
                 {autocompleteResults.length > 0 && (
-                  <div className="absolute z-50 mt-1 w-full bg-popover text-popover-foreground border rounded-md shadow-md max-h-60 overflow-y-auto">
+                  <div className="absolute z-50 mt-1 w-full rounded-md border bg-background shadow-lg max-h-60 overflow-y-auto">
                     {autocompleteResults.map((res, i) => (
                       <div
                         key={i}
-                        className="px-4 py-2 hover:bg-accent hover:text-accent-foreground cursor-pointer text-sm"
+                        className="cursor-pointer px-4 py-2 text-sm hover:bg-accent"
                         onClick={() => {
                           setCityInput(res);
                           setAutocompleteResults([]);
@@ -517,387 +386,221 @@ const SearchPageContent = () => {
                   </div>
                 )}
               </div>
-
-              {/* Search Action */}
-              <Button
-                variant="destructive"
-                onClick={handleSearch}
-                disabled={isSearching}
-              >
-                {isSearching ? "Поиск..." : "Найти"}
-              </Button>
             </div>
 
-            {/* Secondary Row: Date & View Toggle */}
-            <div className="mt-4 flex flex-wrap items-center gap-4">
-              <Label>Дата:</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-[240px] text-left font-normal",
-                      !selectedDate && "text-muted-foreground",
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {selectedDate
-                      ? format(selectedDate, "PPP", { locale: ru })
-                      : "Любая дата"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar
-                    mode="single"
-                    selected={selectedDate}
-                    onSelect={setSelectedDate}
-                    locale={ru}
-                    initialFocus
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+              <div className="space-y-2">
+                <Label>Бюджет (₽)</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    placeholder="от"
+                    value={minPrice}
+                    onChange={(e) => setMinPrice(e.target.value)}
                   />
-                </PopoverContent>
-              </Popover>
+                  <span className="text-muted-foreground">-</span>
+                  <Input
+                    type="number"
+                    placeholder="до"
+                    value={maxPrice}
+                    onChange={(e) => setMaxPrice(e.target.value)}
+                  />
+                </div>
+              </div>
 
-              <div className="ml-auto flex gap-2">
-                <Button
-                  variant={viewMode === "list" ? "destructive" : "outline"}
-                  size="icon"
-                  onClick={() => setViewMode("list")}
+              <div className="flex items-center space-x-2 border rounded-md px-3 py-2 bg-yellow-500/5 border-yellow-500/20 h-10">
+                <Checkbox
+                  id="vip-only"
+                  checked={onlyVip}
+                  onCheckedChange={(v) => setOnlyVip(!!v)}
+                />
+                <Label
+                  htmlFor="vip-only"
+                  className="text-xs font-bold text-yellow-700 flex items-center gap-1 cursor-pointer"
                 >
-                  <List className="h-4 w-4" />
-                </Button>
+                  <Crown className="h-3 w-3" /> Только VIP / Звезды
+                </Label>
+              </div>
+
+              <div className="lg:col-span-2 flex gap-2">
                 <Button
-                  variant={viewMode === "map" ? "destructive" : "outline"}
-                  size="icon"
-                  onClick={() => setViewMode("map")}
+                  variant="destructive"
+                  className="flex-grow font-bold shadow-lg shadow-destructive/20"
+                  onClick={handleSearchClick}
+                  disabled={isSearching}
                 >
-                  <MapIcon className="h-4 w-4" />
+                  {isSearching ? (
+                    <Search className="mr-2 h-4 w-4 animate-bounce" />
+                  ) : (
+                    <Search className="mr-2 h-4 w-4" />
+                  )}
+                  Найти исполнителей
                 </Button>
+                <div className="flex gap-1">
+                  <Button
+                    variant={viewMode === "list" ? "secondary" : "outline"}
+                    size="icon"
+                    onClick={() => setViewMode("list")}
+                    title="Список"
+                  >
+                    <List className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant={viewMode === "map" ? "secondary" : "outline"}
+                    size="icon"
+                    onClick={() => setViewMode("map")}
+                    title="Карта"
+                  >
+                    <MapIcon className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* --- DYNAMIC FILTERS CARD --- */}
-        {viewMode === "list" && selectedService && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Фильтры: {selectedService}</CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Transport */}
-              {selectedService === "Транспорт" && (
-                <>
-                  <div>
-                    <Label>Тип</Label>
-                    <Select
-                      value={selectedTransportType || ""}
-                      onValueChange={setSelectedTransportType}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Любой" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {transportTypes.map((t) => (
-                          <SelectItem key={t} value={t}>
-                            {t}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>Вместимость</Label>
-                    <Select
-                      value={selectedTransportCapacity || ""}
-                      onValueChange={setSelectedTransportCapacity}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Любая" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {transportCapacities.map((c) => (
-                          <SelectItem key={c} value={c}>
-                            {c}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="md:col-span-2">
-                    <Label>Услуги</Label>
-                    <div className="flex flex-wrap gap-4 border p-2 rounded mt-1">
-                      {transportServices.map((s) => (
-                        <div key={s} className="flex items-center gap-2">
-                          <Checkbox
-                            checked={selectedTransportServices.includes(s)}
-                            onCheckedChange={() =>
-                              toggleArrayState(
-                                setSelectedTransportServices,
-                                selectedTransportServices,
-                                s,
-                              )
-                            }
-                          />
-                          <Label className="font-normal">{s}</Label>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* Cook */}
-              {selectedService === "Повар" && (
-                <>
-                  <div>
-                    <Label>Кухня</Label>
-                    <Select
-                      value={selectedCookCuisine || ""}
-                      onValueChange={setSelectedCookCuisine}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Любая" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {cookCuisines.map((c) => (
-                          <SelectItem key={c} value={c}>
-                            {c}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>Бюджет</Label>
-                    <Select
-                      value={selectedCookBudget || ""}
-                      onValueChange={setSelectedCookBudget}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Любой" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {cookBudgets.map((b) => (
-                          <SelectItem key={b} value={b}>
-                            {b}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </>
-              )}
-
-              {/* Artist */}
-              {selectedService === "Артисты" && (
-                <>
-                  <div>
-                    <Label>Жанр</Label>
-                    <Select
-                      value={selectedArtistGenre || ""}
-                      onValueChange={setSelectedArtistGenre}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Любой" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {artistGenres.map((g) => (
-                          <SelectItem key={g} value={g}>
-                            {g}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>Уровень</Label>
-                    <Select
-                      value={selectedArtistLevel || ""}
-                      onValueChange={setSelectedArtistLevel}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Любой" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {artistLevels.map((l) => (
-                          <SelectItem key={l} value={l}>
-                            {l}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </>
-              )}
-
-              {/* Restaurant */}
-              {selectedService === "Ресторан" && (
-                <>
-                  <div>
-                    <Label>Кухня</Label>
-                    <Select
-                      value={selectedRestaurantCuisine || ""}
-                      onValueChange={setSelectedRestaurantCuisine}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Любая" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {restaurantCuisines.map((c) => (
-                          <SelectItem key={c} value={c}>
-                            {c}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>Вместимость</Label>
-                    <Select
-                      value={selectedRestaurantCapacity || ""}
-                      onValueChange={setSelectedRestaurantCapacity}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Любая" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {restaurantCapacities.map((c) => (
-                          <SelectItem key={c} value={c}>
-                            {c}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </>
-              )}
-
-              {/* Price Slider (General for most) */}
-              {!["Ресторан", "Транспорт", "Повар", "Артисты"].includes(
-                selectedService,
-              ) && (
-                <div className="md:col-span-2">
-                  <div className="flex justify-between mb-2">
-                    <Label>Цена (₽)</Label>
-                    <span className="text-sm text-muted-foreground">
-                      {priceRange[0].toLocaleString()} -{" "}
-                      {priceRange[1].toLocaleString()}
-                    </span>
-                  </div>
-                  <Slider
-                    value={priceRange}
-                    max={100000}
-                    step={500}
-                    onValueChange={setPriceRange}
-                  />
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
         {/* --- RESULTS SECTION --- */}
-        <div className="mt-6">
-          {viewMode === "map" ? (
-            <Card>
-              <CardContent className="p-10 text-center text-muted-foreground">
-                Карта временно отключена из-за технических работ.
-              </CardContent>
-            </Card>
-          ) : (
-            <>
-              <h2 className="text-2xl font-semibold mb-4">
-                Найдено: {searchResults.length}
-              </h2>
+        <div className="mt-6 space-y-8">
+          <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-bold tracking-tight">
+              Найдено: {totalResults}
+            </h2>
+            <div className="text-sm text-muted-foreground">
+              Показано {searchResults.length} на странице
+            </div>
+          </div>
 
-              {/* Grid */}
+          {isSearching ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <Skeleton key={i} className="h-[340px] w-full rounded-xl" />
+              ))}
+            </div>
+          ) : searchResults.length > 0 ? (
+            <>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {isSearching
-                  ? Array(3)
-                      .fill(0)
-                      .map((_, i) => <ResultCardSkeleton key={i} />)
-                  : searchResults.map((performer) => (
-                      <Card
-                        key={performer.id}
-                        className="flex flex-col hover:shadow-lg transition-shadow"
-                      >
-                        <CardHeader>
-                          <div className="flex justify-between items-start">
-                            <div className="flex gap-4">
-                              <Avatar className="h-12 w-12 border">
-                                <AvatarImage src={performer.profilePicture} />
-                                <AvatarFallback>
-                                  {performer.name[0]}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div>
-                                <Link
-                                  href={`/performer-profile?id=${performer.id}`}
-                                  className="font-bold text-lg hover:underline block"
-                                >
-                                  {performer.name}
-                                </Link>
-                                <div className="flex items-center text-xs text-muted-foreground gap-1">
-                                  <MapPin className="h-3 w-3" />{" "}
-                                  {performer.city}
-                                </div>
+                {searchResults.map((performer) => (
+                  <Card
+                    key={performer.id}
+                    className={cn(
+                      "flex flex-col relative transition-all hover:shadow-xl group border-none shadow-sm bg-card overflow-hidden",
+                      performer.isVip && "ring-1 ring-yellow-500/30",
+                    )}
+                  >
+                    {performer.isVip && (
+                      <div className="absolute top-0 right-0 p-1.5 bg-yellow-500 text-white rounded-bl-lg shadow-sm z-10 flex items-center gap-1 text-[10px] font-bold">
+                        <Crown className="h-3 w-3" /> STAR
+                      </div>
+                    )}
+                    <CardHeader className="pb-4">
+                      <div className="flex items-start justify-between">
+                        <Link
+                          href={`/performer-profile?id=${performer.id}`}
+                          className="flex items-center gap-3 group/link"
+                        >
+                          <Avatar className="h-14 w-14 border-2 border-background shadow-sm">
+                            <AvatarImage
+                              src={performer.profilePicture || ""}
+                              alt={performer.name}
+                            />
+                            <AvatarFallback>
+                              {performer.name.substring(0, 1).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <CardTitle className="text-lg group-hover/link:text-primary transition-colors line-clamp-1">
+                              {performer.name}
+                            </CardTitle>
+                            <CardDescription className="flex items-center text-xs gap-1 mt-0.5">
+                              <MapPin className="h-3 w-3 text-primary" />
+                              {performer.city}
+                            </CardDescription>
+                            {performer.parentAgencyName && (
+                              <div className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground font-bold uppercase tracking-tight">
+                                <Briefcase className="h-2.5 w-2.5" /> от{" "}
+                                {performer.parentAgencyName}
                               </div>
-                            </div>
-                            <CompareButton performerId={performer.id} />
+                            )}
                           </div>
-                        </CardHeader>
-                        <CardContent className="flex-grow">
-                          <div className="flex flex-wrap gap-1 mb-2">
-                            {performer.roles.slice(0, 3).map((r) => (
-                              <Badge
-                                key={r}
-                                variant="secondary"
-                                className="text-xs"
-                              >
-                                {r}
-                              </Badge>
-                            ))}
-                          </div>
-                          <p className="text-sm text-muted-foreground line-clamp-2">
-                            {performer.description || "Нет описания"}
-                          </p>
-                        </CardContent>
-                        <CardFooter className="flex justify-between items-center border-t pt-4">
-                          <span className="font-semibold text-sm">
-                            {performer.priceRange?.length === 2
-                              ? `от ${performer.priceRange[0].toLocaleString()} ₽`
-                              : "Цена не указана"}
-                          </span>
-                          <Button asChild size="sm" variant="default">
-                            <Link
-                              href={`/performer-profile?id=${performer.id}`}
-                            >
-                              Подробнее
-                            </Link>
-                          </Button>
-                        </CardFooter>
-                      </Card>
-                    ))}
+                        </Link>
+                        <CompareButton performerId={performer.id} />
+                      </div>
+                    </CardHeader>
+                    <CardContent className="flex-grow">
+                      <p className="text-sm text-muted-foreground line-clamp-3 italic leading-relaxed">
+                        {performer.description || "Нет описания"}
+                      </p>
+                      <div className="flex flex-wrap gap-1.5 mt-3">
+                        {performer.roles.slice(0, 3).map((r) => (
+                          <Badge
+                            key={r}
+                            variant="secondary"
+                            className="text-[10px] bg-primary/5 text-primary border-none"
+                          >
+                            {r}
+                          </Badge>
+                        ))}
+                      </div>
+                    </CardContent>
+                    <CardFooter className="flex justify-between items-center pt-4 border-t bg-muted/5">
+                      <div className="flex flex-col">
+                        <span className="text-[10px] text-muted-foreground uppercase font-bold">
+                          Цена
+                        </span>
+                        <span className="text-sm font-black text-primary">
+                          {performer.priceRange && performer.priceRange[0] > 0
+                            ? `${performer.priceRange[0].toLocaleString()} ₽`
+                            : "По запросу"}
+                        </span>
+                      </div>
+                      <Button
+                        asChild
+                        variant={performer.isVip ? "destructive" : "outline"}
+                        size="sm"
+                        className="font-bold"
+                      >
+                        <Link href={`/performer-profile?id=${performer.id}`}>
+                          Подробнее
+                        </Link>
+                      </Button>
+                    </CardFooter>
+                  </Card>
+                ))}
               </div>
 
-              {!isSearching && searchResults.length === 0 && (
-                <div className="text-center py-20 text-muted-foreground bg-muted/20 rounded-xl">
-                  <p>По вашему запросу ничего не найдено.</p>
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex justify-center items-center gap-4 mt-10">
                   <Button
-                    variant="link"
-                    onClick={() => {
-                      setCityInput("");
-                      setSelectedService(null);
-                      setSelectedAccountType("all");
-                      setActiveQuery({ limit: 20 }); // Reset
-                      router.push("/search"); // Убираем фильтры из URL
-                    }}
+                    variant="outline"
+                    size="icon"
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
                   >
-                    Сбросить фильтры
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <div className="text-sm font-medium">
+                    Страница {currentPage} из {totalPages}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                  >
+                    <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
               )}
             </>
+          ) : (
+            <div className="text-center py-20 bg-muted/10 rounded-2xl border-2 border-dashed">
+              <Search className="h-12 w-12 mx-auto text-muted-foreground opacity-20 mb-4" />
+              <h3 className="text-xl font-bold">Ничего не найдено</h3>
+              <p className="text-muted-foreground">
+                Попробуйте изменить параметры поиска.
+              </p>
+            </div>
           )}
         </div>
       </div>
@@ -905,17 +608,4 @@ const SearchPageContent = () => {
   );
 };
 
-// Экспортируем компонент, обернутый в Suspense (требование Next.js для useSearchParams)
-export default function SearchPage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="container mx-auto py-20 text-center text-muted-foreground">
-          Загрузка параметров поиска...
-        </div>
-      }
-    >
-      <SearchPageContent />
-    </Suspense>
-  );
-}
+export default SearchPage;

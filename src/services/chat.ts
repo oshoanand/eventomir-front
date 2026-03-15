@@ -1,142 +1,93 @@
+import { apiRequest } from "@/utils/api-client";
+
 export interface ChatMessage {
-    id: string;
-    chatId: string;
-    senderId: string; // 'system' for system messages
-    senderName: string; // Added
-    content: string;
-    timestamp: Date;
+  id: string;
+  chatId: string;
+  senderId: string;
+  senderName: string;
+  content: string;
+  createdAt: string; // Real DB field
 }
 
 export interface Chat {
-    id: string;
-    userIds: string[];
-    createdAt: Date;
-    // Can add lastMessageTimestamp field for sorting chats
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  participants?: any[];
 }
 
-// TODO: Replace with actual interaction with Firebase Firestore or another DB
-let chats: Chat[] = [];
-let messages: ChatMessage[] = [];
-const userNames: Record<string, string> = {
-    'cust456': 'Тестовый Заказчик', // Test Customer
-    'perf123': 'Тест Исполнитель', // Test Performer
-    'support-1': 'Мария Поддержкина', // Maria Supportkina
-    'system': 'Система', // System
+/**
+ * 1. Initialize or Get existing Chat
+ */
+export const createOrGetChat = async (
+  participantId: string,
+): Promise<string> => {
+  const chat = await apiRequest<Chat>({
+    method: "post",
+    url: "/api/chats",
+    data: { participantId },
+  });
+  return chat.id;
 };
 
-export const createOrGetChat = async (userId1: string, userId2: string): Promise<string> => {
-    console.log(`Создание/получение чата между ${userId1} и ${userId2} (заглушка)...`); // Creating/getting chat between ${userId1} and ${userId2} (stub)...
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const sortedUserIds = [userId1, userId2].sort();
-            let existingChat = chats.find(chat =>
-                chat.userIds.length === 2 &&
-                chat.userIds.includes(sortedUserIds[0]) &&
-                chat.userIds.includes(sortedUserIds[1])
-            );
-
-            if (existingChat) {
-                resolve(existingChat.id);
-            } else {
-                const newChatId = `chat-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-                const newChat: Chat = {
-                    id: newChatId,
-                    userIds: sortedUserIds,
-                    createdAt: new Date(),
-                };
-                chats.push(newChat);
-                resolve(newChatId);
-            }
-        }, 300);
-    });
-};
-
+/**
+ * 2. Get Message History
+ */
 export const getMessages = async (chatId: string): Promise<ChatMessage[]> => {
-    console.log(`Получение сообщений для чата ${chatId} (заглушка)...`); // Fetching messages for chat ${chatId} (stub)...
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const chatMessages = messages
-                .filter(msg => msg.chatId === chatId)
-                .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-            resolve([...chatMessages]);
-        }, 200);
-    });
+  return await apiRequest<ChatMessage[]>({
+    method: "get",
+    url: `/api/chats/${chatId}/messages`,
+  });
 };
 
-export const sendMessage = async (chatId: string, senderId: string, content: string): Promise<ChatMessage> => {
-    console.log(`Отправка сообщения в чат ${chatId} от ${senderId} (заглушка)...`); // Sending message to chat ${chatId} from ${senderId} (stub)...
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const senderName = userNames[senderId] || `Пользователь ${senderId.substring(0, 4)}`;
-
-            const newMessage: ChatMessage = {
-                id: `msg-${Date.now()}-${Math.random().toString(36).substring(7)}`,
-                chatId,
-                senderId,
-                senderName,
-                content,
-                timestamp: new Date(),
-            };
-            messages.push(newMessage);
-            resolve(newMessage);
-        }, 150);
-    });
+/**
+ * 3. Send Message via REST (Socket is handled by backend publish)
+ */
+export const sendMessage = async (
+  chatId: string,
+  content: string,
+): Promise<ChatMessage> => {
+  return await apiRequest<ChatMessage>({
+    method: "post",
+    url: `/api/chats/${chatId}/messages`,
+    data: { content },
+  });
 };
 
-export const requestSupport = async (chatId: string, requesterId: string): Promise<void> => {
-    console.log(`Запрос поддержки для чата ${chatId} от пользователя ${requesterId} (заглушка)...`); // Requesting support for chat ${chatId} from user ${requesterId} (stub)...
-    // TODO: Implement logic to notify support service
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const senderName = userNames[requesterId] || `Пользователь ${requesterId.substring(0, 4)}`;
-            const supportMessage: ChatMessage = {
-                id: `support-${Date.now()}`,
-                chatId: chatId,
-                senderId: 'system',
-                senderName: 'Система',
-                content: `Пользователь ${senderName} запросил помощь поддержки.`, // User ${senderName} requested support.
-                timestamp: new Date(),
-            };
-            messages.push(supportMessage);
-            resolve();
-        }, 400);
-    });
+/**
+ * 4. Request Support (System notification)
+ */
+export const requestSupport = async (
+  chatId: string,
+  requesterId: string,
+): Promise<void> => {
+  await apiRequest({
+    method: "post",
+    url: `/api/chats/${chatId}/support-request`,
+    data: { requesterId },
+  });
 };
 
-
-// --- Additional functions for support ---
-
-export const assignSupportManager = async (requestId: string, managerId: string): Promise<void> => {
-    console.log(`Назначение менеджера ${managerId} на запрос ${requestId} (заглушка)...`); // Assigning manager ${managerId} to request ${requestId} (stub)...
-    // TODO: Find the request in DB and update assignedManagerId and status
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            console.log(`Менеджер ${managerId} назначен на запрос ${requestId}.`); // Manager ${managerId} assigned to request ${requestId}.
-            resolve();
-        }, 200);
-    });
+/**
+ * 5. Assign Manager (Support Side)
+ */
+export const assignSupportManager = async (
+  chatId: string,
+  managerId: string,
+): Promise<void> => {
+  await apiRequest({
+    method: "post",
+    url: `/api/chats/${chatId}/assign`,
+    data: { managerId },
+  });
 };
 
-export const closeSupportRequest = async (requestId: string, managerId: string): Promise<void> => {
-     console.log(`Закрытие запроса ${requestId} менеджером ${managerId} (заглушка)...`); // Closing request ${requestId} by manager ${managerId} (stub)...
-     // TODO: Find the request in DB and update status to 'closed'
-    return new Promise((resolve) => {
-        setTimeout(() => {
-             const chat = messages.find(m => m.id.startsWith(`support-${requestId.split('-')[2]}`));
-             if (chat) {
-                const managerName = userNames[managerId] || 'Менеджер';
-                 const closeMessage: ChatMessage = {
-                     id: `support-close-${Date.now()}`,
-                     chatId: chat.chatId,
-                     senderId: 'system',
-                     senderName: 'Система',
-                     content: `Менеджер ${managerName} завершил обработку вашего запроса.`, // Manager ${managerName} has finished processing your request.
-                     timestamp: new Date(),
-                 };
-                 messages.push(closeMessage);
-             }
-            console.log(`Запрос ${requestId} закрыт.`); // Request ${requestId} closed.
-            resolve();
-        }, 250);
-    });
+/**
+ * 6. Close Support Request
+ */
+export const closeSupportRequest = async (chatId: string): Promise<void> => {
+  await apiRequest({
+    method: "post",
+    url: `/api/chats/${chatId}/close`,
+  });
 };

@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { useSession } from "next-auth/react";
-import { useNotification } from "@/context/NotificationContext";
+import { useNotification } from "@/components/providers/NotificationProvider";
 // Import ChatDialog components to open chat from here
-import ChatDialog from "@/components/ChatDialog";
+import ChatDialog from "@/components/chat/ChatDialog";
 import { acceptBookingRequest, rejectBookingRequest } from "@/services/booking";
 import {
   Card,

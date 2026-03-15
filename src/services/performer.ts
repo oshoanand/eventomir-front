@@ -9,14 +9,14 @@ export type ModerationStatus = "pending_approval" | "approved" | "rejected";
 export interface GalleryItem {
   id: string;
   title: string;
-  imageUrls: string[];
+  image_urls: string[];
   description: string;
-  metaTitle?: string;
-  metaDescription?: string;
+  meta_title?: string;
+  meta_description?: string;
   keywords?: string;
-  imageAltText?: string;
+  image_alt_text?: string;
   imageFiles?: File[] | null;
-  moderationStatus: ModerationStatus;
+  moderation_status: ModerationStatus;
 }
 
 export interface Certificate {
@@ -98,6 +98,7 @@ export interface PerformerProfile extends PerformerProfileBase {
   certificates?: Certificate[];
   recommendationLetters?: RecommendationLetter[];
   reviews?: Review[];
+  isVip?: boolean; // Added for search functionality
 }
 
 export type TransportDetails = {
@@ -210,7 +211,7 @@ const mapProfileFromPrivateTable = (data: any): PerformerProfile => {
           imageAltText: item.image_alt_text,
           moderationStatus: item.moderation_status,
         }))
-        .filter((item: GalleryItem) => item.moderationStatus === "approved") ||
+        .filter((item: GalleryItem) => item.moderation_status === "approved") ||
       [], // Only show approved items
     certificates:
       data.certificates?.filter(
@@ -257,18 +258,15 @@ const updatePerformerProfileFn = async ({
 }): Promise<PerformerProfile> => {
   const formData = new FormData();
 
-  // Basic Text Fields
   if (data.name) formData.append("name", data.name);
   if (data.description) formData.append("description", data.description);
   if (data.city) formData.append("city", data.city);
   if (data.contactPhone) formData.append("phone", data.contactPhone);
 
-  // Arrays (Roles)
   if (data.roles) {
     formData.append("roles", JSON.stringify(data.roles));
   }
 
-  // Files
   if (data.profilePictureFile) {
     formData.append("profilePicture", data.profilePictureFile);
   }
@@ -276,7 +274,6 @@ const updatePerformerProfileFn = async ({
     formData.append("backgroundPicture", data.backgroundPictureFile);
   }
 
-  // Handle dynamic price range or other fields if needed
   if (data.priceRange) {
     formData.append("priceRange", JSON.stringify(data.priceRange));
   }
@@ -285,7 +282,7 @@ const updatePerformerProfileFn = async ({
     method: "patch",
     url: `/api/performers/${performerId}`,
     data: formData,
-    headers: { "Content-Type": undefined }, // Let browser set boundary
+    headers: { "Content-Type": undefined },
   });
 };
 
@@ -453,7 +450,42 @@ const removeRecommendationLetterFn = async ({
 // --- PUBLIC EXPORTED FUNCTIONS (Non-Hook) ---
 
 /**
- * Search Performers (Used by React Query or direct call)
+ * Interface for paginated search results
+ */
+export interface PaginatedResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+/**
+ * Get Performers Paginated (Connects to new Node.js / Redis endpoint)
+ */
+export const getPerformersPaginated = async (
+  params: Record<string, any>,
+): Promise<PaginatedResult<PerformerProfile>> => {
+  const query = new URLSearchParams();
+
+  Object.keys(params).forEach((key) => {
+    const value = params[key];
+    if (value !== undefined && value !== null && value !== "") {
+      if (Array.isArray(value)) {
+        if (value.length > 0) query.append(key, value.join(","));
+      } else {
+        query.append(key, String(value));
+      }
+    }
+  });
+
+  return await apiRequest<PaginatedResult<PerformerProfile>>({
+    method: "get",
+    url: `/api/search/performers?${query.toString()}`,
+  });
+};
+
+/**
+ * Legacy Search Performers (Used by older hooks)
  */
 export const searchPerformersApi = async (
   params: Record<string, any>,
@@ -508,11 +540,9 @@ export const useUpdatePerformerProfile = () => {
   return useMutation({
     mutationFn: updatePerformerProfileFn,
     onSuccess: (updatedProfile, variables) => {
-      // Refresh profile data
       queryClient.invalidateQueries({
         queryKey: ["performer", "profile", variables.performerId],
       });
-      // Optionally update cache directly
       queryClient.setQueryData(
         ["performer", "profile", variables.performerId],
         updatedProfile,
@@ -557,7 +587,6 @@ export const useRejectBookingRequest = () => {
   });
 };
 
-// -- Search Hook --
 export const useSearchPerformers = (searchParams: Record<string, any>) => {
   return useQuery({
     queryKey: ["performers", "search", searchParams],
@@ -566,8 +595,6 @@ export const useSearchPerformers = (searchParams: Record<string, any>) => {
     placeholderData: (prev) => prev,
   });
 };
-
-// -- Content Hooks --
 
 export const useAddGalleryItem = () => {
   const queryClient = useQueryClient();
@@ -647,11 +674,6 @@ export const getPerformerProfile = async (
   console.log(`Загрузка профиля исполнителя ${performerId}...`);
 
   try {
-    // 1. Call the Node.js API
-    // The Backend now handles the logic:
-    // It checks the session cookies. If the user is the owner/admin,
-    // it returns the full profile (with pending items/bookings).
-    // Otherwise, it returns only public approved data.
     const data = await apiRequest<PerformerProfile>({
       method: "get",
       url: `/api/performers/${performerId}`,
@@ -661,22 +683,14 @@ export const getPerformerProfile = async (
       return null;
     }
 
-    // 2. Hydrate Dates
-    // JSON serialization converts Date objects to strings.
-    // We must convert them back to Date objects for the UI components (Calendar, etc.) to work.
     const hydratedProfile: PerformerProfile = {
       ...data,
-      // Convert booked dates strings to Date objects
       bookedDates: data.bookedDates?.map((date: any) => new Date(date)) || [],
-
-      // If the backend returns booking requests (for the owner), hydrate those dates
       bookingRequests: data.bookingRequests?.map((req: any) => ({
         ...req,
         eventDate: new Date(req.eventDate),
         createdAt: new Date(req.createdAt),
       })),
-
-      // Hydrate review dates if present
       reviews: data.reviews?.map((review: any) => ({
         ...review,
         date: new Date(review.date),

@@ -10,7 +10,7 @@ import React, {
 } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
-import { useSocket } from "@/components/providers/socket-provider"; // Ensure this path is correct
+import { useSocket } from "@/components/providers/socket-provider";
 import {
   NotificationContextType,
   NotificationItem,
@@ -29,16 +29,14 @@ interface NotificationProviderProps {
 export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   children,
 }) => {
-  // 1. Consume the shared socket from the Provider
   const { socket } = useSocket();
+  const { toast } = useToast();
+  const router = useRouter();
 
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
 
-  const { toast } = useToast();
-  const router = useRouter();
-
-  // Helper function to play sound
+  // --- Audio Helper ---
   const playNotificationSound = useCallback(() => {
     try {
       const audio = new Audio("/sounds/notification.wav");
@@ -49,10 +47,8 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   }, []);
 
   useEffect(() => {
-    // 2. Guard: Wait until the socket is initialized and connected
     if (!socket) return;
 
-    // 3. Define the Main Event Listener
     const handleNotification = (payload: any) => {
       console.log("🔔 Received Notification:", payload);
 
@@ -61,7 +57,6 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
       // --- A. Handle "TOKEN" type ---
       if (type === "TOKEN") {
         const item: TokenPayload = { ...data, type: "TOKEN" };
-
         setNotifications((prev) => [item, ...prev]);
         setUnreadCount((prev) => prev + 1);
         playNotificationSound();
@@ -81,7 +76,6 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
       // --- B. Handle "JOB" type ---
       else if (type === "JOB") {
         const item: JobPayload = { ...data, type: "JOB" };
-
         setNotifications((prev) => [item, ...prev]);
         setUnreadCount((prev) => prev + 1);
         playNotificationSound();
@@ -99,7 +93,6 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
       }
 
       // --- C. Handle "CHAT_MESSAGE" type ---
-      // This handles messages if they come through the generic 'notification' channel
       else if (type === "CHAT_MESSAGE") {
         const chatItem: NotificationItem = {
           id: payload.id || Date.now().toString(),
@@ -114,9 +107,9 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
           },
         };
 
+        // 🚨 FIX: We add it to the dropdown list, but we DO NOT increment `unreadCount`
+        // Chat messages use their own DB count! We also don't play sound here.
         setNotifications((prev) => [chatItem, ...prev]);
-        setUnreadCount((prev) => prev + 1);
-        // Note: We don't play sound here to avoid double sound with ClientNotificationProvider
       }
 
       // --- D. Handle Generic/System types ---
@@ -126,6 +119,8 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
           ...prev,
         ]);
         setUnreadCount((prev) => prev + 1);
+        playNotificationSound();
+
         toast({
           title: payload.message || "Уведомление",
           description: "Новое сообщение от системы",
@@ -133,14 +128,11 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
       }
     };
 
-    // 4. Attach Listeners
-
-    // Listener 1: Generic 'notification' channel (System, Jobs, Tokens)
+    // Attach Listeners
     socket.on("notification", handleNotification);
 
-    // Listener 2: Specific 'message_notification' channel (Chat)
-    // We map this specific event to our generic handler so it shows up in the list
-    socket.on("message_notification", (payload) => {
+    // Map specific message notifications to our generic handler
+    const handleSpecificMessage = (payload: any) => {
       handleNotification({
         type: "CHAT_MESSAGE",
         id: Date.now().toString(),
@@ -152,18 +144,19 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
           preview: payload.preview,
         },
       });
-    });
+    };
 
-    // 5. Cleanup
+    socket.on("message_notification", handleSpecificMessage);
+
     return () => {
       socket.off("notification", handleNotification);
-      socket.off("message_notification");
+      socket.off("message_notification", handleSpecificMessage);
     };
   }, [socket, toast, router, playNotificationSound]);
 
+  // --- Mark Read Logic ---
   const markAllAsRead = () => {
     setUnreadCount(0);
-    // Optional: Update all local items to read
     setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
   };
 
@@ -171,6 +164,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
     setNotifications((prev) =>
       prev.map((n) => {
         if (n.id === id && !n.isRead) {
+          // Prevent negative count
           setUnreadCount((c) => Math.max(0, c - 1));
           return { ...n, isRead: true };
         }
@@ -185,7 +179,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
         notifications,
         unreadCount,
         markAllAsRead,
-        markAsRead, // Exported so individual items can be clicked
+        markAsRead,
         socket,
       }}
     >

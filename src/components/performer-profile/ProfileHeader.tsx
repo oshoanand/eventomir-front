@@ -1,10 +1,12 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { PerformerProfile } from "@/services/performer";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast"; // <-- Added for Share feedback
 import {
   MapPin,
   Edit2,
@@ -15,29 +17,28 @@ import {
   DollarSign,
   Share2,
   Trash2,
+  Check,
+  X,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/utils/utils";
 
 interface ProfileHeaderProps {
   profile: PerformerProfile;
   isOwnProfile: boolean;
-  isEditing: boolean;
-  formData: Partial<PerformerProfile>;
   isFavorite: boolean;
   isOnline?: boolean;
 
-  onEditToggle: () => void;
-  onSaveChanges: () => void;
-  onCancelEdit: () => void;
-  onFileChange: (
-    e: React.ChangeEvent<HTMLInputElement>,
-    type: "profilePicture" | "backgroundPicture",
-  ) => void;
-  setFormData: React.Dispatch<React.SetStateAction<Partial<PerformerProfile>>>;
+  onPartialUpdate: (
+    dataToUpdate: Partial<PerformerProfile>,
+    files?: {
+      profilePictureFile?: File | null;
+      backgroundPictureFile?: File | null;
+    },
+  ) => Promise<void>;
   onToggleFavorite: () => void;
   onOpenChat: () => void;
   onDeleteProfile: () => void;
-
   onBook: () => void;
   getImageUrl: (path: string | undefined | null) => string;
 }
@@ -45,22 +46,104 @@ interface ProfileHeaderProps {
 export default function ProfileHeader({
   profile,
   isOwnProfile,
-  isEditing,
-  formData,
   isFavorite,
-  isOnline = false, // Default to false
-  onEditToggle,
-  onSaveChanges,
-  onCancelEdit,
-  onFileChange,
-  setFormData,
+  isOnline = false,
+  onPartialUpdate,
   onToggleFavorite,
   onOpenChat,
   onDeleteProfile,
-
   onBook,
   getImageUrl,
 }: ProfileHeaderProps) {
+  const { toast } = useToast();
+
+  // --- Local Edit State ---
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // File Upload Loading States
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [isUploadingCover, setIsUploadingCover] = useState(false);
+
+  // Temporary draft data for text fields
+  const [draftData, setDraftData] = useState({
+    name: profile.name || "",
+    city: profile.city || "",
+    priceRange: profile.priceRange || [0, 0],
+  });
+
+  // Sync draft data if the profile updates from outside
+  useEffect(() => {
+    if (!isEditing) {
+      setDraftData({
+        name: profile.name || "",
+        city: profile.city || "",
+        priceRange: profile.priceRange || [0, 0],
+      });
+    }
+  }, [profile, isEditing]);
+
+  // --- Handlers ---
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      await onPartialUpdate({
+        name: draftData.name,
+        city: draftData.city,
+        priceRange: draftData.priceRange,
+      });
+      setIsEditing(false);
+    } catch (error) {
+      // Errors are handled by the parent's toast notification
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setDraftData({
+      name: profile.name || "",
+      city: profile.city || "",
+      priceRange: profile.priceRange || [0, 0],
+    });
+    setIsEditing(false);
+  };
+
+  // Immediate upload for avatar and cover images
+  const handleFileChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    type: "profilePicture" | "backgroundPicture",
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (type === "profilePicture") setIsUploadingAvatar(true);
+    else setIsUploadingCover(true);
+
+    try {
+      await onPartialUpdate({}, { [`${type}File`]: file });
+    } finally {
+      if (type === "profilePicture") setIsUploadingAvatar(false);
+      else setIsUploadingCover(false);
+    }
+  };
+
+  const handleShare = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      toast({
+        title: "Ссылка скопирована",
+        description: "Ссылка на профиль скопирована в буфер обмена.",
+      });
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Ошибка",
+        description: "Не удалось скопировать ссылку.",
+      });
+    }
+  };
+
   // --- Logic for Price Display ---
   const renderPriceField = () => {
     if (isEditing) {
@@ -71,26 +154,34 @@ export default function ProfileHeader({
           </span>
           <Input
             type="number"
+            min="0"
             className="w-24 h-8"
             placeholder="от"
-            value={formData.priceRange?.[0] || ""}
+            value={draftData.priceRange?.[0] || ""}
             onChange={(e) =>
-              setFormData((p) => ({
+              setDraftData((p) => ({
                 ...p,
-                priceRange: [Number(e.target.value), p.priceRange?.[1] || 0],
+                priceRange: [
+                  parseInt(e.target.value) || 0,
+                  p.priceRange?.[1] || 0,
+                ],
               }))
             }
           />
           <span className="text-muted-foreground">-</span>
           <Input
             type="number"
+            min="0"
             className="w-24 h-8"
             placeholder="до"
-            value={formData.priceRange?.[1] || ""}
+            value={draftData.priceRange?.[1] || ""}
             onChange={(e) =>
-              setFormData((p) => ({
+              setDraftData((p) => ({
                 ...p,
-                priceRange: [p.priceRange?.[0] || 0, Number(e.target.value)],
+                priceRange: [
+                  p.priceRange?.[0] || 0,
+                  parseInt(e.target.value) || 0,
+                ],
               }))
             }
           />
@@ -99,18 +190,21 @@ export default function ProfileHeader({
       );
     }
 
-    const minPrice = profile.priceRange?.[0];
-    const maxPrice = profile.priceRange?.[1];
+    const minPrice = profile.priceRange?.[0] || 0;
+    const maxPrice = profile.priceRange?.[1] || 0;
 
-    if (typeof minPrice !== "number") return null;
+    // Don't show the badge at all if there's no price range set yet
+    if (minPrice === 0 && maxPrice === 0) return null;
 
     return (
       <div className="flex items-center gap-1.5 text-lg font-semibold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-1 rounded-full border border-emerald-100 dark:border-emerald-900 mt-2 w-fit">
         <DollarSign className="h-4 w-4" />
         <span>
-          {minPrice === maxPrice
+          {minPrice === maxPrice && minPrice > 0
             ? `${minPrice.toLocaleString()} ₽`
-            : `от ${minPrice.toLocaleString()} ₽`}
+            : minPrice > 0
+              ? `от ${minPrice.toLocaleString()} ₽`
+              : "По запросу"}
         </span>
       </div>
     );
@@ -119,14 +213,10 @@ export default function ProfileHeader({
   return (
     <div className="bg-card rounded-xl border shadow-sm overflow-hidden relative group">
       {/* --- Cover Image --- */}
-      <div className="h-48 md:h-64 bg-muted relative">
-        {formData.backgroundPicture || profile.backgroundPicture ? (
+      <div className="h-48 md:h-64 bg-muted relative group/cover">
+        {profile.backgroundPicture ? (
           <img
-            src={
-              isEditing && formData.backgroundPicture
-                ? formData.backgroundPicture
-                : getImageUrl(profile.backgroundPicture)
-            }
+            src={getImageUrl(profile.backgroundPicture)}
             alt="Cover"
             className="w-full h-full object-cover"
           />
@@ -134,17 +224,25 @@ export default function ProfileHeader({
           <div className="w-full h-full bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-900 dark:to-slate-800" />
         )}
 
-        {isEditing && (
-          <label className="absolute top-4 right-4 cursor-pointer z-10">
-            <div className="bg-black/50 hover:bg-black/70 text-white px-3 py-1.5 rounded-md flex items-center gap-2 text-sm transition-colors backdrop-blur-sm">
-              <Camera className="h-4 w-4" />
-              <span>Изменить обложку</span>
+        {/* Immediate Upload for Cover */}
+        {isOwnProfile && (
+          <label className="absolute top-4 right-4 cursor-pointer z-10 opacity-0 group-hover/cover:opacity-100 transition-opacity">
+            <div className="bg-black/60 hover:bg-black/80 text-white px-3 py-1.5 rounded-md flex items-center gap-2 text-sm transition-colors backdrop-blur-md shadow-sm">
+              {isUploadingCover ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Camera className="h-4 w-4" />
+              )}
+              <span>
+                {isUploadingCover ? "Загрузка..." : "Изменить обложку"}
+              </span>
             </div>
             <input
               type="file"
               hidden
               accept="image/*"
-              onChange={(e) => onFileChange(e, "backgroundPicture")}
+              disabled={isUploadingCover}
+              onChange={(e) => handleFileChange(e, "backgroundPicture")}
             />
           </label>
         )}
@@ -152,45 +250,48 @@ export default function ProfileHeader({
 
       <div className="px-6 pb-6">
         <div className="flex flex-col md:flex-row gap-6">
-          {/* --- Avatar Section (Updated Positioning) --- */}
-          <div className="-mt-16 md:-mt-20 relative flex-shrink-0 mx-auto md:mx-0">
+          {/* --- Avatar Section --- */}
+          <div className="-mt-16 md:-mt-20 relative flex-shrink-0 mx-auto md:mx-0 group/avatar">
             <div className="relative">
               <Avatar className="w-32 h-32 md:w-40 md:h-40 border-4 border-background shadow-lg bg-background">
                 <AvatarImage
-                  src={
-                    isEditing && formData.profilePicture
-                      ? formData.profilePicture
-                      : getImageUrl(profile.profilePicture)
-                  }
+                  src={getImageUrl(profile.profilePicture)}
                   className="object-cover"
                 />
                 <AvatarFallback className="text-4xl font-bold text-muted-foreground bg-muted">
                   {profile.name?.[0]?.toUpperCase() || "U"}
                 </AvatarFallback>
-                {isEditing && (
-                  <label className="absolute inset-0 flex items-center justify-center bg-black/50 text-white rounded-full cursor-pointer transition-colors hover:bg-black/60 z-30">
-                    <Camera className="h-10 w-10 opacity-90" />
-                    <span className="sr-only">Изменить фото</span>
+
+                {/* Immediate Upload for Avatar */}
+                {isOwnProfile && (
+                  <label className="absolute inset-0 flex items-center justify-center bg-black/40 text-white rounded-full cursor-pointer transition-all opacity-0 group-hover/avatar:opacity-100 hover:bg-black/60 z-30 backdrop-blur-[2px]">
+                    {isUploadingAvatar ? (
+                      <Loader2 className="h-10 w-10 animate-spin" />
+                    ) : (
+                      <>
+                        <Camera className="h-10 w-10 opacity-90 drop-shadow-md" />
+                        <span className="sr-only">Изменить фото</span>
+                      </>
+                    )}
                     <input
                       type="file"
                       hidden
                       accept="image/*"
-                      onChange={(e) => onFileChange(e, "profilePicture")}
+                      disabled={isUploadingAvatar}
+                      onChange={(e) => handleFileChange(e, "profilePicture")}
                     />
                   </label>
                 )}
               </Avatar>
 
               {/* ONLINE STATUS INDICATOR */}
-              {!isEditing && (
-                <span
-                  className={cn(
-                    "absolute bottom-2 right-2 md:bottom-4 md:right-4 h-5 w-5 md:h-6 md:w-6 rounded-full border-4 border-background z-20 transition-all duration-300",
-                    isOnline ? "bg-green-500" : "bg-gray-300",
-                  )}
-                  title={isOnline ? "В сети" : "Не в сети"}
-                />
-              )}
+              <span
+                className={cn(
+                  "absolute bottom-2 right-2 md:bottom-4 md:right-4 h-5 w-5 md:h-6 md:w-6 rounded-full border-4 border-background z-20 transition-all duration-300 shadow-sm",
+                  isOnline ? "bg-green-500" : "bg-gray-300",
+                )}
+                title={isOnline ? "В сети" : "Не в сети"}
+              />
             </div>
           </div>
 
@@ -198,23 +299,22 @@ export default function ProfileHeader({
           <div className="flex-1 pt-2 text-center md:text-left space-y-4">
             <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
               <div className="space-y-2">
-                {/* Name & Roles */}
+                {/* Name */}
                 <div className="space-y-1">
                   {isEditing ? (
                     <Input
-                      value={formData.name}
+                      value={draftData.name}
                       onChange={(e) =>
-                        setFormData((p) => ({ ...p, name: e.target.value }))
+                        setDraftData((p) => ({ ...p, name: e.target.value }))
                       }
-                      className="text-2xl font-bold w-full md:w-80 text-center md:text-left"
+                      className="text-xl font-bold w-full md:w-80 text-center md:text-left h-10"
                       placeholder="Ваше имя"
                     />
                   ) : (
                     <div className="flex items-center justify-center md:justify-start gap-3 flex-wrap">
                       <h1 className="text-3xl font-bold tracking-tight text-foreground">
-                        {profile.name}
+                        {profile.name || "Безымянный исполнитель"}
                       </h1>
-                      {/* Optional Online Badge next to name */}
                       {isOnline && (
                         <Badge
                           variant="secondary"
@@ -225,28 +325,16 @@ export default function ProfileHeader({
                       )}
                     </div>
                   )}
-
-                  <div className="flex flex-wrap gap-2 justify-center md:justify-start">
-                    {profile.roles?.map((role) => (
-                      <Badge
-                        key={role}
-                        variant="secondary"
-                        className="px-2 py-0.5 text-xs font-medium"
-                      >
-                        {role}
-                      </Badge>
-                    ))}
-                  </div>
                 </div>
 
                 {/* Location */}
-                <div className="flex items-center justify-center md:justify-start gap-2 text-muted-foreground">
+                <div className="flex items-center justify-center md:justify-start gap-2 text-muted-foreground mt-2">
                   <MapPin className="h-4 w-4" />
                   {isEditing ? (
                     <Input
-                      value={formData.city}
+                      value={draftData.city}
                       onChange={(e) =>
-                        setFormData((p) => ({ ...p, city: e.target.value }))
+                        setDraftData((p) => ({ ...p, city: e.target.value }))
                       }
                       className="h-8 w-40"
                       placeholder="Город"
@@ -270,13 +358,19 @@ export default function ProfileHeader({
                   isEditing ? (
                     <div className="flex gap-2">
                       <Button
-                        onClick={onSaveChanges}
-                        className="bg-green-600 hover:bg-green-700"
+                        variant="outline"
+                        onClick={handleCancel}
+                        disabled={isSaving}
                       >
-                        Сохранить
+                        <X className="h-4 w-4 mr-2" /> Отмена
                       </Button>
-                      <Button variant="outline" onClick={onCancelEdit}>
-                        Отмена
+                      <Button onClick={handleSave} disabled={isSaving}>
+                        {isSaving ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Check className="h-4 w-4 mr-2" />
+                        )}
+                        Сохранить
                       </Button>
                     </div>
                   ) : (
@@ -284,7 +378,7 @@ export default function ProfileHeader({
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={onEditToggle}
+                        onClick={() => setIsEditing(true)}
                       >
                         <Edit2 className="h-4 w-4 mr-2" /> Редактировать
                       </Button>
@@ -292,7 +386,7 @@ export default function ProfileHeader({
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="text-destructive hover:text-destructive/90"
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
                         onClick={onDeleteProfile}
                         title="Удалить профиль"
                       >
@@ -336,9 +430,8 @@ export default function ProfileHeader({
                       <Button
                         variant="outline"
                         size="icon"
-                        onClick={() => {
-                          navigator.clipboard.writeText(window.location.href);
-                        }}
+                        onClick={handleShare} // <-- Fixed
+                        title="Поделиться"
                       >
                         <Share2 className="h-4 w-4" />
                       </Button>

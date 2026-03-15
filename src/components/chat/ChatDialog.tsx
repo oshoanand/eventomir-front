@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useSocket } from "@/components/providers/socket-provider";
-// 1. Import your API utility
 import { apiRequest } from "@/utils/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,15 +15,15 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, Loader2, User, Check, Clock, AlertCircle } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { format } from "date-fns";
+import { format, isSameDay } from "date-fns";
+import { ru } from "date-fns/locale";
 import { useToast } from "@/hooks/use-toast";
 
 interface Message {
   id: string;
   content: string;
-  senderId: string;
+  senderId: string | null;
   createdAt: string;
-  isRead?: boolean;
   status?: "sending" | "sent" | "error";
 }
 
@@ -34,7 +33,6 @@ interface ChatDialogProps {
   chatId: string;
   performerName: string;
   currentUserId: string;
-  performerId?: string;
   performerImage?: string;
 }
 
@@ -55,20 +53,24 @@ export default function ChatDialog({
   const [isSending, setIsSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // --- 2. Fetch Chat History on Open ---
+  // --- 1. Fetch Full History ---
   useEffect(() => {
-    if (isOpen && chatId) {
-      const fetchHistory = async () => {
+    if (isOpen && chatId && !chatId.startsWith("chat-temp")) {
+      const initializeChat = async () => {
         setIsLoadingHistory(true);
         try {
-          // apiRequest automatically adds Auth headers and BaseURL
           const data = await apiRequest<Message[]>({
             method: "get",
             url: `/api/chats/${chatId}/messages`,
           });
-          setMessages(data);
+          setMessages(data.map((m) => ({ ...m, status: "sent" })));
+
+          await apiRequest({
+            method: "patch",
+            url: `/api/chats/${chatId}/read`,
+          });
         } catch (error) {
-          console.error("Failed to fetch messages", error);
+          console.error("Load Chat Error:", error);
           toast({
             variant: "destructive",
             title: "Ошибка",
@@ -79,55 +81,58 @@ export default function ChatDialog({
         }
       };
 
-      fetchHistory();
+      initializeChat();
     }
   }, [isOpen, chatId, toast]);
 
-  // --- 3. Real-Time Listener (Socket.io) ---
+  // --- 2. Socket Listener (FIXED ECHO BUG) ---
   useEffect(() => {
-    if (!socket || !chatId) return;
+    if (!socket || !chatId || chatId.startsWith("chat-temp")) return;
 
-    // Join Room
     socket.emit("join_chat", chatId);
 
     const handleReceiveMessage = (msg: any) => {
-      // Logic Check: Ensure message belongs to THIS chat
       if (msg.chatId === chatId) {
+        // 🚨 CRITICAL FIX: Ignore messages that WE just sent!
+        // We already added them to the UI via the optimistic update below.
+        if (msg.message.senderId === currentUserId) return;
+
         setMessages((prev) => {
-          const exists = prev.find((m) => m.id === msg.id);
-          if (exists) return prev;
-          // Mark incoming as 'sent'
-          return [...prev, { ...msg, status: "sent" }];
+          if (prev.find((m) => m.id === msg.message.id)) return prev;
+          return [...prev, { ...msg.message, status: "sent" }];
         });
+
+        // Mark as read since we have the chat open
+        apiRequest({ method: "patch", url: `/api/chats/${chatId}/read` }).catch(
+          console.error,
+        );
       }
     };
 
     socket.on("receive_message", handleReceiveMessage);
-
     return () => {
       socket.off("receive_message", handleReceiveMessage);
-      // socket.emit("leave_chat", chatId);
     };
-  }, [socket, chatId]);
+  }, [socket, chatId, currentUserId]);
 
-  // --- 4. Auto-Scroll to Bottom ---
+  // --- 3. Scroll to Bottom ---
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, isOpen]);
 
-  // --- 5. Send Message Handler ---
+  // --- 4. Send Message ---
   const handleSend = async () => {
-    if (!newMessage.trim()) return;
+    if (!newMessage.trim() || isSending) return;
 
-    const tempId = Date.now().toString();
     const content = newMessage.trim();
+    const tempId = `temp-${Date.now()}`;
 
-    // Optimistic Update
+    // OPTIMISTIC UPDATE: Adds the message instantly
     const optimisticMsg: Message = {
       id: tempId,
-      content: content,
+      content,
       senderId: currentUserId,
       createdAt: new Date().toISOString(),
       status: "sending",
@@ -138,30 +143,25 @@ export default function ChatDialog({
     setIsSending(true);
 
     try {
-      // Call API using apiRequest
       const savedMsg = await apiRequest<Message>({
         method: "post",
         url: `/api/chats/${chatId}/messages`,
         data: { content },
       });
 
-      // Success: Update temporary message with real data
+      // Swap the temp message for the real database message
       setMessages((prev) =>
         prev.map((m) =>
           m.id === tempId ? { ...savedMsg, status: "sent" } : m,
         ),
       );
     } catch (error) {
-      console.error("Send error", error);
-
-      // Error: Mark message as error so user can retry or see failure
       setMessages((prev) =>
         prev.map((m) => (m.id === tempId ? { ...m, status: "error" } : m)),
       );
-
       toast({
         variant: "destructive",
-        title: "Ошибка",
+        title: "Ошибка отправки",
         description: "Не удалось отправить сообщение",
       });
     } finally {
@@ -170,12 +170,16 @@ export default function ChatDialog({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[500px] h-[80vh] sm:h-[600px] flex flex-col p-0 gap-0 overflow-hidden bg-background">
-        {/* Header */}
-        <DialogHeader className="px-6 py-4 border-b bg-secondary/20">
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent className="sm:max-w-[500px] h-[85vh] flex flex-col p-0 gap-0 overflow-hidden shadow-2xl bg-background">
+        <DialogHeader className="px-6 py-4 border-b bg-secondary/10 z-10">
           <div className="flex items-center gap-3">
-            <Avatar className="h-10 w-10 border border-border">
+            <Avatar className="h-10 w-10 border border-border/50">
               <AvatarImage src={performerImage} />
               <AvatarFallback className="bg-primary/10 text-primary font-bold">
                 {performerName?.charAt(0).toUpperCase() || (
@@ -187,18 +191,10 @@ export default function ChatDialog({
               <DialogTitle className="text-base font-semibold leading-none mb-1">
                 {performerName}
               </DialogTitle>
-              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                </span>
-                В сети
-              </p>
             </div>
           </div>
         </DialogHeader>
 
-        {/* Messages Area */}
         <ScrollArea className="flex-1 p-4 bg-slate-50/50 dark:bg-black/20">
           {isLoadingHistory ? (
             <div className="flex h-full items-center justify-center">
@@ -212,44 +208,62 @@ export default function ChatDialog({
               <p className="text-sm">История сообщений пуста</p>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="flex flex-col">
               {messages.map((msg, index) => {
-                const isMe = msg.senderId === currentUserId;
+                const isMe =
+                  msg.senderId !== null && msg.senderId === currentUserId;
+                const prevMsg = messages[index - 1];
+                const showDivider =
+                  !prevMsg ||
+                  !isSameDay(
+                    new Date(prevMsg.createdAt),
+                    new Date(msg.createdAt),
+                  );
+
                 return (
-                  <div
-                    key={msg.id || index}
-                    className={`flex ${isMe ? "justify-end" : "justify-start"}`}
-                  >
+                  <div key={msg.id}>
+                    {showDivider && (
+                      <div className="flex justify-center my-6">
+                        <span className="bg-muted px-3 py-1 rounded-full text-[10px] text-muted-foreground font-medium uppercase tracking-tighter">
+                          {format(new Date(msg.createdAt), "d MMMM yyyy", {
+                            locale: ru,
+                          })}
+                        </span>
+                      </div>
+                    )}
                     <div
-                      className={`flex flex-col ${isMe ? "items-end" : "items-start"} max-w-[80%]`}
+                      className={`flex ${isMe ? "justify-end" : "justify-start"} mb-3`}
                     >
                       <div
-                        className={`px-4 py-2 rounded-2xl text-sm shadow-sm ${
-                          isMe
-                            ? "bg-primary text-primary-foreground rounded-tr-none"
-                            : "bg-white dark:bg-zinc-900 border rounded-tl-none"
-                        } ${msg.status === "error" ? "border-red-500 border-2" : ""}`}
+                        className={`max-w-[80%] flex flex-col ${isMe ? "items-end" : "items-start"}`}
                       >
-                        <p className="leading-relaxed whitespace-pre-wrap">
-                          {msg.content}
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-1 mt-1 px-1">
-                        <span className="text-[10px] text-muted-foreground opacity-70">
-                          {format(new Date(msg.createdAt), "HH:mm")}
-                        </span>
-                        {isMe && (
-                          <span className="text-muted-foreground">
-                            {msg.status === "sending" ? (
-                              <Clock className="h-3 w-3 animate-pulse" />
-                            ) : msg.status === "error" ? (
-                              <AlertCircle className="h-3 w-3 text-red-500" />
-                            ) : (
-                              <Check className="h-3 w-3" />
-                            )}
+                        <div
+                          className={`px-4 py-2 rounded-2xl text-sm shadow-sm ${
+                            isMe
+                              ? "bg-primary text-primary-foreground rounded-tr-none"
+                              : "bg-background dark:bg-zinc-900 border rounded-tl-none"
+                          } ${msg.status === "error" ? "border-red-500 border-2" : ""}`}
+                        >
+                          <p className="whitespace-pre-wrap leading-relaxed">
+                            {msg.content}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1 mt-1 px-1">
+                          <span className="text-[10px] text-muted-foreground opacity-70">
+                            {format(new Date(msg.createdAt), "HH:mm")}
                           </span>
-                        )}
+                          {isMe && (
+                            <span className="text-muted-foreground">
+                              {msg.status === "sending" ? (
+                                <Clock className="h-3 w-3 animate-pulse" />
+                              ) : msg.status === "error" ? (
+                                <AlertCircle className="h-3 w-3 text-red-500" />
+                              ) : (
+                                <Check className="h-3 w-3" />
+                              )}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -260,7 +274,6 @@ export default function ChatDialog({
           )}
         </ScrollArea>
 
-        {/* Input Area */}
         <DialogFooter className="p-3 border-t bg-background">
           <form
             onSubmit={(e) => {
@@ -272,7 +285,7 @@ export default function ChatDialog({
             <Input
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
-              placeholder="Напишите сообщение..."
+              placeholder="Введите сообщение..."
               className="flex-1 rounded-full px-4 border-muted-foreground/20 focus-visible:ring-1"
               autoFocus
             />

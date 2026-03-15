@@ -478,7 +478,7 @@ export function RegisterCustomerForm() {
           )}
         </Button>
 
-        <div className="relative my-6">
+        {/* <div className="relative my-6">
           <div className="absolute inset-0 flex items-center">
             <Separator />
           </div>
@@ -487,8 +487,8 @@ export function RegisterCustomerForm() {
               Или войдите через
             </span>
           </div>
-        </div>
-
+        </div> */}
+        {/* 
         <div className="grid grid-cols-2 gap-4">
           <Button
             variant="outline"
@@ -504,7 +504,7 @@ export function RegisterCustomerForm() {
           >
             Яндекс
           </Button>
-        </div>
+        </div> */}
       </form>
     </Form>
   );

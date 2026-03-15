@@ -8,7 +8,7 @@ import ClientLayout from "@/components/ClientLayout";
 
 // Providers
 import { SocketProvider } from "@/components/providers/socket-provider";
-import { NotificationProvider } from "@/context/NotificationContext";
+import { NotificationProvider } from "@/components/providers/NotificationProvider";
 import { ClientNotificationProvider } from "@/components/providers/ClientNotificationProvider";
 import { SiteThemeProvider } from "@/components/providers/SiteThemeProvider";
 

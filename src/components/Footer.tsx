@@ -170,8 +170,8 @@ const Footer = () => {
         <Separator className="my-8 bg-border" />
         <div className="text-center text-xs">
           <p>
-            &copy; {currentYear} {settings?.siteName || "Eventomir"}. Все права
-            защищены.
+            &copy; {currentYear} ООО {settings?.siteName || "Eventomir"}. Все
+            права защищены. 18+
           </p>
         </div>
       </div>

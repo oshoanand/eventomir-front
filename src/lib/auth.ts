@@ -1,16 +1,69 @@
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
+import YandexProvider from "next-auth/providers/yandex";
+import GoogleProvider from "next-auth/providers/google";
+import VkProvider from "next-auth/providers/vk";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
+import type { Adapter } from "next-auth/adapters";
 import { prisma } from "@/utils/prisma";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
+// =================================================================
+// CUSTOM PRISMA ADAPTER
+// Intercepts DB events to reliably save auth_provider and profile_picture
+// =================================================================
+const CustomAdapter = PrismaAdapter(prisma) as Adapter;
+
+// 1. Intercept User Creation
+const originalCreateUser = CustomAdapter.createUser;
+CustomAdapter.createUser = async (data: any) => {
+  return originalCreateUser!({
+    ...data,
+    // Automatically copy NextAuth's 'image' to your custom 'profile_picture' column
+    profile_picture: data.image || null,
+  });
+};
+
+// 2. Intercept Account Linking (This is where we know if it's Yandex/Google/VK)
+const originalLinkAccount = CustomAdapter.linkAccount;
+CustomAdapter.linkAccount = async (account: any) => {
+  // Update the user's auth_provider in the database to match the social network
+  await prisma.user.update({
+    where: { id: account.userId },
+    data: { auth_provider: account.provider },
+  });
+  return originalLinkAccount!(account);
+};
+
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma),
+  adapter: CustomAdapter,
   session: {
     strategy: "jwt",
   },
   providers: [
+    // -------------------------------------------------------------
+    // 1. OAUTH PROVIDERS
+    // -------------------------------------------------------------
+    YandexProvider({
+      clientId: process.env.YANDEX_CLIENT_ID as string,
+      clientSecret: process.env.YANDEX_CLIENT_SECRET as string,
+      allowDangerousEmailAccountLinking: true,
+    }),
+    VkProvider({
+      clientId: process.env.VK_CLIENT_ID as string,
+      clientSecret: process.env.VK_CLIENT_SECRET as string,
+      allowDangerousEmailAccountLinking: true,
+    }),
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID as string,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
+      allowDangerousEmailAccountLinking: true,
+    }),
+
+    // -------------------------------------------------------------
+    // 2. CREDENTIALS PROVIDER
+    // -------------------------------------------------------------
     CredentialsProvider({
       name: "Credentials",
       credentials: {
@@ -20,26 +73,22 @@ export const authOptions: NextAuthOptions = {
 
       async authorize(credentials) {
         try {
-          // 1. Validate credentials input
           if (!credentials?.email || !credentials?.password) {
             throw new Error(
               "Требуется указать адрес электронной почты и пароль",
             );
           }
 
-          // 2. Find user in database
           const user = await prisma.user.findUnique({
             where: {
               email: credentials.email,
             },
           });
 
-          // 3. Verify user exists AND has a password
           if (!user || !user.password) {
             throw new Error("Неверный адрес электронной почты или пароль!");
           }
 
-          // 4. Verify password
           const isValidPassword = await bcrypt.compare(
             credentials.password,
             user.password,
@@ -49,7 +98,6 @@ export const authOptions: NextAuthOptions = {
             throw new Error("Неверный адрес электронной почты или пароль!");
           }
 
-          // 5. Generate Token
           const secret = process.env.NEXTAUTH_SECRET;
 
           if (!secret) {
@@ -71,9 +119,6 @@ export const authOptions: NextAuthOptions = {
             },
           );
 
-          // -------------------------------------------------------------
-          // 6. INTERCEPT PARTNER LOGIN FOR SEAMLESS TRANSFER
-          // -------------------------------------------------------------
           if (user.role === "partner") {
             throw new Error(
               JSON.stringify({
@@ -83,24 +128,25 @@ export const authOptions: NextAuthOptions = {
             );
           }
 
-          // 7. Normal login for customer/performer
+          // 🚨 THE FIX: Fallback to empty strings for null values
+          // We also cast 'as any' here because NextAuth's strict internal
+          // User type doesn't officially support 'accessToken' out of the box
+          // without heavy module augmentation.
           return {
             id: user.id,
-            name: user.name,
+            name: user.name || "",
             email: user.email,
-            phone: user.phone,
-            role: user.role,
+            phone: user.phone || "",
+            role: user.role || "customer",
             accessToken: token,
-          };
+          } as any;
         } catch (error: any) {
           console.error("Authorize Error:", error.message);
 
-          // 1. Pass through our special JSON error for partners
           if (error.message && error.message.includes("PARTNER_REDIRECT")) {
             throw error;
           }
 
-          // 2. Pass through validation errors
           const isCustomError =
             error.message ===
               "Требуется указать адрес электронной почты и пароль" ||
@@ -110,7 +156,6 @@ export const authOptions: NextAuthOptions = {
             throw error;
           }
 
-          // 3. Fallback for any other (system) errors
           throw new Error("Проверьте свой адрес электронной почты еще раз!");
         }
       },
@@ -118,17 +163,70 @@ export const authOptions: NextAuthOptions = {
   ],
 
   callbacks: {
-    async jwt({ token, user }) {
+    // --- SIGN IN CALLBACK ---
+    async signIn() {
+      return true;
+    },
+
+    // --- JWT CALLBACK ---
+    async jwt({ token, user, account, trigger, session }) {
+      if (trigger === "update" && session?.role) {
+        token.role = session.role;
+
+        const secret = process.env.NEXTAUTH_SECRET;
+        if (secret) {
+          token.accessToken = jwt.sign(
+            {
+              id: token.id,
+              name: token.name,
+              email: token.email,
+              role: session.role,
+              iat: Math.floor(Date.now() / 1000),
+              exp: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
+            },
+            secret,
+            { algorithm: "HS256" },
+          );
+        }
+      }
+
       if (user) {
         token.id = user.id;
         token.image = user.image ? user.image.toString() : null;
         token.name = user.name ? user.name.toString() : "";
         token.email = user.email ? user.email.toString() : "";
-        token.accessToken = (user as any).accessToken;
-        token.role = (user as any).role;
+
+        const userRole = (user as any).role || null;
+        token.role = userRole;
+
+        const isOAuth = ["yandex", "google", "vk"].includes(
+          account?.provider || "",
+        );
+
+        if (isOAuth) {
+          const secret = process.env.NEXTAUTH_SECRET;
+          if (secret) {
+            token.accessToken = jwt.sign(
+              {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                role: userRole,
+                iat: Math.floor(Date.now() / 1000),
+                exp: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
+              },
+              secret,
+              { algorithm: "HS256" },
+            );
+          }
+        } else {
+          token.accessToken = (user as any).accessToken;
+        }
       }
       return token;
     },
+
+    // --- SESSION CALLBACK ---
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string;

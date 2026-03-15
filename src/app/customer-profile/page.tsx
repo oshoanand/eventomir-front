@@ -31,7 +31,7 @@ import {
   LogOut,
   User,
   CreditCard,
-  MessageCircle, // Import Message Icon
+  MessageCircle,
 } from "lucide-react";
 
 import { format } from "date-fns";
@@ -63,9 +63,9 @@ import { Badge } from "@/components/ui/badge";
 import { formatPhoneNumber } from "@/utils/helper";
 import SubscriptionStatusCard from "@/components/profile/SubscriptionStatusCard";
 
-// --- 1. New Imports for Real-Time Functionality ---
+// --- 1. Real-Time Functionality Imports ---
 import { useSocket } from "@/components/providers/socket-provider";
-import ChatDialog from "@/components/ChatDialog";
+import ChatDialog from "@/components/chat/ChatDialog";
 import { createOrGetChat } from "@/services/chat";
 
 // --- Custom Hooks & Services ---
@@ -99,10 +99,10 @@ const CustomerProfilePage = () => {
   const router = useRouter();
   const { toast } = useToast();
 
-  // --- 2. Consume Socket Context ---
-  const { onlineUsers } = useSocket();
+  // --- 2. Consume Socket Context safely ---
+  const { onlineUsers } = useSocket() || { onlineUsers: [] };
 
-  // --- Data Fetching Hooks (TanStack Query) ---
+  // --- Data Fetching Hooks ---
   const {
     data: profile,
     isLoading: isProfileLoading,
@@ -117,7 +117,7 @@ const CustomerProfilePage = () => {
 
   const updateProfileMutation = useUpdateCustomerProfile();
 
-  // --- 3. Compute Online Status ---
+  // --- 3. Compute Online Status for the Customer ---
   const isCustomerOnline = profile ? onlineUsers.includes(profile.id) : false;
 
   // --- State Management ---
@@ -136,7 +136,7 @@ const CustomerProfilePage = () => {
   // Chat States
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [currentChatId, setCurrentChatId] = useState("");
-  const [chatPartnerName, setChatPartnerName] = useState(""); // Useful if admin opens chat
+  const [chatPartnerName, setChatPartnerName] = useState("");
 
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
 
@@ -282,14 +282,22 @@ const CustomerProfilePage = () => {
     }
   };
 
-  // Function to open chat (e.g., if we add a Support button or click on order history)
+  // 🚨 Open Chat directly using the new unified API signature
   const handleOpenChat = async (
     targetUserId: string,
     targetUserName: string,
   ) => {
     if (!session?.user?.id) return;
+    if (targetUserId === session.user.id) {
+      toast({
+        variant: "destructive",
+        title: "Вы не можете написать самому себе",
+      });
+      return;
+    }
+
     try {
-      const chatId = await createOrGetChat(session.user.id, targetUserId);
+      const chatId = await createOrGetChat(targetUserId);
       setCurrentChatId(chatId);
       setChatPartnerName(targetUserName);
       setIsChatOpen(true);
@@ -548,7 +556,7 @@ const CustomerProfilePage = () => {
                 </AvatarFallback>
               </Avatar>
 
-              {/* 4. ONLINE STATUS INDICATOR */}
+              {/* ONLINE STATUS INDICATOR */}
               {!isEditing && (
                 <span
                   className={cn(
@@ -623,7 +631,7 @@ const CustomerProfilePage = () => {
           </CardContent>
         </Card>
 
-        {/* --- Subscription Section (New) --- */}
+        {/* --- Subscription Section --- */}
         <SubscriptionStatusCard />
 
         {/* --- Paid Requests Section --- */}
@@ -702,59 +710,77 @@ const CustomerProfilePage = () => {
               </p>
             ) : (
               <div className="space-y-4">
-                {orderHistory.map((order) => (
-                  <Card key={order.id}>
-                    <CardContent className="pt-6 grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
-                      <div className="space-y-1">
-                        <Link
-                          href={`/performer-profile?id=${order.performerId}`}
-                          className="font-medium hover:underline"
-                        >
-                          {order.performerName}
-                        </Link>
-                        <p className="text-sm text-muted-foreground">
-                          {order.service}
-                        </p>
-                        {/* Optional: Add a quick chat button for past orders */}
-                        <Button
-                          variant="link"
-                          size="sm"
-                          className="h-auto p-0 text-xs text-blue-600 flex items-center gap-1"
-                          onClick={() =>
-                            handleOpenChat(
-                              order.performerId,
-                              order.performerName,
-                            )
-                          }
-                        >
-                          <MessageCircle className="h-3 w-3" /> Написать
-                          сообщение
-                        </Button>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-sm">
-                          {format(order.date, "d MMMM yyyy, HH:mm", {
-                            locale: ru,
-                          })}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          {order.price
-                            ? `${order.price.toLocaleString()} руб.`
-                            : "Цена не указана"}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <Badge
-                          variant={
-                            order.status === "completed" ? "outline" : "default"
-                          }
-                        >
-                          {order.status}
-                        </Badge>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                {orderHistory.map((order) => {
+                  // Check if the performer for this past order is currently online
+                  const isPerformerOnline = onlineUsers.includes(
+                    order.performerId,
+                  );
+
+                  return (
+                    <Card key={order.id}>
+                      <CardContent className="pt-6 grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <Link
+                              href={`/performer-profile?id=${order.performerId}`}
+                              className="font-medium hover:underline flex items-center gap-2"
+                            >
+                              {order.performerName}
+                            </Link>
+                            {/* Green dot for performers they've hired before */}
+                            {isPerformerOnline && (
+                              <div
+                                className="h-2 w-2 rounded-full bg-green-500"
+                                title="В сети"
+                              />
+                            )}
+                          </div>
+
+                          <p className="text-sm text-muted-foreground">
+                            {order.service}
+                          </p>
+                          <Button
+                            variant="link"
+                            size="sm"
+                            className="h-auto p-0 text-xs text-blue-600 flex items-center gap-1"
+                            onClick={() =>
+                              handleOpenChat(
+                                order.performerId,
+                                order.performerName,
+                              )
+                            }
+                          >
+                            <MessageCircle className="h-3 w-3" /> Написать
+                            сообщение
+                          </Button>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-sm">
+                            {format(order.date, "d MMMM yyyy, HH:mm", {
+                              locale: ru,
+                            })}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {order.price
+                              ? `${order.price.toLocaleString()} руб.`
+                              : "Цена не указана"}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <Badge
+                            variant={
+                              order.status === "completed"
+                                ? "outline"
+                                : "default"
+                            }
+                          >
+                            {order.status}
+                          </Badge>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
             )}
           </CardContent>
@@ -762,12 +788,12 @@ const CustomerProfilePage = () => {
       </div>
 
       {/* 5. GLOBAL CHAT DIALOG FOR THIS PAGE */}
-      {isChatOpen && session?.user && (
+      {isChatOpen && session?.user && currentChatId && (
         <ChatDialog
           isOpen={isChatOpen}
           onClose={() => setIsChatOpen(false)}
           chatId={currentChatId}
-          performerName={chatPartnerName} // Showing name of person we are chatting with
+          performerName={chatPartnerName}
           currentUserId={session.user.id}
         />
       )}

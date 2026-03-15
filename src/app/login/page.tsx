@@ -25,15 +25,18 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Separator } from "@/components/ui/separator";
 import {
-  Mail,
   ExternalLink,
   ShieldCheck,
   AlertCircle,
   LogOut,
   ArrowRight,
+  Loader2,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+
+// Importing our new icons
+import { YandexIcon, VkontakteIcon, GoogleIcon } from "@/components/icons";
 
 const formSchema = z.object({
   email: z.string().email({
@@ -51,10 +54,10 @@ const formSchema = z.object({
 });
 
 const LoginPage = () => {
-  // 1. Hook into the current session state
   const { data: session, status } = useSession();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loadingProvider, setLoadingProvider] = useState<string | null>(null);
   const [partnerTransferUrl, setPartnerTransferUrl] = useState<string | null>(
     null,
   );
@@ -67,6 +70,7 @@ const LoginPage = () => {
     defaultValues: { email: "", password: "" },
   });
 
+  // --- CREDENTIALS LOGIN HANDLER ---
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsSubmitting(true);
     const { email, password } = values;
@@ -79,26 +83,18 @@ const LoginPage = () => {
       });
 
       if (result?.error) {
-        // --- 1. HANDLE PARTNER REDIRECT ---
-        // Since NextAuth passes the error as a string, we check if it looks like our JSON
         if (result.error.includes("PARTNER_REDIRECT")) {
           try {
             const errorData = JSON.parse(result.error);
-
-            // СТРОГАЯ ПРОВЕРКА URL
             let partnerBaseUrl = process.env.NEXT_PUBLIC_PARTNER_APP_URL;
             if (!partnerBaseUrl || partnerBaseUrl.trim() === "") {
-              partnerBaseUrl = "http://localhost:3001"; // Fallback гарантирован
+              partnerBaseUrl = "http://localhost:3001";
             }
-            // Убираем слэш на конце, если он случайно есть в .env
             partnerBaseUrl = partnerBaseUrl.replace(/\/$/, "");
 
-            // Формируем абсолютный URL
             const targetUrl = `${partnerBaseUrl}/dashboard?v=${errorData.token}`;
-
             const newWindow = window.open(targetUrl, "_blank");
 
-            // Check if the browser blocked the popup
             if (
               !newWindow ||
               newWindow.closed ||
@@ -113,22 +109,18 @@ const LoginPage = () => {
                 description: "Открытие панели партнера в новой вкладке...",
               });
             }
-            return; // Stop execution here, don't show any error toasts
+            return;
           } catch (e) {
             console.error("Failed to parse partner redirect token", e);
-            // Fallback if parsing fails
           }
         }
 
-        // --- 2. HANDLE STANDARD ERRORS ---
-        // If we get here, it wasn't a partner redirect, so it's a real login error
         toast({
           variant: "destructive",
           title: "Ошибка входа",
-          description: result.error, // This will now show "Неверный адрес..." or "Проверьте свой..."
+          description: result.error,
         });
       } else if (result?.ok) {
-        // --- 3. HANDLE SUCCESSFUL CUSTOMER/PERFORMER LOGIN ---
         const currentSession = await getSession();
         const userRole = currentSession?.user?.role;
         let roleDescription =
@@ -164,21 +156,23 @@ const LoginPage = () => {
     }
   };
 
-  const handleGoogleLogin = () => {
-    toast({
-      title: "Вход через Google",
-      description: "Функционал входа через Google будет добавлен позже.",
-    });
+  // --- OAUTH LOGIN HANDLER ---
+  const handleOAuthLogin = async (provider: "google" | "yandex" | "vk") => {
+    setLoadingProvider(provider);
+    try {
+      await signIn(provider, { callbackUrl: "/customer-profile" });
+    } catch (error) {
+      setLoadingProvider(null);
+      toast({
+        variant: "destructive",
+        title: "Ошибка авторизации",
+        description: `Не удалось войти через выбранную социальную сеть.`,
+      });
+    }
   };
 
-  const handleYandexLogin = () => {
-    toast({
-      title: "Вход через Яндекс",
-      description: "Функционал входа через Яндекс будет добавлен позже.",
-    });
-  };
+  const isAnyLoading = isSubmitting || loadingProvider !== null;
 
-  // --- UI STATE 1: LOADING SESSION ---
   if (status === "loading") {
     return (
       <div className="container mx-auto py-20 flex justify-center">
@@ -190,21 +184,22 @@ const LoginPage = () => {
     );
   }
 
-  // --- UI STATE 2: ALREADY LOGGED IN CONFLICT ---
   if (status === "authenticated") {
     const roleLabel =
       session.user?.role === "customer"
         ? "Заказчик"
         : session.user?.role === "performer"
           ? "Исполнитель"
-          : session.user?.role;
+          : session.user?.role || "Новый пользователь";
 
     const profileLink =
       session.user?.role === "customer"
         ? "/customer-profile"
         : session.user?.role === "performer"
           ? "/performer-profile"
-          : "/";
+          : !session.user?.role
+            ? "/complete-registration"
+            : "/";
 
     return (
       <div className="container mx-auto py-20 flex justify-center animate-in fade-in zoom-in duration-300">
@@ -242,7 +237,6 @@ const LoginPage = () => {
     );
   }
 
-  // --- UI STATE 3: PARTNER TRANSFER FALLBACK ---
   if (partnerTransferUrl && partnerTransferUrl !== "success") {
     return (
       <div className="container mx-auto py-20 flex justify-center animate-in fade-in zoom-in duration-300">
@@ -285,10 +279,9 @@ const LoginPage = () => {
     );
   }
 
-  // --- UI STATE 4: STANDARD LOGIN FORM ---
   return (
     <div className="container mx-auto py-10 flex justify-center">
-      <Card className="w-full max-w-md">
+      <Card className="w-full max-w-md shadow-md">
         <CardHeader>
           <CardTitle>Войти</CardTitle>
           <CardDescription>Войдите в свой аккаунт Eventomir.</CardDescription>
@@ -307,7 +300,7 @@ const LoginPage = () => {
                         placeholder="example@mail.com"
                         {...field}
                         type="email"
-                        disabled={isSubmitting}
+                        disabled={isAnyLoading}
                       />
                     </FormControl>
                     <FormMessage />
@@ -325,7 +318,7 @@ const LoginPage = () => {
                         placeholder="••••••••"
                         {...field}
                         type="password"
-                        disabled={isSubmitting}
+                        disabled={isAnyLoading}
                       />
                     </FormControl>
                     <FormMessage />
@@ -343,9 +336,12 @@ const LoginPage = () => {
               <Button
                 variant="destructive"
                 type="submit"
-                disabled={isSubmitting}
-                className="w-full"
+                disabled={isAnyLoading}
+                className="w-full h-11"
               >
+                {isSubmitting ? (
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                ) : null}
                 {isSubmitting ? "Вход..." : "Войти"}
               </Button>
             </form>
@@ -353,30 +349,66 @@ const LoginPage = () => {
 
           <Separator className="my-6" />
 
-          <div className="flex flex-col items-center space-y-2">
+          <div className="flex flex-col items-center space-y-3">
             <Button
+              type="button"
               variant="outline"
-              onClick={handleGoogleLogin}
-              className="w-full"
+              onClick={() => handleOAuthLogin("google")}
+              disabled={isAnyLoading}
+              className="w-full gap-2 relative h-11 bg-white text-black hover:bg-gray-50 border-gray-300"
             >
-              Войти через Google
+              {loadingProvider === "google" ? (
+                <Loader2 className="w-5 h-5 animate-spin absolute left-4 text-muted-foreground" />
+              ) : (
+                <GoogleIcon className="w-5 h-5 " />
+              )}
+              <span className="font-medium">Войти через Google</span>
             </Button>
+
             <Button
+              type="button"
               variant="outline"
-              onClick={handleYandexLogin}
-              className="w-full"
+              onClick={() => handleOAuthLogin("yandex")}
+              disabled={isAnyLoading}
+              className="w-full gap-2 relative h-11 bg-white text-black hover:bg-gray-50 border-gray-300"
             >
-              <Mail className="mr-2 h-4 w-4" /> Войти через Яндекс
+              {loadingProvider === "yandex" ? (
+                <Loader2 className="w-5 h-5 animate-spin absolute left-4 text-muted-foreground" />
+              ) : (
+                <YandexIcon className="w-5 h-5 " />
+              )}
+              <span className="font-medium">Войти через Яндекс</span>
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleOAuthLogin("vk")}
+              disabled={isAnyLoading}
+              className="w-full gap-2 relative h-11 bg-[#0077FF] text-white hover:bg-[#0077FF]/90 border-transparent"
+            >
+              {loadingProvider === "vk" ? (
+                <Loader2 className="w-6 h-6 animate-spin absolute left-4 text-white" />
+              ) : (
+                <VkontakteIcon className="w-6 h-6  fill-white text-white" />
+              )}
+              <span className="font-medium">Войти через ВКонтакте</span>
             </Button>
           </div>
 
-          <div className="mt-4 text-center text-sm">
+          <div className="mt-6 text-center text-sm">
             Нет аккаунта?{" "}
-            <Link href="/register-customer" className="underline">
+            <Link
+              href="/register-customer"
+              className="underline hover:text-primary"
+            >
               Зарегистрироваться как заказчик
             </Link>
             {" или "}
-            <Link href="/register-performer" className="underline">
+            <Link
+              href="/register-performer"
+              className="underline hover:text-primary"
+            >
               исполнитель
             </Link>
           </div>
