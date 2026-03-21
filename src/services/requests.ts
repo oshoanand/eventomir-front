@@ -3,36 +3,25 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/utils/api-client";
 
-// --- Types ---
-
-interface CreateRequestResponse {
-  success: boolean;
-  message: string;
-  request: {
-    id: string;
-    customerId: string;
-    category: string;
-    serviceDescription: string;
-    city?: string | null;
-    budget?: string | null;
-    createdAt: string; // Backend returns ISO string
-    status: "open" | "closed";
-    views: number;
-    responses: number;
-  };
-}
+// ==========================================
+// 1. TYPES & INTERFACES
+// ==========================================
 
 export interface PaidRequest {
   id: string;
-  customerId?: string;
+  customerId: string;
   category: string;
   serviceDescription: string;
   city?: string;
   budget?: string;
   createdAt: Date;
-  status: "open" | "closed";
+  status: "OPEN" | "CLOSED" | "PENDING_PAYMENT";
   views: number;
   responses: number;
+  customer?: {
+    name: string;
+    profile_picture?: string;
+  };
 }
 
 export interface CreateRequestParams {
@@ -41,6 +30,14 @@ export interface CreateRequestParams {
   serviceDescription: string;
   budget?: string;
   city?: string;
+  paymentMethod: "wallet" | "gateway"; // 🚨 NEW: Required for the new backend logic
+}
+
+export interface CreateRequestResponse {
+  success: boolean;
+  message?: string;
+  requiresGateway: boolean;
+  paymentUrl?: string; // Present if requiresGateway is true
 }
 
 export interface PerformerFeedParams {
@@ -49,40 +46,35 @@ export interface PerformerFeedParams {
   performerCity?: string;
 }
 
-// --- API Functions (Private) ---
+// ==========================================
+// 2. API FUNCTIONS (Private)
+// ==========================================
 
 /**
- * Creates a new paid request.
+ * Creates a new paid request (Handles both Wallet and Gateway logic).
  */
-// const createPaidRequestFn = async (
-//   data: CreateRequestParams,
-// ): Promise<PaidRequest> => {
-//   const result = (await apiRequest({
-//     method: "post",
-//     url: "/api/requests",
-//     data: data,
-//   })) as CreateRequestResponse;
-
-//   // Transform ISO string to Date object
-//   return {
-//     ...result.request,
-//     createdAt: new Date(result.request.createdAt), // Convert string to Date
-//     // Handle potential nulls from backend
-//     city: result.request.city || undefined,
-//     budget: result.request.budget || undefined,
-//   };
-// };
+const createPaidRequestFn = async (
+  data: CreateRequestParams,
+): Promise<CreateRequestResponse> => {
+  // We return the raw response here so the UI component can handle
+  // the intelligent routing (Toast vs Redirect)
+  return await apiRequest<CreateRequestResponse>({
+    method: "post",
+    url: "/api/requests",
+    data: data,
+  });
+};
 
 /**
- * Fetches requests created by a specific customer.
+ * Fetches requests created by the authenticated customer.
  */
-const getRequestsByCustomerFn = async (
-  customerId: string,
-): Promise<PaidRequest[]> => {
-  const data = (await apiRequest({
+const getRequestsByCustomerFn = async (): Promise<PaidRequest[]> => {
+  // 🚨 SECURITY FIX: We no longer pass customerId in the URL.
+  // The backend extracts it securely from the verifyAuth token.
+  const data = await apiRequest<any[]>({
     method: "get",
-    url: `/api/requests/customer/${customerId}`,
-  })) as any[];
+    url: `/api/requests/customer`,
+  });
 
   // Map backend response (ISO strings) to frontend objects (Date objects)
   return data.map((req: any) => ({
@@ -100,21 +92,19 @@ const getPaidRequestsForPerformerFn = async ({
   performerRoles,
   performerCity,
 }: Omit<PerformerFeedParams, "performerId">): Promise<PaidRequest[]> => {
-  // Construct query params object
-  // Note: apiRequest should handle array params (e.g. roles[]) or you might need to join them
   const params: Record<string, any> = {
-    roles: performerRoles.join(","), // Simple comma separation for the backend
+    roles: performerRoles.join(","),
   };
 
   if (performerCity) {
     params.city = performerCity;
   }
 
-  const data = (await apiRequest({
+  const data = await apiRequest<any[]>({
     method: "get",
-    url: "/api/requests/feed", // Ensure this route exists in your backend
+    url: "/api/requests/feed",
     params: params,
-  })) as any[];
+  });
 
   return data.map((req: any) => ({
     ...req,
@@ -122,7 +112,9 @@ const getPaidRequestsForPerformerFn = async ({
   }));
 };
 
-// --- React Query Hooks (Public) ---
+// ==========================================
+// 3. REACT QUERY HOOKS (Public)
+// ==========================================
 
 /**
  * Hook to create a new paid request.
@@ -133,25 +125,23 @@ export function useCreatePaidRequestMutation() {
 
   return useMutation({
     mutationFn: createPaidRequestFn,
-    onSuccess: (newRequest) => {
-      // Invalidate the cache for the specific customer so their list updates immediately
-      if (newRequest.customerId) {
-        queryClient.invalidateQueries({
-          queryKey: ["requests", "customer", newRequest.customerId],
-        });
-      }
+    onSuccess: () => {
+      // Invalidate the cache so the customer's profile dashboard updates immediately
+      queryClient.invalidateQueries({
+        queryKey: ["requests", "customer"],
+      });
     },
   });
 }
 
 /**
- * Hook to fetch requests for a specific customer.
+ * Hook to fetch requests for the logged-in customer.
  */
-export function useCustomerRequestsQuery(customerId: string) {
+export function useCustomerRequestsQuery(customerId?: string) {
   return useQuery({
-    queryKey: ["requests", "customer", customerId],
-    queryFn: () => getRequestsByCustomerFn(customerId),
-    enabled: !!customerId, // Only run if customerId is provided
+    queryKey: ["requests", "customer"],
+    queryFn: getRequestsByCustomerFn,
+    enabled: !!customerId, // Only run if we know the user is loaded
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
   });
 }
@@ -171,29 +161,3 @@ export function usePerformerRequestsFeedQuery(params: PerformerFeedParams) {
     staleTime: 1000 * 60 * 2, // Cache feed for 2 minutes
   });
 }
-
-export interface CreateRequestParams {
-  customerId: string;
-  category: string;
-  serviceDescription: string;
-  budget?: string;
-  city?: string;
-}
-
-const createPaidRequestFn = async (data: CreateRequestParams): Promise<any> => {
-  // 1. Call API
-  const result = await apiRequest<{ success: boolean; checkoutUrl: string }>({
-    method: "post",
-    url: "/api/requests",
-    data: data,
-  });
-
-  // 2. Redirect to Payment Gateway
-  if (result.success && result.checkoutUrl) {
-    window.location.href = result.checkoutUrl;
-    // Return a never-resolving promise to keep the UI in "loading" state during redirect
-    return new Promise(() => {});
-  }
-
-  throw new Error("Failed to initiate payment");
-};

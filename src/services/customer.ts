@@ -1,10 +1,26 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/utils/api-client"; // Your axios/fetch wrapper
+import { apiRequest } from "@/utils/api-client";
 import { useSession } from "next-auth/react";
 
-// --- Types ---
+// ==========================================
+// 1. STRICT TYPES & INTERFACES
+// ==========================================
+
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  features: string[];
+}
+
+export interface UserSubscription {
+  id: string;
+  isActive: boolean;
+  endDate: string | Date | null;
+  plan: SubscriptionPlan;
+}
+
 export interface CustomerProfile {
   id: string;
   name: string;
@@ -13,6 +29,9 @@ export interface CustomerProfile {
   city: string;
   profilePicture: string;
   role: string;
+  // 🚨 NEW: Added missing fields from our recent backend updates
+  walletBalance: number;
+  subscription?: UserSubscription | null;
   unreadNotifications?: number;
 }
 
@@ -22,84 +41,85 @@ export interface OrderHistoryItem {
   performerName: string;
   service: string;
   date: Date;
-  status: string;
+  status: "PENDING" | "CONFIRMED" | "COMPLETED" | "CANCELLED" | string;
   price: number;
 }
 
-export type UpdateProfileParams = Partial<CustomerProfile> & {
-  profilePictureFile?: File;
+// Explicitly define what can be updated. We Omit sensitive/read-only fields.
+export type UpdateProfileParams = Partial<
+  Omit<
+    CustomerProfile,
+    "id" | "email" | "role" | "walletBalance" | "subscription"
+  >
+> & {
+  profilePictureFile?: File | null;
 };
 
-// --- API Functions ---
+// ==========================================
+// 2. API CALLS
+// ==========================================
 
 const fetchProfile = async (): Promise<CustomerProfile> => {
-  return await apiRequest({ method: "get", url: "/api/customers/profile" });
-};
-
-const updateProfile = async (data: Partial<CustomerProfile>): Promise<any> => {
-  return await apiRequest({
-    method: "put",
+  return await apiRequest<CustomerProfile>({
+    method: "get",
     url: "/api/customers/profile",
-    data,
   });
 };
 
-const updateProfileFn = async (
+const updateProfile = async (
   data: UpdateProfileParams,
 ): Promise<CustomerProfile> => {
   const formData = new FormData();
 
-  // Append text fields
+  // Safely append text fields
   if (data.name) formData.append("name", data.name);
   if (data.phone) formData.append("phone", data.phone);
   if (data.city) formData.append("city", data.city);
 
-  // Append file
+  // Safely append file
   if (data.profilePictureFile) {
     formData.append("profile_image", data.profilePictureFile);
   }
 
-  // Debug: Log the entries to ensure file is present before sending
-  // for (let [key, value] of formData.entries()) {
-  //   console.log(`${key}: ${value}`);
-  // }
-
-  const response = await apiRequest<CustomerProfile>({
+  return await apiRequest<CustomerProfile>({
     method: "put",
     url: "/api/customers/profile",
     data: formData,
-    // CRITICAL FIX: Explicitly unset Content-Type so browser sets the boundary
+    // CRITICAL: Unsetting Content-Type forces the browser (Fetch/Axios)
+    // to automatically set 'multipart/form-data' with the correct secure boundary.
     headers: {
       "Content-Type": undefined,
     },
   });
-
-  return response;
 };
 
 const fetchOrderHistory = async (): Promise<OrderHistoryItem[]> => {
-  // 1. Tell TypeScript the response is an array of objects
   const data = await apiRequest<any[]>({
-    // <--- Add <any[]> generic here
     method: "get",
     url: "/api/customers/orders",
   });
 
-  // Now 'data' is typed as any[], so .map() works
+  // Ensure dates are parsed correctly into JS Date objects
   return data.map((item) => ({
     ...item,
-    date: new Date(item.date), // Convert ISO string to Date
+    date: new Date(item.date),
   }));
 };
 
-// --- Hooks ---
+// ==========================================
+// 3. TANSTACK REACT QUERY HOOKS
+// ==========================================
 
 export const useCustomerProfile = () => {
-  const { data: session } = useSession();
+  const { status } = useSession();
+
   return useQuery({
     queryKey: ["customer", "profile"],
     queryFn: fetchProfile,
-    enabled: !!session?.user?.accessToken, // Only fetch if logged in
+    // 🚨 SECURITY: Only execute the query if NextAuth explicitly confirms the user is logged in
+    enabled: status === "authenticated",
+    // Optimization: Don't refetch on every tiny render, data stays fresh for 5 mins
+    staleTime: 5 * 60 * 1000,
   });
 };
 
@@ -107,22 +127,23 @@ export const useUpdateCustomerProfile = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: updateProfileFn,
+    mutationFn: updateProfile,
     onSuccess: (updatedProfile) => {
-      // 1. Invalidate to refetch fresh data
-      queryClient.invalidateQueries({ queryKey: ["customer", "profile"] });
-
-      // 2. Optimistically update the cache (optional but provides instant feedback)
+      // 1. Optimistically update the cache for instant UI feedback without reloading
       queryClient.setQueryData(["customer", "profile"], updatedProfile);
+
+      // 2. Invalidate to trigger a background refetch just to be 100% in sync
+      queryClient.invalidateQueries({ queryKey: ["customer", "profile"] });
     },
   });
 };
 
 export const useCustomerOrders = () => {
-  const { data: session } = useSession();
+  const { status } = useSession();
+
   return useQuery({
     queryKey: ["customer", "orders"],
     queryFn: fetchOrderHistory,
-    enabled: !!session?.user?.accessToken,
+    enabled: status === "authenticated",
   });
 };

@@ -28,10 +28,11 @@ import {
   Send,
   Bell,
   Trash2,
-  LogOut,
-  User,
-  CreditCard,
+  Wallet,
+  PlusCircle,
   MessageCircle,
+  Loader2,
+  CreditCard,
 } from "lucide-react";
 
 import { format } from "date-fns";
@@ -61,9 +62,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Badge } from "@/components/ui/badge";
 import { formatPhoneNumber } from "@/utils/helper";
-import SubscriptionStatusCard from "@/components/profile/SubscriptionStatusCard";
+import { apiRequest } from "@/utils/api-client";
 
-// --- 1. Real-Time Functionality Imports ---
+// --- Real-Time & Chat Imports ---
 import { useSocket } from "@/components/providers/socket-provider";
 import ChatDialog from "@/components/chat/ChatDialog";
 import { createOrGetChat } from "@/services/chat";
@@ -93,31 +94,28 @@ const changePasswordSchema = z
     path: ["confirmPassword"],
   });
 
+const TOP_UP_PRESETS = [500, 1000, 2000, 5000];
+
 // --- Main Component ---
 const CustomerProfilePage = () => {
   const { data: session, status } = useSession();
   const router = useRouter();
   const { toast } = useToast();
 
-  // --- 2. Consume Socket Context safely ---
   const { onlineUsers } = useSocket() || { onlineUsers: [] };
 
   // --- Data Fetching Hooks ---
-  const {
-    data: profile,
-    isLoading: isProfileLoading,
-    error: profileError,
-  } = useCustomerProfile();
+  const { data: profile, isLoading: isProfileLoading } = useCustomerProfile();
 
   const { data: orderHistory = [], isLoading: isHistoryLoading } =
     useCustomerOrders();
 
+  // NOTE: Passed optional customerId as required by the updated service
   const { data: paidRequests = [], isLoading: isRequestsLoading } =
-    useCustomerRequestsQuery(session?.user?.id || "");
+    useCustomerRequestsQuery(session?.user?.id);
 
   const updateProfileMutation = useUpdateCustomerProfile();
 
-  // --- 3. Compute Online Status for the Customer ---
   const isCustomerOnline = profile ? onlineUsers.includes(profile.id) : false;
 
   // --- State Management ---
@@ -132,6 +130,11 @@ const CustomerProfilePage = () => {
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [isDeleteAccountOpen, setIsDeleteAccountOpen] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+  // Wallet States
+  const [isTopUpOpen, setIsTopUpOpen] = useState(false);
+  const [topUpAmount, setTopUpAmount] = useState<string>("1000");
+  const [isToppingUp, setIsToppingUp] = useState(false);
 
   // Chat States
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -202,7 +205,7 @@ const CustomerProfilePage = () => {
         profilePictureFile: profilePictureFile || undefined,
       },
       {
-        onSuccess: (updatedData: any) => {
+        onSuccess: () => {
           setIsEditing(false);
           setProfilePictureFile(null);
           toast({
@@ -210,7 +213,7 @@ const CustomerProfilePage = () => {
             description: "Ваши данные успешно сохранены.",
           });
         },
-        onError: (error: any) => {
+        onError: () => {
           toast({
             variant: "destructive",
             title: "Ошибка",
@@ -282,7 +285,41 @@ const CustomerProfilePage = () => {
     }
   };
 
-  // 🚨 Open Chat directly using the new unified API signature
+  const handleTopUpWallet = async () => {
+    const amount = Number(topUpAmount);
+    if (!amount || amount <= 0) {
+      toast({
+        variant: "destructive",
+        title: "Ошибка",
+        description: "Введите корректную сумму.",
+      });
+      return;
+    }
+
+    setIsToppingUp(true);
+    try {
+      // Calls your new Top Up backend route
+      const response = await apiRequest<{ paymentUrl: string }>({
+        method: "post",
+        url: "/api/wallet/topup",
+        data: { amount },
+      });
+
+      if (response.paymentUrl) {
+        toast({ title: "Переход к оплате..." });
+        window.location.href = response.paymentUrl;
+      }
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Ошибка",
+        description: "Не удалось создать платеж. Попробуйте позже.",
+      });
+    } finally {
+      setIsToppingUp(false);
+    }
+  };
+
   const handleOpenChat = async (
     targetUserId: string,
     targetUserName: string,
@@ -307,47 +344,13 @@ const CustomerProfilePage = () => {
   };
 
   // --- Loading Skeletons ---
-  const ProfileSkeleton = () => (
-    <Card>
-      <CardHeader className="flex flex-col items-center text-center">
-        <Skeleton className="h-24 w-24 rounded-full mb-4" />
-        <Skeleton className="h-6 w-40 mb-2" />
-        <Skeleton className="h-4 w-32" />
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex items-center gap-3">
-          <Mail className="h-4 w-4 text-muted-foreground" />
-          <Skeleton className="h-4 w-48" />
-        </div>
-        <div className="flex items-center gap-3">
-          <Phone className="h-4 w-4 text-muted-foreground" />
-          <Skeleton className="h-4 w-36" />
-        </div>
-        <div className="flex items-center gap-3">
-          <MapPin className="h-4 w-4 text-muted-foreground" />
-          <Skeleton className="h-4 w-28" />
-        </div>
-      </CardContent>
-    </Card>
-  );
-
-  const ListSkeleton = () => (
-    <div className="space-y-4">
-      {[1, 2].map((i) => (
-        <Card key={i}>
-          <CardContent className="pt-6">
-            <Skeleton className="h-10 w-full" />
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  );
-
-  // --- Main Render ---
   if (status === "loading" || isProfileLoading) {
     return (
-      <div className="container mx-auto py-10">
-        <ProfileSkeleton />
+      <div className="container mx-auto py-10 max-w-5xl">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Skeleton className="h-80 w-full md:col-span-2" />
+          <Skeleton className="h-80 w-full" />
+        </div>
       </div>
     );
   }
@@ -365,325 +368,451 @@ const CustomerProfilePage = () => {
 
   return (
     <>
-      <div className="container mx-auto py-10 space-y-8 max-w-4xl">
-        {/* --- Profile Card --- */}
-        <Card>
-          <CardHeader className="flex flex-col items-center text-center relative">
-            <div className="absolute top-4 right-4 flex gap-2">
-              {isEditing ? (
-                <>
-                  <Button
-                    variant="default"
-                    onClick={handleSaveChanges}
-                    disabled={updateProfileMutation.isPending}
-                    size="sm"
-                  >
-                    {updateProfileMutation.isPending
-                      ? "Сохранение..."
-                      : "Сохранить"}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setIsEditing(false);
-                      setFormData(profile);
-                    }}
-                    size="sm"
-                  >
-                    Отмена
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Link href="/notifications">
-                    <Button variant="ghost" size="icon" className="relative">
-                      <Bell className="h-4 w-4" />
-                      {unreadNotificationsCount > 0 && (
-                        <Badge
-                          variant="destructive"
-                          className="absolute -top-1 -right-1 h-3 w-3 p-0 flex items-center justify-center rounded-full text-[10px]"
-                        >
-                          {unreadNotificationsCount}
-                        </Badge>
-                      )}
+      <div className="container mx-auto py-10 space-y-8 max-w-5xl">
+        {/* --- Top Row: Profile & Wallet --- */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* PROFILE CARD */}
+          <Card className="md:col-span-2 relative shadow-sm border-2">
+            <CardHeader className="flex flex-col items-center text-center relative pb-2">
+              <div className="absolute top-4 right-4 flex gap-2">
+                {isEditing ? (
+                  <>
+                    <Button
+                      variant="default"
+                      onClick={handleSaveChanges}
+                      disabled={updateProfileMutation.isPending}
+                      size="sm"
+                    >
+                      {updateProfileMutation.isPending
+                        ? "Сохранение..."
+                        : "Сохранить"}
                     </Button>
-                  </Link>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setIsEditing(true)}
-                  >
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  {/* Change Password Dialog */}
-                  <Dialog
-                    open={isChangePasswordOpen}
-                    onOpenChange={setIsChangePasswordOpen}
-                  >
-                    <DialogTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Сменить пароль"
-                      >
-                        <KeyRound className="h-4 w-4" />
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setIsEditing(false);
+                        setFormData(profile);
+                      }}
+                      size="sm"
+                    >
+                      Отмена
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Link href="/notifications">
+                      <Button variant="ghost" size="icon" className="relative">
+                        <Bell className="h-4 w-4" />
+                        {unreadNotificationsCount > 0 && (
+                          <Badge
+                            variant="destructive"
+                            className="absolute -top-1 -right-1 h-3 w-3 p-0 flex items-center justify-center rounded-full text-[10px]"
+                          >
+                            {unreadNotificationsCount}
+                          </Badge>
+                        )}
                       </Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-[425px]">
-                      <DialogHeader>
-                        <DialogTitle>Смена пароля</DialogTitle>
-                        <DialogDescription>
-                          Введите текущий и новый пароль.
-                        </DialogDescription>
-                      </DialogHeader>
-                      <Form {...changePasswordForm}>
-                        <form
-                          onSubmit={changePasswordForm.handleSubmit(
-                            handleChangePasswordSubmit,
-                          )}
-                          className="space-y-4 py-4"
-                        >
-                          <FormField
-                            control={changePasswordForm.control}
-                            name="currentPassword"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Текущий пароль</FormLabel>
-                                <FormControl>
-                                  <Input type="password" {...field} />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                          <FormField
-                            control={changePasswordForm.control}
-                            name="newPassword"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Новый пароль</FormLabel>
-                                <FormControl>
-                                  <Input type="password" {...field} />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                          <FormField
-                            control={changePasswordForm.control}
-                            name="confirmPassword"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Подтвердите новый пароль</FormLabel>
-                                <FormControl>
-                                  <Input type="password" {...field} />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                          <DialogFooter>
-                            <Button
-                              type="submit"
-                              variant="destructive"
-                              disabled={isChangingPassword}
-                            >
-                              {isChangingPassword
-                                ? "Смена..."
-                                : "Сменить пароль"}
-                            </Button>
-                          </DialogFooter>
-                        </form>
-                      </Form>
-                    </DialogContent>
-                  </Dialog>
+                    </Link>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setIsEditing(true)}
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
 
-                  {/* Delete Account Dialog */}
-                  <Dialog
-                    open={isDeleteAccountOpen}
-                    onOpenChange={setIsDeleteAccountOpen}
-                  >
-                    <DialogTrigger asChild>
-                      <Button
-                        variant="destructive"
-                        size="icon"
-                        title="Удалить аккаунт"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Удаление аккаунта</DialogTitle>
-                        <DialogDescription>
-                          Это действие необратимо.
-                        </DialogDescription>
-                      </DialogHeader>
-                      <DialogFooter>
+                    {/* Change Password Dialog */}
+                    <Dialog
+                      open={isChangePasswordOpen}
+                      onOpenChange={setIsChangePasswordOpen}
+                    >
+                      <DialogTrigger asChild>
                         <Button
-                          variant="outline"
-                          onClick={() => setIsDeleteAccountOpen(false)}
+                          variant="ghost"
+                          size="icon"
+                          title="Сменить пароль"
                         >
-                          Отмена
+                          <KeyRound className="h-4 w-4" />
                         </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-[425px]">
+                        <DialogHeader>
+                          <DialogTitle>Смена пароля</DialogTitle>
+                          <DialogDescription>
+                            Введите текущий и новый пароль.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <Form {...changePasswordForm}>
+                          <form
+                            onSubmit={changePasswordForm.handleSubmit(
+                              handleChangePasswordSubmit,
+                            )}
+                            className="space-y-4 py-4"
+                          >
+                            <FormField
+                              control={changePasswordForm.control}
+                              name="currentPassword"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Текущий пароль</FormLabel>
+                                  <FormControl>
+                                    <Input type="password" {...field} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={changePasswordForm.control}
+                              name="newPassword"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Новый пароль</FormLabel>
+                                  <FormControl>
+                                    <Input type="password" {...field} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={changePasswordForm.control}
+                              name="confirmPassword"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>
+                                    Подтвердите новый пароль
+                                  </FormLabel>
+                                  <FormControl>
+                                    <Input type="password" {...field} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <DialogFooter>
+                              <Button
+                                type="submit"
+                                variant="destructive"
+                                disabled={isChangingPassword}
+                              >
+                                {isChangingPassword
+                                  ? "Смена..."
+                                  : "Сменить пароль"}
+                              </Button>
+                            </DialogFooter>
+                          </form>
+                        </Form>
+                      </DialogContent>
+                    </Dialog>
+
+                    {/* Delete Account Dialog */}
+                    <Dialog
+                      open={isDeleteAccountOpen}
+                      onOpenChange={setIsDeleteAccountOpen}
+                    >
+                      <DialogTrigger asChild>
                         <Button
                           variant="destructive"
-                          onClick={handleDeleteAccount}
-                          disabled={isDeletingAccount}
+                          size="icon"
+                          title="Удалить аккаунт"
                         >
-                          {isDeletingAccount ? "Удаление..." : "Удалить"}
+                          <Trash2 className="h-4 w-4" />
                         </Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
-                </>
-              )}
-            </div>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Удаление аккаунта</DialogTitle>
+                          <DialogDescription>
+                            Это действие необратимо.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <DialogFooter>
+                          <Button
+                            variant="outline"
+                            onClick={() => setIsDeleteAccountOpen(false)}
+                          >
+                            Отмена
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            onClick={handleDeleteAccount}
+                            disabled={isDeletingAccount}
+                          >
+                            {isDeletingAccount ? "Удаление..." : "Удалить"}
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  </>
+                )}
+              </div>
 
-            <div className="relative mb-4 mt-12">
-              <Avatar className="h-24 w-24 border-2 border-primary">
-                <AvatarImage
-                  src={
-                    profilePictureFile
-                      ? formData.profilePicture
-                      : getImageUrl(profile.profilePicture)
-                  }
-                  alt={formData.name || profile.name}
-                />
-
-                <AvatarFallback>
-                  {getInitials(formData.name || profile.name)}
-                </AvatarFallback>
-              </Avatar>
-
-              {/* ONLINE STATUS INDICATOR */}
-              {!isEditing && (
-                <span
-                  className={cn(
-                    "absolute bottom-1 right-1 h-5 w-5 rounded-full border-2 border-background z-20 transition-all duration-300",
-                    isCustomerOnline
-                      ? "bg-green-500 animate-pulse"
-                      : "bg-gray-300",
-                  )}
-                  title={isCustomerOnline ? "В сети" : "Не в сети"}
-                />
-              )}
-
-              {isEditing && (
-                <label
-                  htmlFor="profilePictureInput"
-                  className="absolute bottom-0 right-0 bg-secondary text-secondary-foreground rounded-full p-1 cursor-pointer hover:bg-secondary/80 transition-colors"
-                >
-                  <Camera className="h-4 w-4" />
-                  <Input
-                    id="profilePictureInput"
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handlePictureChange}
+              <div className="relative mb-4 mt-6">
+                <Avatar className="h-24 w-24 border-2 border-primary shadow-sm">
+                  <AvatarImage
+                    src={
+                      profilePictureFile
+                        ? formData.profilePicture
+                        : getImageUrl(profile.profilePicture)
+                    }
+                    alt={formData.name || profile.name}
                   />
-                </label>
-              )}
-            </div>
+                  <AvatarFallback>
+                    {getInitials(formData.name || profile.name)}
+                  </AvatarFallback>
+                </Avatar>
 
-            {isEditing ? (
-              <Input
-                name="name"
-                value={formData.name || ""}
-                onChange={handleFormChange}
-                className="text-xl font-semibold mt-2 text-center max-w-xs"
-                placeholder="Ваше имя"
-              />
-            ) : (
-              <CardTitle>{profile.name}</CardTitle>
-            )}
-            <CardDescription>{profile.email}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center gap-3 justify-center sm:justify-start">
-              <Phone className="h-4 w-4 text-muted-foreground" />
+                {/* ONLINE STATUS INDICATOR */}
+                {!isEditing && (
+                  <span
+                    className={cn(
+                      "absolute bottom-1 right-1 h-5 w-5 rounded-full border-2 border-background z-20 transition-all duration-300",
+                      isCustomerOnline
+                        ? "bg-green-500 animate-pulse"
+                        : "bg-gray-300",
+                    )}
+                    title={isCustomerOnline ? "В сети" : "Не в сети"}
+                  />
+                )}
+
+                {isEditing && (
+                  <label
+                    htmlFor="profilePictureInput"
+                    className="absolute bottom-0 right-0 bg-secondary text-secondary-foreground rounded-full p-1.5 cursor-pointer hover:bg-secondary/80 transition-colors shadow-sm"
+                  >
+                    <Camera className="h-4 w-4" />
+                    <Input
+                      id="profilePictureInput"
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handlePictureChange}
+                    />
+                  </label>
+                )}
+              </div>
+
               {isEditing ? (
                 <Input
-                  name="phone"
-                  value={formData.phone || ""}
+                  name="name"
+                  value={formData.name || ""}
                   onChange={handleFormChange}
-                  placeholder="+7..."
-                  className="max-w-[200px]"
+                  className="text-xl font-semibold mt-2 text-center max-w-xs"
+                  placeholder="Ваше имя"
                 />
               ) : (
-                <span>{formatPhoneNumber(profile.phone) || "Не указан"}</span>
+                <CardTitle className="text-2xl">{profile.name}</CardTitle>
               )}
-            </div>
-            <div className="flex items-center gap-3 justify-center sm:justify-start">
-              <MapPin className="h-4 w-4 text-muted-foreground" />
-              {isEditing ? (
-                <Input
-                  name="city"
-                  value={formData.city || ""}
-                  onChange={handleFormChange}
-                  placeholder="Город"
-                  className="max-w-[200px]"
-                />
-              ) : (
-                <span>{profile.city || "Не указан"}</span>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+              <CardDescription className="text-sm">
+                {profile.email}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 pt-2">
+              <div className="flex flex-col sm:flex-row items-center gap-6 justify-center">
+                <div className="flex items-center gap-2">
+                  <Phone className="h-4 w-4 text-primary/70" />
+                  {isEditing ? (
+                    <Input
+                      name="phone"
+                      value={formData.phone || ""}
+                      onChange={handleFormChange}
+                      placeholder="+7..."
+                      className="h-8 w-36 text-sm"
+                    />
+                  ) : (
+                    <span className="text-sm font-medium">
+                      {formatPhoneNumber(profile.phone) || "Не указан"}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <MapPin className="h-4 w-4 text-primary/70" />
+                  {isEditing ? (
+                    <Input
+                      name="city"
+                      value={formData.city || ""}
+                      onChange={handleFormChange}
+                      placeholder="Город"
+                      className="h-8 w-36 text-sm"
+                    />
+                  ) : (
+                    <span className="text-sm font-medium">
+                      {profile.city || "Не указан"}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
-        {/* --- Subscription Section --- */}
-        <SubscriptionStatusCard />
+          {/* WALLET CARD */}
+          <Card className="border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-4 opacity-10">
+              <Wallet className="h-24 w-24" />
+            </div>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Wallet className="h-5 w-5 text-primary" />
+                Мой кошелек
+              </CardTitle>
+              <CardDescription>Доступный баланс</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="text-4xl font-bold text-foreground my-2">
+                {profile.walletBalance?.toLocaleString()}{" "}
+                <span className="text-muted-foreground text-2xl">₽</span>
+              </div>
+            </CardContent>
+            <CardFooter>
+              <Dialog open={isTopUpOpen} onOpenChange={setIsTopUpOpen}>
+                <DialogTrigger asChild>
+                  <Button className="w-full font-semibold shadow-sm">
+                    <PlusCircle className="mr-2 h-4 w-4" /> Пополнить баланс
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Пополнение кошелька</DialogTitle>
+                    <DialogDescription>
+                      Выберите сумму или введите свою для пополнения баланса.
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  <div className="py-4 space-y-4">
+                    <div className="grid grid-cols-2 gap-3">
+                      {TOP_UP_PRESETS.map((amount) => (
+                        <Button
+                          key={amount}
+                          type="button"
+                          variant={
+                            topUpAmount === amount.toString()
+                              ? "default"
+                              : "outline"
+                          }
+                          className={cn(
+                            "h-12 text-lg",
+                            topUpAmount === amount.toString() &&
+                              "ring-2 ring-primary/20",
+                          )}
+                          onClick={() => setTopUpAmount(amount.toString())}
+                        >
+                          {amount} ₽
+                        </Button>
+                      ))}
+                    </div>
+                    <div className="space-y-2 pt-2">
+                      <Label>Другая сумма</Label>
+                      <div className="relative">
+                        <Input
+                          type="number"
+                          placeholder="Введите сумму"
+                          value={topUpAmount}
+                          onChange={(e) => setTopUpAmount(e.target.value)}
+                          className="h-12 text-lg pl-4 pr-12"
+                        />
+                        <span className="absolute right-4 top-3 text-muted-foreground font-medium">
+                          ₽
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <DialogFooter>
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsTopUpOpen(false)}
+                    >
+                      Отмена
+                    </Button>
+                    <Button onClick={handleTopUpWallet} disabled={isToppingUp}>
+                      {isToppingUp ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <CreditCard className="mr-2 h-4 w-4" />
+                      )}
+                      Оплатить
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </CardFooter>
+          </Card>
+        </div>
 
         {/* --- Paid Requests Section --- */}
-        <Card>
-          <CardHeader className="flex flex-row justify-between items-center">
+        <Card className="shadow-sm">
+          <CardHeader className="flex flex-row justify-between items-center border-b pb-4 bg-muted/20">
             <div>
               <CardTitle className="flex items-center gap-2">
-                <Send className="h-5 w-5" /> Мои платные запросы
+                <Send className="h-5 w-5 text-primary" /> Мои платные заявки
               </CardTitle>
-              <CardDescription>Запросы, видимые исполнителям.</CardDescription>
+              <CardDescription className="mt-1">
+                Заявки, отправленные исполнителям напрямую.
+              </CardDescription>
             </div>
             <Link href="/create-request">
-              <Button variant="destructive">Создать новый</Button>
+              <Button className="shadow-sm">Создать новую</Button>
             </Link>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-6">
             {isRequestsLoading ? (
-              <ListSkeleton />
+              <div className="space-y-4">
+                <Skeleton className="h-24 w-full" />
+                <Skeleton className="h-24 w-full" />
+              </div>
             ) : paidRequests.length === 0 ? (
-              <p className="text-center text-muted-foreground">
-                У вас пока нет активных запросов.
-              </p>
+              <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-lg bg-muted/10">
+                У вас пока нет активных заявок.
+              </div>
             ) : (
               <div className="space-y-4">
                 {paidRequests.map((request) => (
-                  <Card key={request.id}>
-                    <CardContent className="pt-6 grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
-                      <div className="col-span-2 space-y-1">
-                        <p className="font-medium">
+                  <Card
+                    key={request.id}
+                    className="border bg-card hover:bg-muted/10 transition-colors"
+                  >
+                    <CardContent className="p-4 grid grid-cols-1 sm:grid-cols-4 gap-4 items-center">
+                      <div className="col-span-2 sm:col-span-3 space-y-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Badge
+                            variant="secondary"
+                            className="bg-primary/10 text-primary hover:bg-primary/20"
+                          >
+                            {request.category}
+                          </Badge>
+                          {request.city && (
+                            <span className="text-sm text-muted-foreground">
+                              • {request.city}
+                            </span>
+                          )}
+                        </div>
+                        <p className="font-medium text-sm line-clamp-2">
                           {request.serviceDescription}
                         </p>
-                        <p className="text-sm text-muted-foreground">
-                          {request.category}{" "}
-                          {request.city ? `• ${request.city}` : ""}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Создан:{" "}
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Создано:{" "}
                           {format(request.createdAt, "d MMMM yyyy", {
                             locale: ru,
                           })}
                         </p>
                       </div>
-                      <div className="text-right">
+                      <div className="text-left sm:text-right flex flex-row sm:flex-col items-center sm:items-end justify-between">
                         <Badge
                           variant={
-                            request.status === "open" ? "default" : "secondary"
+                            request.status === "OPEN" ? "default" : "outline"
+                          }
+                          className={
+                            request.status === "OPEN"
+                              ? "bg-emerald-500 hover:bg-emerald-600"
+                              : ""
                           }
                         >
-                          {request.status === "open" ? "Открыт" : "Закрыт"}
+                          {request.status === "OPEN" ? "Открыта" : "Закрыта"}
                         </Badge>
-                        <p className="text-xs text-muted-foreground mt-2">
-                          Просмотров: {request.views}
+                        <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                          <MessageCircle className="h-3 w-3" /> Просмотров:{" "}
+                          {request.views}
                         </p>
                       </div>
                     </CardContent>
@@ -695,90 +824,90 @@ const CustomerProfilePage = () => {
         </Card>
 
         {/* --- Order History Section --- */}
-        <Card>
-          <CardHeader>
+        <Card className="shadow-sm">
+          <CardHeader className="border-b pb-4 bg-muted/20">
             <CardTitle className="flex items-center gap-2">
-              <History className="h-5 w-5" /> История заказов
+              <History className="h-5 w-5 text-primary" /> История заказов
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-6">
             {isHistoryLoading ? (
-              <ListSkeleton />
-            ) : orderHistory.length === 0 ? (
-              <p className="text-center text-muted-foreground">
-                История заказов пуста.
-              </p>
-            ) : (
               <div className="space-y-4">
+                <Skeleton className="h-20 w-full" />
+                <Skeleton className="h-20 w-full" />
+              </div>
+            ) : orderHistory.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-lg bg-muted/10">
+                История заказов пуста.
+              </div>
+            ) : (
+              <div className="space-y-3">
                 {orderHistory.map((order) => {
-                  // Check if the performer for this past order is currently online
                   const isPerformerOnline = onlineUsers.includes(
                     order.performerId,
                   );
 
                   return (
-                    <Card key={order.id}>
-                      <CardContent className="pt-6 grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <Link
-                              href={`/performer-profile?id=${order.performerId}`}
-                              className="font-medium hover:underline flex items-center gap-2"
-                            >
-                              {order.performerName}
-                            </Link>
-                            {/* Green dot for performers they've hired before */}
-                            {isPerformerOnline && (
-                              <div
-                                className="h-2 w-2 rounded-full bg-green-500"
-                                title="В сети"
-                              />
-                            )}
-                          </div>
+                    <div
+                      key={order.id}
+                      className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 border rounded-lg hover:bg-muted/10 transition-colors gap-4"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <Link
+                            href={`/performer-profile?id=${order.performerId}`}
+                            className="font-semibold text-base hover:text-primary transition-colors flex items-center gap-2"
+                          >
+                            {order.performerName}
+                          </Link>
+                          {isPerformerOnline && (
+                            <div
+                              className="h-2 w-2 rounded-full bg-green-500"
+                              title="В сети"
+                            />
+                          )}
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          {order.service}
+                        </p>
+                        <Button
+                          variant="link"
+                          size="sm"
+                          className="h-auto p-0 text-xs text-primary flex items-center gap-1"
+                          onClick={() =>
+                            handleOpenChat(
+                              order.performerId,
+                              order.performerName,
+                            )
+                          }
+                        >
+                          <MessageCircle className="h-3 w-3" /> Написать
+                          сообщение
+                        </Button>
+                      </div>
 
-                          <p className="text-sm text-muted-foreground">
-                            {order.service}
-                          </p>
-                          <Button
-                            variant="link"
-                            size="sm"
-                            className="h-auto p-0 text-xs text-blue-600 flex items-center gap-1"
-                            onClick={() =>
-                              handleOpenChat(
-                                order.performerId,
-                                order.performerName,
-                              )
-                            }
-                          >
-                            <MessageCircle className="h-3 w-3" /> Написать
-                            сообщение
-                          </Button>
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-sm">
-                            {format(order.date, "d MMMM yyyy, HH:mm", {
-                              locale: ru,
-                            })}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
+                      <div className="flex flex-row sm:flex-col justify-between sm:justify-center sm:items-end w-full sm:w-auto gap-2">
+                        <div className="text-left sm:text-right">
+                          <p className="font-medium">
                             {order.price
-                              ? `${order.price.toLocaleString()} руб.`
-                              : "Цена не указана"}
+                              ? `${order.price.toLocaleString()} ₽`
+                              : "Договорная"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {format(order.date, "d MMM yyyy", { locale: ru })}
                           </p>
                         </div>
-                        <div className="text-right">
-                          <Badge
-                            variant={
-                              order.status === "completed"
-                                ? "outline"
-                                : "default"
-                            }
-                          >
-                            {order.status}
-                          </Badge>
-                        </div>
-                      </CardContent>
-                    </Card>
+                        <Badge
+                          variant={
+                            order.status === "completed"
+                              ? "secondary"
+                              : "default"
+                          }
+                        >
+                          {order.status}
+                        </Badge>
+                      </div>
+                    </div>
                   );
                 })}
               </div>
