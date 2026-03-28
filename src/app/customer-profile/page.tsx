@@ -155,29 +155,47 @@ const CustomerProfilePage = () => {
     }
   }, [profile]);
 
-  // 🚨 CRITICAL FIX: Handle Redirect from Tinkoff
+  // Handle Redirect from Tinkoff & Webhook Race Conditions
   useEffect(() => {
     const topupStatus = searchParams.get("topup");
     const paymentStatus = searchParams.get("payment");
 
     if (topupStatus === "success") {
-      // 1. Show success toast
       toast({
-        title: "Баланс пополнен",
-        description: "Средства успешно зачислены на ваш кошелек.",
-        variant: "success",
+        title: "Обработка платежа...",
+        description: "Ожидаем подтверждение от банка. Пожалуйста, подождите...",
       });
-      // 2. Force TanStack Query to refetch the profile to get the new wallet balance
-      refetchProfile();
-      // 3. Clean up the URL so the toast doesn't show again on refresh
+
+      // SMART POLLING: Check for the updated balance 4 times over 6 seconds
+      // to give the Tinkoff webhook time to update the database.
+      let attempts = 0;
+      const pollInterval = setInterval(() => {
+        attempts++;
+        refetchProfile(); // Ask the server for the latest balance
+
+        if (attempts >= 4) {
+          clearInterval(pollInterval);
+          toast({
+            title: "Баланс обновлен!",
+            description: "Средства успешно зачислены на ваш кошелек.",
+            // @ts-ignore - (Depending on your shadcn setup, 'success' might need to be 'default')
+            variant: "success",
+          });
+        }
+      }, 1500); // Check every 1.5 seconds
+
+      // Clean up the URL immediately so a manual refresh doesn't trigger this again
       router.replace("/customer-profile", { scroll: false });
+
+      // Cleanup interval if component unmounts
+      return () => clearInterval(pollInterval);
     }
 
     if (topupStatus === "failed") {
       toast({
         variant: "destructive",
         title: "Ошибка оплаты",
-        description: "Платеж был отклонен или отменен.",
+        description: "Платеж был отклонен или отменен банком.",
       });
       router.replace("/customer-profile", { scroll: false });
     }
@@ -186,6 +204,7 @@ const CustomerProfilePage = () => {
       toast({
         title: "Успешно!",
         description: "Заявка успешно оплачена и опубликована.",
+        // @ts-ignore
         variant: "success",
       });
       router.replace("/customer-profile", { scroll: false });

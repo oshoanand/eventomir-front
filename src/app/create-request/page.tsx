@@ -128,7 +128,7 @@ export default function CreateRequestPage() {
         serviceDescription,
         budget: budget || undefined,
         city: cityInput.trim(),
-        paymentMethod, // NEW: Pass the selected method to backend
+        paymentMethod,
       },
       {
         onSuccess: (response: any) => {

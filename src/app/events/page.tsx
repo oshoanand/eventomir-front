@@ -185,7 +185,9 @@ export default function EventsPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
           {filteredEvents.map((event) => {
-            const isSoldOut = event.availableTickets <= 0;
+            // 🚨 Hardened Fallback Check: If availableTickets is null/undefined, fallback to totalTickets
+            const available = event.availableTickets ?? event.totalTickets;
+            const isSoldOut = available <= 0 && event.totalTickets > 0;
 
             return (
               <Card
@@ -278,7 +280,7 @@ export default function EventsPage() {
                           : "font-medium text-foreground"
                       }
                     >
-                      {event.availableTickets} / {event.totalTickets}
+                      {available} / {event.totalTickets}
                     </span>
                   </div>
                   <Button

@@ -50,8 +50,8 @@ import {
   Trash2,
   Calendar,
   MapPin,
-  Ticket,
-  AlertCircle,
+  QrCode,
+  Users,
 } from "lucide-react";
 
 import {
@@ -132,8 +132,12 @@ export default function ManageEventsPage() {
 
   const handleSave = async () => {
     try {
-      // The backend should automatically securely assign hostId based on the token
-      const payload = { ...formData };
+      // 🚨 THE FIX: Explicitly set availableTickets to equal totalTickets on creation
+      // so it doesn't default to 0 and show up as "Sold Out" instantly.
+      const payload = {
+        ...formData,
+        availableTickets: formData.totalTickets,
+      };
 
       if (editingEvent) {
         await updateMutation.mutateAsync({
@@ -221,6 +225,10 @@ export default function ManageEventsPage() {
                       event.totalTickets - event.availableTickets;
                     const revenue = ticketsSold * event.price;
 
+                    // Logic to check if event has expired naturally
+                    const isExpired = new Date() > new Date(event.date);
+                    const displayStatus = isExpired ? "expired" : event.status;
+
                     return (
                       <TableRow key={event.id}>
                         <TableCell className="pl-6">
@@ -243,14 +251,18 @@ export default function ManageEventsPage() {
                         <TableCell>
                           <Badge
                             variant={
-                              event.status === "active"
+                              displayStatus === "active"
                                 ? "default"
-                                : "secondary"
+                                : displayStatus === "expired"
+                                  ? "destructive"
+                                  : "secondary"
                             }
                           >
-                            {event.status === "active"
+                            {displayStatus === "active"
                               ? "Активно"
-                              : event.status}
+                              : displayStatus === "expired"
+                                ? "Истекло"
+                                : event.status}
                           </Badge>
                         </TableCell>
                         <TableCell>
@@ -278,17 +290,44 @@ export default function ManageEventsPage() {
                         </TableCell>
                         <TableCell className="text-right pr-6">
                           <div className="flex justify-end gap-2">
+                            {/* --- BUTTONS FOR EVENT MANAGEMENT --- */}
                             <Button
                               variant="outline"
-                              size="sm"
+                              size="icon"
+                              title="Список гостей"
+                              onClick={() =>
+                                router.push(
+                                  `/manage-events/${event.id}/attendees`,
+                                )
+                              }
+                            >
+                              <Users className="h-4 w-4 text-blue-600" />
+                            </Button>
+
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              title="Сканировать билеты (Вход)"
+                              onClick={() =>
+                                router.push(`/manage-events/${event.id}/scan`)
+                              }
+                            >
+                              <QrCode className="h-4 w-4 text-green-600" />
+                            </Button>
+
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              title="Редактировать"
                               onClick={() => openEditDialog(event)}
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
                             <Button
                               variant="outline"
-                              size="sm"
+                              size="icon"
                               className="text-destructive hover:bg-destructive/10"
+                              title="Удалить"
                               onClick={() => handleDelete(event.id)}
                             >
                               <Trash2 className="h-4 w-4" />
