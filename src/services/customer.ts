@@ -29,7 +29,6 @@ export interface CustomerProfile {
   city: string;
   profilePicture: string;
   role: string;
-  // 🚨 NEW: Added missing fields from our recent backend updates
   walletBalance: number;
   subscription?: UserSubscription | null;
   unreadNotifications?: number;
@@ -71,10 +70,11 @@ const updateProfile = async (
 ): Promise<CustomerProfile> => {
   const formData = new FormData();
 
-  // Safely append text fields
-  if (data.name) formData.append("name", data.name);
-  if (data.phone) formData.append("phone", data.phone);
-  if (data.city) formData.append("city", data.city);
+  // 🚨 FIX: Safely append text fields by checking for undefined.
+  // This allows users to successfully send empty strings to clear out optional fields like 'city' or 'phone'.
+  if (data.name !== undefined) formData.append("name", data.name);
+  if (data.phone !== undefined) formData.append("phone", data.phone);
+  if (data.city !== undefined) formData.append("city", data.city);
 
   // Safely append file
   if (data.profilePictureFile) {

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -33,6 +33,7 @@ import {
   MessageCircle,
   Loader2,
   CreditCard,
+  CheckCircle,
 } from "lucide-react";
 
 import { format } from "date-fns";
@@ -100,17 +101,21 @@ const TOP_UP_PRESETS = [500, 1000, 2000, 5000];
 const CustomerProfilePage = () => {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
 
   const { onlineUsers } = useSocket() || { onlineUsers: [] };
 
   // --- Data Fetching Hooks ---
-  const { data: profile, isLoading: isProfileLoading } = useCustomerProfile();
+  const {
+    data: profile,
+    isLoading: isProfileLoading,
+    refetch: refetchProfile,
+  } = useCustomerProfile();
 
   const { data: orderHistory = [], isLoading: isHistoryLoading } =
     useCustomerOrders();
 
-  // NOTE: Passed optional customerId as required by the updated service
   const { data: paidRequests = [], isLoading: isRequestsLoading } =
     useCustomerRequestsQuery(session?.user?.id);
 
@@ -149,6 +154,43 @@ const CustomerProfilePage = () => {
       setFormData(profile);
     }
   }, [profile]);
+
+  // 🚨 CRITICAL FIX: Handle Redirect from Tinkoff
+  useEffect(() => {
+    const topupStatus = searchParams.get("topup");
+    const paymentStatus = searchParams.get("payment");
+
+    if (topupStatus === "success") {
+      // 1. Show success toast
+      toast({
+        title: "Баланс пополнен",
+        description: "Средства успешно зачислены на ваш кошелек.",
+        variant: "success",
+      });
+      // 2. Force TanStack Query to refetch the profile to get the new wallet balance
+      refetchProfile();
+      // 3. Clean up the URL so the toast doesn't show again on refresh
+      router.replace("/customer-profile", { scroll: false });
+    }
+
+    if (topupStatus === "failed") {
+      toast({
+        variant: "destructive",
+        title: "Ошибка оплаты",
+        description: "Платеж был отклонен или отменен.",
+      });
+      router.replace("/customer-profile", { scroll: false });
+    }
+
+    if (paymentStatus === "success") {
+      toast({
+        title: "Успешно!",
+        description: "Заявка успешно оплачена и опубликована.",
+        variant: "success",
+      });
+      router.replace("/customer-profile", { scroll: false });
+    }
+  }, [searchParams, toast, router, refetchProfile]);
 
   useEffect(() => {
     if (session?.user?.id) {
@@ -298,7 +340,6 @@ const CustomerProfilePage = () => {
 
     setIsToppingUp(true);
     try {
-      // Calls your new Top Up backend route
       const response = await apiRequest<{ paymentUrl: string }>({
         method: "post",
         url: "/api/wallet/topup",

@@ -22,7 +22,7 @@ const VerifyEmailContent = () => {
   const router = useRouter();
 
   // Get token from ?token=...
-  // Получаем токен из query параметров
+
   const token = searchParams.get("token");
 
   const [verificationStatus, setVerificationStatus] = useState<
@@ -39,8 +39,6 @@ const VerifyEmailContent = () => {
       }
 
       try {
-        // Call your Backend API
-        // Вызываем ваш Backend API
         const response = await fetch(
           `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/auth/verify-email?token=${token}`,
           {
@@ -50,7 +48,6 @@ const VerifyEmailContent = () => {
         );
 
         const data = await response.json();
-        console.log(data);
 
         if (response.ok) {
           setVerificationStatus("success");
@@ -128,7 +125,7 @@ const VerifyEmailContent = () => {
               </div>
 
               {/* Link to Resend Page */}
-              {/* Ссылка на страницу повторной отправки */}
+
               <Button
                 asChild
                 variant="outline"
