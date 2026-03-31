@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 
@@ -161,6 +161,25 @@ export default function PerformerProfilePage() {
   const [isTopUpDialogOpen, setIsTopUpDialogOpen] = useState(false);
   const [topUpAmount, setTopUpAmount] = useState<number | "">("");
   const [isProcessingTopUp, setIsProcessingTopUp] = useState(false);
+  const [walletBalance, setWalletBalance] = useState<number>(0); // 🚨 NEW: Dedicated wallet state
+
+  // 🚨 NEW: Fetch secure wallet balance directly from /api/users/me
+  const fetchWallet = useCallback(async () => {
+    if (!isOwnProfile) return;
+    try {
+      const data = await apiRequest<{ walletBalance: number }>({
+        method: "get",
+        url: "/api/users/me",
+      });
+      setWalletBalance(data.walletBalance || 0);
+    } catch (error) {
+      console.error("Failed to fetch wallet balance", error);
+    }
+  }, [isOwnProfile]);
+
+  useEffect(() => {
+    fetchWallet();
+  }, [fetchWallet]);
 
   useEffect(() => {
     if (profile) {
@@ -203,27 +222,25 @@ export default function PerformerProfilePage() {
     const topupStatus = searchParams.get("topup");
     const paymentStatus = searchParams.get("payment");
 
-    console.log(topupStatus);
-
     if (topupStatus === "success") {
       toast({
         title: "Обработка платежа...",
         description: "Ожидаем подтверждение от банка. Пожалуйста, подождите...",
       });
 
-      // SMART POLLING: Check for the updated balance 4 times over 6 seconds
-      // to give the Tinkoff webhook time to update the database.
+      // SMART POLLING: Check for the updated balance
       let attempts = 0;
       const pollInterval = setInterval(() => {
         attempts++;
-        refetchProfile(); // Ask the server for the latest balance
+        refetchProfile();
+        fetchWallet(); // 🚨 NEW: Ask the secure endpoint for the latest balance
 
         if (attempts >= 4) {
           clearInterval(pollInterval);
           toast({
             title: "Баланс обновлен!",
             description: "Средства успешно зачислены на ваш кошелек.",
-            // @ts-ignore - (Depending on your shadcn setup, 'success' might need to be 'default')
+            // @ts-ignore
             variant: "success",
           });
         }
@@ -242,7 +259,7 @@ export default function PerformerProfilePage() {
         title: "Ошибка оплаты",
         description: "Платеж был отклонен или отменен банком.",
       });
-      router.replace("/customer-profile", { scroll: false });
+      router.replace("/performer-profile", { scroll: false }); // Fixed redirect
     }
 
     if (paymentStatus === "success") {
@@ -252,9 +269,9 @@ export default function PerformerProfilePage() {
         // @ts-ignore
         variant: "success",
       });
-      router.replace("/customer-profile", { scroll: false });
+      router.replace("/performer-profile", { scroll: false }); // Fixed redirect
     }
-  }, [searchParams, toast, router, refetchProfile]);
+  }, [searchParams, toast, router, refetchProfile, fetchWallet]);
 
   // --- UNIVERSAL PARTIAL UPDATE HANDLER ---
   const handlePartialUpdate = async (
@@ -501,9 +518,6 @@ export default function PerformerProfilePage() {
     );
   }
 
-  // Safe fallback if walletBalance is not explicitly typed yet on the profile object
-  const currentWalletBalance = (profile as any).walletBalance || 0;
-
   return (
     <>
       <div className="container max-w-5xl mx-auto py-8 px-4 space-y-8 animate-in fade-in">
@@ -706,6 +720,7 @@ export default function PerformerProfilePage() {
                   </div>
                 </TabsContent>
 
+                {/* --- NEW WALLET DASHBOARD --- */}
                 <TabsContent
                   value="wallet"
                   className="m-0 focus-visible:outline-none"
@@ -721,7 +736,8 @@ export default function PerformerProfilePage() {
                             Баланс счета
                           </p>
                           <h3 className="text-5xl font-extrabold tracking-tight mb-6">
-                            {currentWalletBalance.toLocaleString("ru-RU")} ₽
+                            {/* 🚨 CHANGED: Using our specific walletBalance state variable */}
+                            {walletBalance.toLocaleString("ru-RU")} ₽
                           </h3>
                           <Button
                             onClick={() => setIsTopUpDialogOpen(true)}
@@ -745,6 +761,7 @@ export default function PerformerProfilePage() {
                     </div>
                   </div>
                 </TabsContent>
+                {/* ------------------------- */}
 
                 <TabsContent
                   value="calendar"
