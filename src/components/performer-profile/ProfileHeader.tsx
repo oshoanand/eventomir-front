@@ -198,7 +198,7 @@ export default function ProfileHeader({
 
     return (
       <div className="flex items-center gap-1.5 text-lg font-semibold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-1 rounded-full border border-emerald-100 dark:border-emerald-900 mt-2 w-fit">
-        <DollarSign className="h-4 w-4" />
+        {/* <DollarSign className="h-4 w-4" /> */}
         <span>
           {minPrice === maxPrice && minPrice > 0
             ? `${minPrice.toLocaleString()} ₽`

@@ -548,7 +548,7 @@ export default function PerformerProfilePage() {
               <Button
                 variant="ghost"
                 size="sm"
-                className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary"
+                className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-black"
                 onClick={() => setIsCategoryDialogOpen(true)}
               >
                 <Edit3 className="h-4 w-4 mr-2" /> Редактировать

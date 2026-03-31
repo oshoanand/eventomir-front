@@ -2,7 +2,7 @@
 
 // import { useState, useEffect, useCallback } from "react";
 // import { useRouter } from "next/navigation";
-// import { useSession } from "next-auth/react"; // <-- Changed to NextAuth
+// import { useSession } from "next-auth/react";
 // import {
 //   Card,
 //   CardContent,
@@ -30,7 +30,6 @@
 // import { cn } from "@/utils/utils";
 
 // const CompleteRegistrationPage = () => {
-//   // Use NextAuth to manage session state reliably
 //   const { data: session, status, update } = useSession();
 //   const router = useRouter();
 //   const { toast } = useToast();
@@ -51,7 +50,6 @@
 //     if (status === "unauthenticated") {
 //       router.push("/login");
 //     } else if (status === "authenticated") {
-//       // If user already has a valid role, bounce them to their dashboard
 //       if (session?.user?.role) {
 //         const dashboard =
 //           session.user.role === "customer"
@@ -94,7 +92,47 @@
 //     [regions],
 //   );
 
-//   // 4. Submit Registration
+//   // 4. Handle Phone Number Masking (+7 (XXX) XXX-XX-XX)
+//   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+//     const input = e.target.value;
+
+//     // Allow the user to completely clear the input easily
+//     if (!input || input === "+7" || input === "+7 (" || input === "+") {
+//       setPhone("");
+//       return;
+//     }
+
+//     // Extract all digits from the input string
+//     let digits = input.replace(/\D/g, "");
+
+//     // If the user pastes a number starting with 7 or 8, strip it out
+//     // so we isolate just the 10-digit actual number
+//     if (digits.startsWith("7") || digits.startsWith("8")) {
+//       digits = digits.slice(1);
+//     }
+
+//     // Strictly limit to exactly 10 digits maximum
+//     digits = digits.slice(0, 10);
+
+//     // Reconstruct the formatted string
+//     let formatted = "+7";
+//     if (digits.length > 0) {
+//       formatted += ` (${digits.slice(0, 3)}`;
+//     }
+//     if (digits.length >= 4) {
+//       formatted += `) ${digits.slice(3, 6)}`;
+//     }
+//     if (digits.length >= 7) {
+//       formatted += `-${digits.slice(6, 8)}`;
+//     }
+//     if (digits.length >= 9) {
+//       formatted += `-${digits.slice(8, 10)}`;
+//     }
+
+//     setPhone(formatted);
+//   };
+
+//   // 5. Submit Registration
 //   const handleComplete = async () => {
 //     if (!role) {
 //       toast({
@@ -113,26 +151,36 @@
 //       });
 //       return;
 //     }
-//     if (!phone || !/^(\+7|8)\d{10}$/.test(phone)) {
+
+//     // Extract raw digits for validation and backend submission
+//     const rawDigits = phone.replace(/\D/g, "");
+
+//     // rawDigits will be exactly 11 characters if fully filled (1 for the '7' and 10 for the number)
+//     if (rawDigits.length !== 11) {
 //       toast({
 //         variant: "destructive",
 //         title: "Некорректный телефон",
-//         description: "Введите номер в формате +79990000000.",
+//         description:
+//           "Пожалуйста, введите номер телефона полностью (10 цифр после +7).",
 //       });
 //       return;
 //     }
 
+//     // Format to standard +7XXXXXXXXXX for the backend
+//     const formattedPhoneForBackend = `+${rawDigits}`;
+
 //     setIsSubmitting(true);
 //     try {
-//       // A. Update the database using our custom API route
-//       const result = await completeOAuthRegistration({ role, phone, city });
+//       const result = await completeOAuthRegistration({
+//         role,
+//         phone: formattedPhoneForBackend,
+//         city,
+//       });
 
 //       if (!result.success) {
 //         throw new Error(result.message);
 //       }
 
-//       // B. Force NextAuth to update the local session token with the new role.
-//       // This triggers the JWT callback and prevents redirect loops!
 //       await update({ role });
 
 //       toast({
@@ -141,7 +189,6 @@
 //         description: "Добро пожаловать в Eventomir.",
 //       });
 
-//       // C. Redirect safely
 //       router.push(
 //         role === "customer" ? "/customer-profile" : "/performer-profile",
 //       );
@@ -156,7 +203,6 @@
 //     }
 //   };
 
-//   // Show loading spinner while checking session or if redirecting
 //   if (
 //     status === "loading" ||
 //     (status === "authenticated" && session?.user?.role)
@@ -286,7 +332,7 @@
 //                   placeholder="+7 (999) 000-00-00"
 //                   type="tel"
 //                   value={phone}
-//                   onChange={(e) => setPhone(e.target.value)}
+//                   onChange={handlePhoneChange} // Changed from setPhone
 //                   disabled={isSubmitting}
 //                 />
 //               </div>
@@ -336,6 +382,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import {
   User,
@@ -357,6 +410,9 @@ const CompleteRegistrationPage = () => {
   const { toast } = useToast();
 
   const [role, setRole] = useState<"customer" | "performer" | null>(null);
+  const [accountType, setAccountType] = useState<string>("individual");
+  const [companyName, setCompanyName] = useState("");
+  const [inn, setINN] = useState("");
   const [city, setCity] = useState("");
   const [phone, setPhone] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -383,6 +439,13 @@ const CompleteRegistrationPage = () => {
       }
     }
   }, [status, session, router]);
+
+  // Reset account type to a safe default if role changes
+  useEffect(() => {
+    if (role === "customer" && accountType === "agency") {
+      setAccountType("individual");
+    }
+  }, [role, accountType]);
 
   // 2. Fetch City/Region Data
   useEffect(() => {
@@ -428,7 +491,6 @@ const CompleteRegistrationPage = () => {
     let digits = input.replace(/\D/g, "");
 
     // If the user pastes a number starting with 7 or 8, strip it out
-    // so we isolate just the 10-digit actual number
     if (digits.startsWith("7") || digits.startsWith("8")) {
       digits = digits.slice(1);
     }
@@ -465,6 +527,36 @@ const CompleteRegistrationPage = () => {
       });
       return;
     }
+
+    const needsCompanyName = [
+      "legalEntity",
+      "individualEntrepreneur",
+      "agency",
+    ].includes(accountType);
+    if (needsCompanyName && (!companyName || companyName.trim().length < 2)) {
+      toast({
+        variant: "destructive",
+        title: "Укажите название",
+        description:
+          "Для данного типа профиля необходимо указать название компании или ИП.",
+      });
+      return;
+    }
+
+    const needsINN = [
+      "legalEntity",
+      "individualEntrepreneur",
+      "agency",
+    ].includes(accountType);
+    if (needsINN && (!inn || inn.trim().length < 10)) {
+      toast({
+        variant: "destructive",
+        title: "Укажите название",
+        description: "10 или 12 цифр",
+      });
+      return;
+    }
+
     if (!city || city.length < 2) {
       toast({
         variant: "destructive",
@@ -477,7 +569,6 @@ const CompleteRegistrationPage = () => {
     // Extract raw digits for validation and backend submission
     const rawDigits = phone.replace(/\D/g, "");
 
-    // rawDigits will be exactly 11 characters if fully filled (1 for the '7' and 10 for the number)
     if (rawDigits.length !== 11) {
       toast({
         variant: "destructive",
@@ -488,7 +579,6 @@ const CompleteRegistrationPage = () => {
       return;
     }
 
-    // Format to standard +7XXXXXXXXXX for the backend
     const formattedPhoneForBackend = `+${rawDigits}`;
 
     setIsSubmitting(true);
@@ -497,6 +587,9 @@ const CompleteRegistrationPage = () => {
         role,
         phone: formattedPhoneForBackend,
         city,
+        accountType,
+        companyName: needsCompanyName ? companyName.trim() : undefined,
+        inn: needsINN ? inn.trim() : undefined,
       });
 
       if (!result.success) {
@@ -600,12 +693,95 @@ const CompleteRegistrationPage = () => {
         {/* Additional Info Form */}
         <Card className="shadow-md">
           <CardHeader>
-            <CardTitle className="text-lg">Контактная информация</CardTitle>
+            <CardTitle className="text-lg">Дополнительная информация</CardTitle>
             <CardDescription>
-              Эти данные необходимы для связи и корректной работы поиска.
+              Эти данные необходимы для связи и корректной работы платформы.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            {/* Account Type Selection */}
+            <div className="space-y-2">
+              <Label htmlFor="accountType" className="font-semibold">
+                Тип профиля <span className="text-destructive">*</span>
+              </Label>
+              <Select
+                value={accountType}
+                onValueChange={setAccountType}
+                disabled={isSubmitting || !role}
+              >
+                <SelectTrigger className="bg-muted/20">
+                  <SelectValue placeholder="Выберите тип профиля" />
+                </SelectTrigger>
+                <SelectContent>
+                  {role === "performer" ? (
+                    <>
+                      <SelectItem value="selfEmployed">Самозанятый</SelectItem>
+                      <SelectItem value="individualEntrepreneur">
+                        Индивидуальный предприниматель (ИП)
+                      </SelectItem>
+                      <SelectItem value="legalEntity">
+                        Юридическое лицо
+                      </SelectItem>
+                      <SelectItem value="agency">Агентство</SelectItem>
+                    </>
+                  ) : (
+                    <>
+                      <SelectItem value="individual">
+                        Физическое лицо
+                      </SelectItem>{" "}
+                      <SelectItem value="legalEntity">
+                        Юридическое лицо
+                      </SelectItem>
+                    </>
+                  )}
+                </SelectContent>
+              </Select>
+              {!role && (
+                <p className="text-[11px] text-muted-foreground">
+                  Сначала выберите вашу роль выше.
+                </p>
+              )}
+            </div>
+
+            {/* Conditional Company Name */}
+            {["legalEntity", "individualEntrepreneur", "agency"].includes(
+              accountType,
+            ) && (
+              <div className="space-y-2 animate-in slide-in-from-top-2">
+                <Label htmlFor="companyName" className="font-semibold">
+                  Название компании / ИП{" "}
+                  <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="companyName"
+                  className="bg-muted/20"
+                  placeholder='Например: ООО "Ивент Плюс" или ИП Иванов И.И.'
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  disabled={isSubmitting}
+                />
+              </div>
+            )}
+            {/* Conditional INN */}
+            {["legalEntity", "individualEntrepreneur", "agency"].includes(
+              accountType,
+            ) && (
+              <div className="space-y-2 animate-in slide-in-from-top-2">
+                <Label htmlFor="inn" className="font-semibold">
+                  ИНН <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="inn"
+                  className="bg-muted/20"
+                  placeholder="10 или 12 цифр"
+                  value={inn}
+                  onChange={(e) => setINN(e.target.value)}
+                  disabled={isSubmitting}
+                />
+              </div>
+            )}
+
+            {/* City Field */}
             <div className="space-y-2 relative">
               <Label htmlFor="city" className="font-semibold">
                 Ваш город <span className="text-destructive">*</span>
@@ -642,6 +818,7 @@ const CompleteRegistrationPage = () => {
               )}
             </div>
 
+            {/* Phone Field */}
             <div className="space-y-2">
               <Label htmlFor="phone" className="font-semibold">
                 Номер телефона <span className="text-destructive">*</span>
@@ -654,7 +831,7 @@ const CompleteRegistrationPage = () => {
                   placeholder="+7 (999) 000-00-00"
                   type="tel"
                   value={phone}
-                  onChange={handlePhoneChange} // Changed from setPhone
+                  onChange={handlePhoneChange}
                   disabled={isSubmitting}
                 />
               </div>
