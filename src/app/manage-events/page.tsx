@@ -24,6 +24,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   Table,
@@ -41,6 +42,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 
 // Icons
@@ -52,6 +54,7 @@ import {
   MapPin,
   QrCode,
   Users,
+  Info,
 } from "lucide-react";
 
 import {
@@ -88,10 +91,9 @@ export default function ManageEventsPage() {
     sessionStatus === "unauthenticated" ||
     (sessionStatus === "authenticated" && !isPerformer)
   ) {
-    router.push("/login"); // Redirect unauthorized users
+    router.push("/login");
   }
 
-  // Fetch only events hosted by this performer
   const { data: events = [], isLoading } = useMyHostedEventsQuery(
     sessionStatus === "authenticated",
     isPerformer,
@@ -105,6 +107,13 @@ export default function ManageEventsPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
   const [formData, setFormData] = useState(defaultFormState);
+
+  // Derived state for business rules
+  const editingEventTicketsSold = editingEvent
+    ? (editingEvent.totalTickets || 0) -
+      (editingEvent.availableTickets ?? editingEvent.totalTickets ?? 0)
+    : 0;
+  const editingEventHasSales = editingEventTicketsSold > 0;
 
   const openCreateDialog = () => {
     setEditingEvent(null);
@@ -132,8 +141,7 @@ export default function ManageEventsPage() {
 
   const handleSave = async () => {
     try {
-      // 🚨 THE FIX: Explicitly set availableTickets to equal totalTickets on creation
-      // so it doesn't default to 0 and show up as "Sold Out" instantly.
+      // Explicitly sync availableTickets on creation to prevent immediate "Sold out" bugs
       const payload = {
         ...formData,
         availableTickets: formData.totalTickets,
@@ -159,10 +167,26 @@ export default function ManageEventsPage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
+  // 🚨 BUSINESS RULE: Cannot delete an event if tickets have been sold.
+  const handleDelete = async (event: Event) => {
+    const ticketsSold =
+      (event.totalTickets || 0) -
+      (event.availableTickets ?? event.totalTickets ?? 0);
+
+    if (ticketsSold > 0) {
+      toast({
+        variant: "destructive",
+        title: "Удаление запрещено",
+        description:
+          "Вы не можете удалить событие, на которое уже проданы билеты.",
+      });
+      return;
+    }
+
     if (!confirm("Вы уверены? Это действие нельзя отменить.")) return;
+
     try {
-      await deleteMutation.mutateAsync(id);
+      await deleteMutation.mutateAsync(event.id);
       toast({ title: "Событие удалено" });
     } catch (error: any) {
       toast({
@@ -177,7 +201,7 @@ export default function ManageEventsPage() {
 
   if (sessionStatus === "loading" || isLoading)
     return <div className="p-10 text-center">Загрузка...</div>;
-  if (!isPerformer) return null; // Prevent rendering while redirecting
+  if (!isPerformer) return null;
 
   return (
     <div className="container mx-auto py-10 max-w-6xl animate-in fade-in">
@@ -222,15 +246,52 @@ export default function ManageEventsPage() {
                 ) : (
                   events.map((event) => {
                     const ticketsSold =
-                      event.totalTickets - event.availableTickets;
+                      (event.totalTickets || 0) -
+                      (event.availableTickets ?? event.totalTickets ?? 0);
                     const revenue = ticketsSold * event.price;
+                    const hasSales = ticketsSold > 0;
 
-                    // Logic to check if event has expired naturally
-                    const isExpired = new Date() > new Date(event.date);
-                    const displayStatus = isExpired ? "expired" : event.status;
+                    // 🚨 BUSINESS RULE: Event Status Calculation
+                    const isExpiredNatural = new Date() > new Date(event.date);
+                    let displayStatus = event.status;
+
+                    if (event.status !== "cancelled" && isExpiredNatural) {
+                      displayStatus = "completed"; // Override display to "completed" if date has passed
+                    }
+
+                    // Helper for dynamic badge colors
+                    const badgeStyles: Record<
+                      string,
+                      {
+                        label: string;
+                        variant:
+                          | "default"
+                          | "secondary"
+                          | "destructive"
+                          | "outline";
+                      }
+                    > = {
+                      active: { label: "Активно", variant: "default" },
+                      completed: { label: "Завершено", variant: "secondary" },
+                      cancelled: { label: "Отменено", variant: "destructive" },
+                      draft: { label: "Черновик", variant: "outline" },
+                    };
+
+                    const currentBadge = badgeStyles[displayStatus] || {
+                      label: displayStatus,
+                      variant: "secondary",
+                    };
 
                     return (
-                      <TableRow key={event.id}>
+                      <TableRow
+                        key={event.id}
+                        className={
+                          displayStatus === "completed" ||
+                          displayStatus === "cancelled"
+                            ? "opacity-75"
+                            : ""
+                        }
+                      >
                         <TableCell className="pl-6">
                           <div className="flex items-center gap-4">
                             <img
@@ -249,20 +310,8 @@ export default function ManageEventsPage() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge
-                            variant={
-                              displayStatus === "active"
-                                ? "default"
-                                : displayStatus === "expired"
-                                  ? "destructive"
-                                  : "secondary"
-                            }
-                          >
-                            {displayStatus === "active"
-                              ? "Активно"
-                              : displayStatus === "expired"
-                                ? "Истекло"
-                                : event.status}
+                          <Badge variant={currentBadge.variant}>
+                            {currentBadge.label}
                           </Badge>
                         </TableCell>
                         <TableCell>
@@ -290,7 +339,6 @@ export default function ManageEventsPage() {
                         </TableCell>
                         <TableCell className="text-right pr-6">
                           <div className="flex justify-end gap-2">
-                            {/* --- BUTTONS FOR EVENT MANAGEMENT --- */}
                             <Button
                               variant="outline"
                               size="icon"
@@ -308,6 +356,7 @@ export default function ManageEventsPage() {
                               variant="outline"
                               size="icon"
                               title="Сканировать билеты (Вход)"
+                              disabled={displayStatus === "cancelled"} // No need to scan cancelled events
                               onClick={() =>
                                 router.push(`/manage-events/${event.id}/scan`)
                               }
@@ -323,12 +372,18 @@ export default function ManageEventsPage() {
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
+
                             <Button
                               variant="outline"
                               size="icon"
-                              className="text-destructive hover:bg-destructive/10"
-                              title="Удалить"
-                              onClick={() => handleDelete(event.id)}
+                              className="text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                              title={
+                                hasSales
+                                  ? "Нельзя удалить событие с продажами"
+                                  : "Удалить"
+                              }
+                              disabled={hasSales} // 🚨 BUSINESS RULE: Disabled if sales exist
+                              onClick={() => handleDelete(event)}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -351,6 +406,12 @@ export default function ManageEventsPage() {
             <DialogTitle>
               {editingEvent ? "Редактировать событие" : "Создать новое событие"}
             </DialogTitle>
+            {editingEventHasSales && (
+              <DialogDescription className="text-orange-600 font-medium pt-2">
+                Внимание: на это событие продано {editingEventTicketsSold}{" "}
+                билетов. Некоторые действия ограничены.
+              </DialogDescription>
+            )}
           </DialogHeader>
 
           <div className="grid grid-cols-2 gap-5 py-4">
@@ -390,10 +451,31 @@ export default function ManageEventsPage() {
                 <SelectContent>
                   <SelectItem value="active">Активно (в продаже)</SelectItem>
                   <SelectItem value="draft">Черновик (скрыто)</SelectItem>
-                  <SelectItem value="cancelled">Отменено</SelectItem>
+                  {/* 🚨 BUSINESS RULE: Disable cancellation if tickets sold */}
+                  <SelectItem value="cancelled" disabled={editingEventHasSales}>
+                    Отменено {editingEventHasSales && "(Недоступно)"}
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Support Message for Cancellation */}
+            {editingEventHasSales && (
+              <div className="col-span-2">
+                <Alert className="bg-blue-50 text-blue-800 border-blue-200">
+                  <Info className="h-4 w-4 text-blue-600" />
+                  <AlertTitle>Нужно отменить мероприятие?</AlertTitle>
+                  <AlertDescription className="text-xs mt-1">
+                    Так как билеты уже куплены, прямая отмена недоступна.
+                    Пожалуйста, обратитесь в{" "}
+                    <a href="/support" className="underline font-bold">
+                      службу поддержки Eventomir
+                    </a>{" "}
+                    для оформления массового возврата средств зрителям.
+                  </AlertDescription>
+                </Alert>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label>Дата</Label>
@@ -443,7 +525,7 @@ export default function ManageEventsPage() {
               <Label>Вместимость (Кол-во билетов)</Label>
               <Input
                 type="number"
-                min="1"
+                min={editingEventHasSales ? editingEventTicketsSold : "1"} // Cannot set capacity lower than sold tickets
                 value={formData.totalTickets}
                 onChange={(e) =>
                   setFormData({
@@ -452,6 +534,11 @@ export default function ManageEventsPage() {
                   })
                 }
               />
+              {editingEventHasSales && (
+                <p className="text-[10px] text-muted-foreground">
+                  Минимум: {editingEventTicketsSold}
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -460,6 +547,7 @@ export default function ManageEventsPage() {
                 type="number"
                 min="0"
                 value={formData.price}
+                disabled={editingEventHasSales} // Cannot change price if already selling
                 onChange={(e) =>
                   setFormData({
                     ...formData,
@@ -467,6 +555,11 @@ export default function ManageEventsPage() {
                   })
                 }
               />
+              {editingEventHasSales && (
+                <p className="text-[10px] text-muted-foreground">
+                  Изменение цены недоступно
+                </p>
+              )}
             </div>
 
             <div className="col-span-2 space-y-2">

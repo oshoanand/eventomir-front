@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/utils/api-client";
 import { BookingRequest } from "@/services/booking";
+import { UserSubscription } from "@/services/payment"; // Added import
 
 export type ModerationStatus = "pending_approval" | "approved" | "rejected";
 
@@ -99,6 +100,7 @@ export interface PerformerProfile extends PerformerProfileBase {
   recommendationLetters?: RecommendationLetter[];
   reviews?: Review[];
   isVip?: boolean; // Added for search functionality
+  subscription?: UserSubscription | null; // 🚨 Added to support subscription tracking
 }
 
 export type TransportDetails = {
@@ -198,6 +200,7 @@ const mapProfileFromPrivateTable = (data: any): PerformerProfile => {
     parentAgencyId: data.parent_agency_id,
     subProfileIds: data.sub_profile_ids || [],
     details: data.details || {},
+    subscription: data.subscription || null,
     gallery:
       data.gallery_items
         ?.map((item: any) => ({

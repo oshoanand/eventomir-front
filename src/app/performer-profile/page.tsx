@@ -28,6 +28,7 @@ import {
 import { createOrGetChat } from "@/services/chat";
 import { getSiteSettings } from "@/services/settings";
 import { useReviews } from "@/services/reviews";
+import { apiRequest } from "@/utils/api-client";
 
 // --- Components ---
 import SubscriptionStatusCard from "@/components/profile/SubscriptionStatusCard";
@@ -49,6 +50,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
   User,
   Star,
@@ -58,6 +60,9 @@ import {
   CalendarIcon,
   Edit3,
   Tags,
+  Wallet,
+  PlusCircle,
+  CreditCard,
 } from "lucide-react";
 
 import ChatDialog from "@/components/chat/ChatDialog";
@@ -101,10 +106,8 @@ export default function PerformerProfilePage() {
   const router = useRouter();
   const { toast } = useToast();
 
-  // Safe destructuring of socket context
   const { onlineUsers } = useSocket() || { onlineUsers: [] };
 
-  // --- Identity Logic ---
   const urlProfileId = searchParams.get("id");
   const sessionUser = session?.user;
   const targetProfileId = urlProfileId
@@ -116,7 +119,6 @@ export default function PerformerProfilePage() {
     sessionUser?.id && targetProfileId === sessionUser.id
   );
 
-  // --- Data Fetching ---
   const {
     data: profile,
     isLoading: isProfileLoading,
@@ -124,18 +126,14 @@ export default function PerformerProfilePage() {
     refetch: refetchProfile,
   } = usePerformerProfile(targetProfileId || null);
 
-  // Real-time online status check
   const isPerformerOnline = profile ? onlineUsers.includes(profile.id) : false;
-
   const { data: reviews = [] } = useReviews(targetProfileId || null);
 
-  // --- Dynamic Categories State ---
   const [adminCategories, setAdminCategories] = useState<string[]>([]);
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
   const [tempSelectedRoles, setTempSelectedRoles] = useState<string[]>([]);
   const [isSavingCategories, setIsSavingCategories] = useState(false);
 
-  // --- Mutations ---
   const updateMutation = useUpdatePerformerProfile();
   const deleteMutation = useDeletePerformerProfile();
   const createBookingMutation = useCreateBookingRequest();
@@ -148,7 +146,6 @@ export default function PerformerProfilePage() {
   const addLetterMutation = useAddRecommendationLetter();
   const removeLetterMutation = useRemoveRecommendationLetter();
 
-  // --- Local UI State ---
   const [isFavorite, setIsFavorite] = useState(false);
   const [isBookingOpen, setIsBookingOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
@@ -160,7 +157,11 @@ export default function PerformerProfilePage() {
   const [isCertificateDialogOpen, setIsCertificateDialogOpen] = useState(false);
   const [isLetterDialogOpen, setIsLetterDialogOpen] = useState(false);
 
-  // --- Effects ---
+  // --- Wallet State ---
+  const [isTopUpDialogOpen, setIsTopUpDialogOpen] = useState(false);
+  const [topUpAmount, setTopUpAmount] = useState<number | "">("");
+  const [isProcessingTopUp, setIsProcessingTopUp] = useState(false);
+
   useEffect(() => {
     if (profile) {
       setTempSelectedRoles(profile.roles || []);
@@ -179,6 +180,82 @@ export default function PerformerProfilePage() {
       .catch(console.error);
   }, []);
 
+  // --- Expiration Notification Hook ---
+  useEffect(() => {
+    // Ensure we only show this warning to the actual owner of the profile
+    if (profile && isOwnProfile) {
+      // Check if their subscription plan object exists and has expired
+      if (profile.subscription?.status === "EXPIRED") {
+        // Use a short timeout so the toast doesn't get buried by initial page load animations
+        setTimeout(() => {
+          toast({
+            variant: "destructive",
+            title: "Срок действия тарифа истек",
+            description: `Действие вашего тарифа завершено. Перейдите во вкладку "Подписка", чтобы обновить план.`,
+          });
+        }, 1000);
+      }
+    }
+  }, [profile, isOwnProfile, toast]);
+
+  // Handle Redirect from Tinkoff & Webhook Race Conditions
+  useEffect(() => {
+    const topupStatus = searchParams.get("topup");
+    const paymentStatus = searchParams.get("payment");
+
+    console.log(topupStatus);
+
+    if (topupStatus === "success") {
+      toast({
+        title: "Обработка платежа...",
+        description: "Ожидаем подтверждение от банка. Пожалуйста, подождите...",
+      });
+
+      // SMART POLLING: Check for the updated balance 4 times over 6 seconds
+      // to give the Tinkoff webhook time to update the database.
+      let attempts = 0;
+      const pollInterval = setInterval(() => {
+        attempts++;
+        refetchProfile(); // Ask the server for the latest balance
+
+        if (attempts >= 4) {
+          clearInterval(pollInterval);
+          toast({
+            title: "Баланс обновлен!",
+            description: "Средства успешно зачислены на ваш кошелек.",
+            // @ts-ignore - (Depending on your shadcn setup, 'success' might need to be 'default')
+            variant: "success",
+          });
+        }
+      }, 1500); // Check every 1.5 seconds
+
+      // Clean up the URL immediately so a manual refresh doesn't trigger this again
+      router.replace("/performer-profile", { scroll: false });
+
+      // Cleanup interval if component unmounts
+      return () => clearInterval(pollInterval);
+    }
+
+    if (topupStatus === "failed") {
+      toast({
+        variant: "destructive",
+        title: "Ошибка оплаты",
+        description: "Платеж был отклонен или отменен банком.",
+      });
+      router.replace("/customer-profile", { scroll: false });
+    }
+
+    if (paymentStatus === "success") {
+      toast({
+        title: "Успешно!",
+        description: "Заявка успешно оплачена и опубликована.",
+        // @ts-ignore
+        variant: "success",
+      });
+      router.replace("/customer-profile", { scroll: false });
+    }
+  }, [searchParams, toast, router, refetchProfile]);
+
   // --- UNIVERSAL PARTIAL UPDATE HANDLER ---
   const handlePartialUpdate = async (
     dataToUpdate: Partial<PerformerProfile>,
@@ -188,7 +265,6 @@ export default function PerformerProfilePage() {
     },
   ): Promise<void> => {
     if (!profile) return Promise.reject("No profile loaded");
-
     return new Promise((resolve, reject) => {
       updateMutation.mutate(
         { performerId: profile.id, data: { ...dataToUpdate, ...files } },
@@ -224,7 +300,6 @@ export default function PerformerProfilePage() {
     );
   };
 
-  // --- Interactions ---
   const handleDeleteProfile = () => {
     if (!profile || !isOwnProfile) return;
     if (confirm("Вы уверены? Это действие необратимо.")) {
@@ -262,18 +337,13 @@ export default function PerformerProfilePage() {
   };
 
   const handleOpenChat = async () => {
-    if (!profile || !sessionUser) {
-      toast({ variant: "destructive", title: "Войдите в систему" });
-      return;
-    }
-    if (profile.id === sessionUser.id) {
-      toast({
+    if (!profile || !sessionUser)
+      return toast({ variant: "destructive", title: "Войдите в систему" });
+    if (profile.id === sessionUser.id)
+      return toast({
         variant: "destructive",
         title: "Вы не можете отправить сообщение самому себе",
       });
-      return;
-    }
-
     try {
       const chatId = await createOrGetChat(profile.id);
       setCurrentChatId(chatId);
@@ -284,14 +354,12 @@ export default function PerformerProfilePage() {
   };
 
   const handleSubmitBooking = () => {
-    if (!profile || !selectedDate || !sessionUser) {
-      toast({
+    if (!profile || !selectedDate || !sessionUser)
+      return toast({
         variant: "destructive",
         title: "Ошибка",
         description: "Войдите и выберите дату",
       });
-      return;
-    }
     createBookingMutation.mutate(
       {
         performerId: profile.id,
@@ -321,18 +389,10 @@ export default function PerformerProfilePage() {
     description: string,
   ) => {
     if (!profile) return false;
-
-    // 15MB limit
-    const maxSizeInBytes = 15 * 1024 * 1024;
-    if (file.size > maxSizeInBytes) {
-      toast({
-        variant: "destructive",
-        title: "Файл слишком большой",
-        description: "Размер файла не должен превышать 15 МБ.",
-      });
+    if (file.size > 15 * 1024 * 1024) {
+      toast({ variant: "destructive", title: "Файл слишком большой" });
       return false;
     }
-
     try {
       await addGalleryItemMutation.mutateAsync({
         performerId: profile.id,
@@ -380,9 +440,41 @@ export default function PerformerProfilePage() {
     }
   };
 
-  // --- Render ---
-  if (isProfileLoading || authStatus === "loading") return <ProfileSkeleton />;
+  const handleTopUpSubmit = async () => {
+    const amount = Number(topUpAmount);
+    if (!amount || amount <= 0) {
+      toast({
+        variant: "destructive",
+        title: "Ошибка",
+        description: "Введите корректную сумму.",
+      });
+      return;
+    }
 
+    setIsProcessingTopUp(true);
+    try {
+      const response = await apiRequest<{ paymentUrl: string }>({
+        method: "post",
+        url: "/api/wallet/topup/performer",
+        data: { amount },
+      });
+
+      if (response.paymentUrl) {
+        toast({ title: "Переход к оплате..." });
+        window.location.href = response.paymentUrl;
+      }
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Ошибка",
+        description: "Не удалось создать платеж. Попробуйте позже.",
+      });
+    } finally {
+      setIsProcessingTopUp(false);
+    }
+  };
+
+  if (isProfileLoading || authStatus === "loading") return <ProfileSkeleton />;
   if (isError || !profile) {
     return (
       <div className="container mx-auto py-20 flex flex-col items-center justify-center space-y-4">
@@ -409,10 +501,12 @@ export default function PerformerProfilePage() {
     );
   }
 
+  // Safe fallback if walletBalance is not explicitly typed yet on the profile object
+  const currentWalletBalance = (profile as any).walletBalance || 0;
+
   return (
     <>
-      <div className="container max-w-5xl mx-auto py-8 px-4 space-y-8">
-        {/* --- HEADER SECTION --- */}
+      <div className="container max-w-5xl mx-auto py-8 px-4 space-y-8 animate-in fade-in">
         <ProfileHeader
           profile={profile}
           isOwnProfile={isOwnProfile}
@@ -423,11 +517,7 @@ export default function PerformerProfilePage() {
           onToggleFavorite={handleToggleFavorite}
           onOpenChat={handleOpenChat}
           onBook={() => {
-            if (!sessionUser) {
-              toast({ variant: "destructive", title: "Войдите в систему" });
-              router.push("/login");
-              return;
-            }
+            if (!sessionUser) return router.push("/login");
             setIsBookingOpen(true);
           }}
           getImageUrl={getImageUrl}
@@ -451,7 +541,6 @@ export default function PerformerProfilePage() {
               </Button>
             )}
           </div>
-
           <div className="flex flex-wrap gap-2">
             {profile.roles && profile.roles.length > 0 ? (
               profile.roles.map((role) => (
@@ -514,6 +603,12 @@ export default function PerformerProfilePage() {
                     <Gem className="mr-2 h-4 w-4 text-yellow-600" /> Подписка
                   </TabsTrigger>
                   <TabsTrigger
+                    value="wallet"
+                    className="data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-4 py-2.5 transition-all"
+                  >
+                    <Wallet className="mr-2 h-4 w-4 text-blue-600" /> Кошелек
+                  </TabsTrigger>
+                  <TabsTrigger
                     value="calendar"
                     className="data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-md px-4 py-2.5 transition-all"
                   >
@@ -549,7 +644,6 @@ export default function PerformerProfilePage() {
                 }
               />
             </TabsContent>
-
             <TabsContent
               value="portfolio"
               className="m-0 focus-visible:outline-none"
@@ -566,7 +660,6 @@ export default function PerformerProfilePage() {
                 }
               />
             </TabsContent>
-
             <TabsContent
               value="reviews"
               className="m-0 focus-visible:outline-none"
@@ -605,13 +698,54 @@ export default function PerformerProfilePage() {
                   value="subscription"
                   className="m-0 focus-visible:outline-none"
                 >
-                  <div className="max-w-3xl">
+                  <div className="w-full">
                     <h2 className="text-2xl font-bold tracking-tight mb-6">
                       Ваша подписка
                     </h2>
                     <SubscriptionStatusCard />
                   </div>
                 </TabsContent>
+
+                <TabsContent
+                  value="wallet"
+                  className="m-0 focus-visible:outline-none"
+                >
+                  <div className="max-w-3xl">
+                    <h2 className="text-2xl font-bold tracking-tight mb-6">
+                      Мой кошелек
+                    </h2>
+                    <div className="grid sm:grid-cols-2 gap-6">
+                      <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-8 text-white shadow-lg relative overflow-hidden">
+                        <div className="relative z-10">
+                          <p className="text-blue-100 text-sm font-medium mb-1">
+                            Баланс счета
+                          </p>
+                          <h3 className="text-5xl font-extrabold tracking-tight mb-6">
+                            {currentWalletBalance.toLocaleString("ru-RU")} ₽
+                          </h3>
+                          <Button
+                            onClick={() => setIsTopUpDialogOpen(true)}
+                            className="bg-white text-blue-700 hover:bg-blue-50 font-bold px-6 border-0 shadow-sm"
+                          >
+                            <PlusCircle className="mr-2 h-4 w-4" /> Пополнить
+                          </Button>
+                        </div>
+                        <Wallet className="absolute -bottom-6 -right-6 h-48 w-48 text-white opacity-10" />
+                      </div>
+                      <div className="border rounded-2xl p-6 flex flex-col justify-center bg-card text-muted-foreground shadow-sm">
+                        <CreditCard className="h-10 w-10 mb-4 opacity-50" />
+                        <h4 className="font-semibold text-foreground mb-1">
+                          Удобная оплата
+                        </h4>
+                        <p className="text-sm">
+                          Используйте средства кошелька для мгновенной оплаты
+                          подписок или продвижения профиля без комиссий шлюза.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </TabsContent>
+
                 <TabsContent
                   value="calendar"
                   className="m-0 focus-visible:outline-none"
@@ -626,7 +760,51 @@ export default function PerformerProfilePage() {
 
       {/* --- MODALS --- */}
 
-      {/* 1. Category Edit Dialog */}
+      {/* Wallet Top Up Dialog */}
+      <Dialog open={isTopUpDialogOpen} onOpenChange={setIsTopUpDialogOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Пополнение кошелька</DialogTitle>
+            <DialogDescription>
+              Введите сумму, на которую хотите пополнить счет.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div className="space-y-2">
+              <Label>Сумма пополнения (₽)</Label>
+              <Input
+                type="number"
+                min="100"
+                placeholder="Например: 1500"
+                value={topUpAmount}
+                onChange={(e) => setTopUpAmount(Number(e.target.value))}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsTopUpDialogOpen(false)}
+              disabled={isProcessingTopUp}
+            >
+              Отмена
+            </Button>
+            <Button
+              onClick={handleTopUpSubmit}
+              disabled={isProcessingTopUp || !topUpAmount}
+            >
+              {isProcessingTopUp ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <CreditCard className="h-4 w-4 mr-2" />
+              )}
+              Перейти к оплате
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Category Edit Dialog */}
       <Dialog
         open={isCategoryDialogOpen}
         onOpenChange={setIsCategoryDialogOpen}
@@ -661,7 +839,7 @@ export default function PerformerProfilePage() {
             ) : (
               <div className="col-span-2 text-center py-8 text-muted-foreground">
                 <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
-                Загрузка категорий...
+                Загрузка...
               </div>
             )}
           </div>
@@ -676,13 +854,13 @@ export default function PerformerProfilePage() {
               {isSavingCategories && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
-              Сохранить изменения
+              Сохранить
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* 2. Booking Dialog */}
+      {/* Booking Dialog */}
       <Dialog open={isBookingOpen} onOpenChange={setIsBookingOpen}>
         <DialogContent>
           <DialogHeader>
@@ -710,7 +888,6 @@ export default function PerformerProfilePage() {
               placeholder="Опишите детали (время, место, формат)..."
               value={bookingDetails}
               onChange={(e) => setBookingDetails(e.target.value)}
-              className="resize-none"
               rows={4}
             />
           </div>
@@ -731,7 +908,7 @@ export default function PerformerProfilePage() {
         </DialogContent>
       </Dialog>
 
-      {/* 3. Real-Time Chat Dialog */}
+      {/* Real-Time Chat Dialog */}
       {isChatOpen && sessionUser && currentChatId && (
         <ChatDialog
           isOpen={isChatOpen}
@@ -743,7 +920,7 @@ export default function PerformerProfilePage() {
         />
       )}
 
-      {/* 4. Upload Dialogs */}
+      {/* Upload Dialogs */}
       {isOwnProfile && (
         <>
           <FileUploadDialog

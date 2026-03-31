@@ -361,7 +361,7 @@ const CustomerProfilePage = () => {
     try {
       const response = await apiRequest<{ paymentUrl: string }>({
         method: "post",
-        url: "/api/wallet/topup",
+        url: "/api/wallet/topup/customer",
         data: { amount },
       });
 

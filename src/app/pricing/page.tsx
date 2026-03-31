@@ -12,12 +12,20 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Check, Loader2, Sparkles, AlertCircle } from "lucide-react";
+import { Check, Loader2, Sparkles, Wallet, CreditCard } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/utils/utils";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+
 import {
   getSubscriptionPlans,
   getCurrentSubscription,
@@ -26,6 +34,7 @@ import {
   BillingInterval,
   UserSubscription,
 } from "@/services/payment";
+import { apiRequest } from "@/utils/api-client"; // Needed to fetch wallet balance
 
 // --- 1. Skeletons (Moved outside to be used in Fallback) ---
 const PlanSkeleton = () => (
@@ -52,20 +61,24 @@ const PlanSkeleton = () => (
 const PricingContent = () => {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const searchParams = useSearchParams(); // This usage requires Suspense
+  const searchParams = useSearchParams();
   const { toast } = useToast();
 
   // --- State ---
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [currentSub, setCurrentSub] = useState<UserSubscription | null>(null);
+  const [walletBalance, setWalletBalance] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
-  const [processingPlanId, setProcessingPlanId] = useState<string | null>(null);
   const [interval, setInterval] = useState<BillingInterval>("month");
 
-  // Check for payment status in URL
-  const paymentStatus = searchParams.get("status");
+  // --- Modal & Payment State ---
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(
+    null,
+  );
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
-  // --- Effects ---
+  const paymentStatus = searchParams.get("subscription");
 
   // 1. Handle Payment Success/Error Feedback from URL
   useEffect(() => {
@@ -73,7 +86,7 @@ const PricingContent = () => {
       toast({
         title: "Оплата прошла успешно!",
         description: "Ваша подписка была успешно обновлена.",
-        variant: "default",
+        variant: "success",
         className: "bg-green-600 text-white border-green-700",
       });
       // Clean URL without reloading
@@ -85,30 +98,42 @@ const PricingContent = () => {
         description:
           "Произошла ошибка при обработке платежа. Попробуйте снова.",
       });
+      router.replace("/pricing");
     }
   }, [paymentStatus, router, toast]);
 
-  // 2. Fetch Data (Plans & Current Subscription)
+  // 2. Fetch Data (Plans, Sub, Wallet Balance)
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        // Run fetches in parallel
-        const [fetchedPlans, fetchedSub] = await Promise.all([
-          getSubscriptionPlans(),
-          status === "authenticated"
-            ? getCurrentSubscription()
-            : Promise.resolve(null),
-        ]);
+        const promises: Promise<any>[] = [getSubscriptionPlans()];
+
+        if (status === "authenticated") {
+          promises.push(getCurrentSubscription());
+          // Fetch user data to get the wallet balance
+          promises.push(
+            apiRequest({ method: "get", url: "/api/users/me" }).catch(() => ({
+              walletBalance: 0,
+            })),
+          );
+        } else {
+          promises.push(Promise.resolve(null));
+          promises.push(Promise.resolve({ walletBalance: 0 }));
+        }
+
+        const [fetchedPlans, fetchedSub, userData] =
+          await Promise.all(promises);
 
         setPlans(fetchedPlans);
         setCurrentSub(fetchedSub);
+        setWalletBalance(userData?.walletBalance || 0);
       } catch (error) {
         console.error("Failed to load pricing data:", error);
         toast({
           variant: "destructive",
           title: "Ошибка",
-          description: "Не удалось загрузить тарифные планы.",
+          description: "Не удалось загрузить данные тарифов.",
         });
       } finally {
         setIsLoading(false);
@@ -119,44 +144,6 @@ const PricingContent = () => {
   }, [status, toast]);
 
   // --- Handlers ---
-
-  const handleSubscribe = async (plan: SubscriptionPlan) => {
-    // 1. Auth Check
-    if (status === "unauthenticated") {
-      toast({
-        title: "Требуется авторизация",
-        description: "Пожалуйста, войдите в систему или зарегистрируйтесь.",
-      });
-      router.push(`/login?callbackUrl=/pricing`);
-      return;
-    }
-
-    // 2. Determine Price based on selected interval
-    const { price } = getPriceDetails(plan);
-
-    // 3. Handle Free/Zero Price Logic
-    if (price === 0 || plan.tier === "FREE") {
-      router.push("/performer-profile");
-      return;
-    }
-
-    // 4. Initiate Payment
-    setProcessingPlanId(plan.id);
-    try {
-      const { checkoutUrl } = await initiateCheckout(plan.id, interval);
-      window.location.href = checkoutUrl;
-    } catch (error) {
-      console.error(error);
-      toast({
-        variant: "destructive",
-        title: "Ошибка",
-        description: "Не удалось перейти к оплате. Попробуйте позже.",
-      });
-      setProcessingPlanId(null);
-    }
-  };
-
-  // --- Helpers ---
 
   const getPriceDetails = (plan: SubscriptionPlan) => {
     let price = plan.priceMonthly;
@@ -186,8 +173,77 @@ const PricingContent = () => {
     return { price, periodLabel, savingsPercent };
   };
 
+  const handleSubscribeClick = (plan: SubscriptionPlan) => {
+    // 1. Auth Check
+    if (status === "unauthenticated") {
+      toast({
+        title: "Требуется авторизация",
+        description: "Пожалуйста, войдите в систему или зарегистрируйтесь.",
+      });
+      router.push(`/login?callbackUrl=/pricing`);
+      return;
+    }
+
+    // 2. Determine Price based on selected interval
+    const { price } = getPriceDetails(plan);
+
+    // 3. Handle Free/Zero Price Logic (Skip modal)
+    if (price === 0 || plan.tier === "FREE") {
+      router.push("/performer-profile");
+      return;
+    }
+
+    // 4. Open Payment Modal for Paid Plans
+    setSelectedPlan(plan);
+    setIsPaymentModalOpen(true);
+  };
+
+  const executePayment = async (method: "card" | "wallet") => {
+    if (!selectedPlan) return;
+    setIsProcessingPayment(true);
+
+    try {
+      const response = await initiateCheckout(
+        selectedPlan.id,
+        interval,
+        method as any,
+      );
+
+      if (method === "wallet") {
+        // Wallet payments are instant, no redirect needed.
+        setIsPaymentModalOpen(false);
+        toast({
+          title: "Успешно!",
+          description: "Подписка оплачена с баланса кошелька.",
+          variant: "default",
+          className: "bg-green-600 text-white",
+        });
+        // Reload to fetch the newly active subscription status
+        window.location.reload();
+      } else {
+        // Redirect to Tinkoff or other bank gateway
+        window.location.href = response.checkoutUrl;
+      }
+    } catch (error: any) {
+      console.error(error);
+      toast({
+        variant: "destructive",
+        title: "Ошибка оплаты",
+        description:
+          error.response?.data?.message ||
+          "Не удалось перейти к оплате. Проверьте баланс.",
+      });
+    } finally {
+      setIsProcessingPayment(false);
+    }
+  };
+
+  // Helper variables for the modal
+  const selectedPrice = selectedPlan ? getPriceDetails(selectedPlan).price : 0;
+  const isWalletSufficient = walletBalance >= selectedPrice;
+
   return (
-    <div className="container mx-auto py-16 px-4">
+    <div className="container mx-auto py-16 px-4 animate-in fade-in">
       <div className="text-center mb-10 space-y-4">
         <h1 className="text-3xl lg:text-5xl font-bold tracking-tight">
           Тарифные планы
@@ -241,7 +297,7 @@ const PricingContent = () => {
         </div>
       </div>
 
-      {/* Success Alert */}
+      {/* Success Alert (Fallback if redirect wasn't caught by the effect early enough) */}
       {paymentStatus === "success" && (
         <Alert className="mb-8 max-w-3xl mx-auto border-green-500 bg-green-50 dark:bg-green-900/20">
           <Check className="h-5 w-5 text-green-600 dark:text-green-400" />
@@ -266,7 +322,6 @@ const PricingContent = () => {
         ) : (
           plans.map((plan) => {
             const isPremium = plan.tier === "PREMIUM";
-            const isProcessing = processingPlanId === plan.id;
 
             // Logic: Is this the user's current plan?
             const isCurrentPlan =
@@ -382,29 +437,19 @@ const PricingContent = () => {
                           : "bg-secondary text-secondary-foreground hover:bg-secondary/80",
                     )}
                     size="lg"
-                    onClick={() => handleSubscribe(plan)}
+                    onClick={() => handleSubscribeClick(plan)}
                     disabled={
-                      isProcessing ||
-                      status === "loading" ||
-                      !isPriceAvailable ||
-                      isCurrentPlan
+                      status === "loading" || !isPriceAvailable || isCurrentPlan
                     }
                     variant={isCurrentPlan ? "outline" : "default"}
                   >
-                    {isProcessing ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Обработка...
-                      </>
-                    ) : isCurrentPlan ? (
-                      "Тариф активен"
-                    ) : hasActiveSubscription ? (
-                      "Изменить тариф" // Logic: If user has ANY sub but not this one
-                    ) : price === 0 ? (
-                      "Начать бесплатно"
-                    ) : (
-                      "Выбрать тариф"
-                    )}
+                    {isCurrentPlan
+                      ? "Тариф активен"
+                      : hasActiveSubscription
+                        ? "Изменить тариф"
+                        : price === 0
+                          ? "Начать бесплатно"
+                          : "Выбрать тариф"}
                   </Button>
                 </CardFooter>
               </Card>
@@ -412,6 +457,90 @@ const PricingContent = () => {
           })
         )}
       </div>
+
+      {/* --- PAYMENT METHOD DIALOG --- */}
+      <Dialog open={isPaymentModalOpen} onOpenChange={setIsPaymentModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Выберите способ оплаты</DialogTitle>
+            <DialogDescription>
+              Тариф: <b className="text-foreground">{selectedPlan?.name}</b>{" "}
+              <br />
+              Сумма к оплате:{" "}
+              <b className="text-foreground">
+                {selectedPrice.toLocaleString("ru-RU")} ₽
+              </b>
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 gap-4 py-4">
+            {/* Wallet Button */}
+            <Button
+              variant="outline"
+              className={cn(
+                "h-auto py-4 flex justify-start items-center gap-4 text-lg text-left",
+                isWalletSufficient
+                  ? "hover:border-primary hover:bg-primary/5 cursor-pointer"
+                  : "opacity-50 cursor-not-allowed bg-muted/30",
+              )}
+              onClick={() => executePayment("wallet")}
+              disabled={isProcessingPayment || !isWalletSufficient}
+            >
+              {isProcessingPayment && isWalletSufficient ? (
+                <Loader2 className="h-6 w-6 animate-spin text-blue-600 ml-2 shrink-0" />
+              ) : (
+                <div
+                  className={cn(
+                    "p-2 rounded-full shrink-0",
+                    isWalletSufficient
+                      ? "bg-blue-100 text-blue-600"
+                      : "bg-gray-200 text-gray-500",
+                  )}
+                >
+                  <Wallet className="h-6 w-6" />
+                </div>
+              )}
+              <div className="flex flex-col items-start overflow-hidden">
+                <span
+                  className={cn(
+                    "font-medium truncate",
+                    !isWalletSufficient && "text-muted-foreground",
+                  )}
+                >
+                  Внутренний кошелек
+                </span>
+                <span className="text-xs text-muted-foreground font-normal truncate">
+                  {isWalletSufficient
+                    ? `Доступно: ${walletBalance.toLocaleString("ru-RU")} ₽`
+                    : `Недостаточно средств (Баланс: ${walletBalance.toLocaleString("ru-RU")} ₽)`}
+                </span>
+              </div>
+            </Button>
+
+            {/* Card Button */}
+            <Button
+              variant="outline"
+              className="h-auto py-4 flex justify-start items-center gap-4 text-lg text-left hover:border-primary hover:bg-primary/5"
+              onClick={() => executePayment("card")}
+              disabled={isProcessingPayment}
+            >
+              {isProcessingPayment && !isWalletSufficient ? (
+                <Loader2 className="h-6 w-6 animate-spin text-green-600 ml-2 shrink-0" />
+              ) : (
+                <div className="bg-green-100 p-2 rounded-full text-green-600 shrink-0">
+                  <CreditCard className="h-6 w-6" />
+                </div>
+              )}
+              <div className="flex flex-col items-start overflow-hidden">
+                <span className="font-medium truncate">Банковская карта</span>
+                <span className="text-xs text-muted-foreground font-normal truncate">
+                  Tinkoff, Visa, Mastercard, МИР
+                </span>
+              </div>
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* --- SUPPORT LINK --- */}
       <div className="text-center mt-20 p-8 bg-muted/30 rounded-xl max-w-4xl mx-auto border border-dashed">

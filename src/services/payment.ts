@@ -17,10 +17,6 @@ export interface SubscriptionPlan {
   isActive: boolean;
 }
 
-export interface PaymentResponse {
-  checkoutUrl: string;
-}
-
 export interface UserSubscription {
   id: string;
   planId: string;
@@ -36,6 +32,7 @@ export interface PaymentResponse {
 }
 
 // --- API Functions ---
+
 /**
  * Fetches all active subscription plans from the backend.
  * Endpoint: GET /api/payments/plans
@@ -56,7 +53,7 @@ export const getCurrentSubscription =
     try {
       return await apiRequest<UserSubscription>({
         method: "get",
-        url: "/api/users/me/subscription",
+        url: "/api/payments/me/subscription",
       });
     } catch (error) {
       // Return null if 404 or no subscription
@@ -67,18 +64,21 @@ export const getCurrentSubscription =
 /**
  * Initiates a checkout session for a specific plan.
  * Endpoint: POST /api/payments/checkout
- * * @param planId - The ID of the subscription plan to purchase.
- * @returns An object containing the checkoutUrl (e.g., to Stripe/Yookassa or Mock Gateway).
- param interval - The billing interval for the subscription (e.g., "month", "half_year", "year").
+ *
+ * @param planId - The ID of the subscription plan to purchase.
+ * @param interval - The billing interval for the subscription (e.g., "month", "half_year", "year").
+ * @param paymentMethod - The preferred payment method ("card" or "wallet").
+ * @returns An object containing the checkoutUrl.
  */
 export const initiateCheckout = async (
   planId: string,
   interval: BillingInterval = "month",
+  paymentMethod: "card" | "wallet" = "card",
 ): Promise<PaymentResponse> => {
   return await apiRequest<PaymentResponse>({
     method: "post",
     url: "/api/payments/checkout",
-    data: { planId, interval }, // Send interval to backend
+    data: { planId, interval, paymentMethod },
   });
 };
 
