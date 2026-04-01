@@ -134,7 +134,7 @@ export const ClientNotificationProvider = ({
           <Button
             onClick={() => setIsInboxOpen(true)}
             size="icon"
-            className="h-14 w-14 rounded-full shadow-2xl hover:shadow-primary/25 transition-all bg-primary hover:bg-primary/90 relative"
+            className="h-11 w-11 rounded-full shadow-2xl hover:shadow-primary/25 transition-all bg-primary hover:bg-primary/90 relative"
           >
             <MessageCircle className="h-6 w-6 text-primary-foreground" />
 

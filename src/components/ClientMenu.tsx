@@ -678,8 +678,8 @@ const ClientMenu: React.FC<ClientMenuProps> = ({
                         className="flex items-center px-4 py-3.5 text-base font-medium rounded-xl hover:bg-muted transition-colors"
                         onClick={closeMenu}
                       >
-                        <Ticket className="mr-3 h-5 w-5 text-muted-foreground" />{" "}
-                        Мои билеты
+                        <Ticket className="mr-3 h-5 w-5 text-primary" /> Мои
+                        билеты
                       </Link>
                     )}
 
@@ -873,8 +873,7 @@ const ClientMenu: React.FC<ClientMenuProps> = ({
                   className="cursor-pointer py-2.5 rounded-lg focus:bg-muted"
                 >
                   <Link href="/tickets">
-                    <Ticket className="mr-2 h-4 w-4 text-muted-foreground" />{" "}
-                    Мои билеты
+                    <Ticket className="mr-2 h-4 w-4 text-primary" /> Мои билеты
                   </Link>
                 </DropdownMenuItem>
               )}
