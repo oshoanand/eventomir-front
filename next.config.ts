@@ -1,6 +1,22 @@
+import withPWAInit from "@ducanh2912/next-pwa";
 import type { NextConfig } from "next";
 
+const withPWA = withPWAInit({
+  dest: "public",
+  cacheOnFrontEndNav: true,
+  aggressiveFrontEndNavCaching: true,
+  reloadOnOnline: true,
+  disable: process.env.NODE_ENV === "development",
+  workboxOptions: {
+    disableDevLogs: true,
+  },
+  // REMOVED: swcMinify: true (Causes fatal build errors in Next.js 15)
+});
+
 const nextConfig: NextConfig = {
+  turbopack: {
+    resolveExtensions: [".mdx", ".tsx", ".ts", ".jsx", ".js", ".mjs", ".json"],
+  },
   images: {
     remotePatterns: [
       // 1. Production MinIO Server (via Nginx SSL)
@@ -24,7 +40,7 @@ const nextConfig: NextConfig = {
         port: "9000",
         pathname: "/**",
       },
-      // Add any other domains you might need (e.g., Google or VK avatars)
+      // 4. Google Avatars
       {
         protocol: "https",
         hostname: "lh3.googleusercontent.com",
@@ -33,4 +49,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withPWA(nextConfig);
