@@ -30,9 +30,16 @@ const Footer = () => {
                 {siteName}
               </span>
             </div>
-            <p className="text-sm text-muted-foreground leading-relaxed max-w-sm">
-              Ведущая платформа для поиска и бронирования лучших исполнителей и
-              услуг для вашего идеального мероприятия.
+            <p className="text-xs mb-4">
+              ООО «АМУЛЕТ КОМПАНИ»
+              <br />
+              ИНН: 6319258622
+              <br />
+              ОГРН: 1226300038360
+            </p>
+            <p className="text-sm">
+              Платформа для поиска и бронирования лучших исполнителей для ваших
+              мероприятий.
             </p>
           </div>
 
@@ -122,7 +129,7 @@ const Footer = () => {
             <h3 className="text-[13px] md:text-sm font-bold uppercase tracking-wider text-foreground">
               Контакты
             </h3>
-            <div className="space-y-1 text-[15px] md:text-sm font-medium text-muted-foreground">
+            <div className=" text-[15px] md:text-sm font-medium text-muted-foreground">
               {isLoading ? (
                 <div className="space-y-4">
                   <Skeleton className="h-5 w-[80%]" />
@@ -133,7 +140,7 @@ const Footer = () => {
                   {contacts?.email && (
                     <a
                       href={`mailto:${contacts.email}`}
-                      className="flex items-center gap-3 hover:text-primary transition-colors group p-2 -ml-2 rounded-lg hover:bg-muted/50 w-fit"
+                      className="flex items-center gap-3 hover:text-primary transition-colors group pt-2 -ml-2 rounded-lg hover:bg-muted/50 w-fit"
                     >
                       <div className="bg-primary/10 p-2 rounded-full text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
                         <Mail className="h-4 w-4 shrink-0" />
@@ -144,7 +151,7 @@ const Footer = () => {
                   {contacts?.phone && (
                     <a
                       href={`tel:${contacts.phone}`}
-                      className="flex items-center gap-3 hover:text-primary transition-colors group p-2 -ml-2 rounded-lg hover:bg-muted/50 w-fit"
+                      className="flex items-center gap-3 hover:text-primary transition-colors group pt-2 -ml-2 rounded-lg hover:bg-muted/50 w-fit"
                     >
                       <div className="bg-primary/10 p-2 rounded-full text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
                         <Phone className="h-4 w-4 shrink-0" />
@@ -152,7 +159,7 @@ const Footer = () => {
                       <span className="font-semibold">{contacts.phone}</span>
                     </a>
                   )}
-                  <div className="flex items-center gap-3 p-2 -ml-2">
+                  <div className="flex items-center gap-2 pt-2 -ml-2">
                     {isLoading ? (
                       <div className="flex gap-3">
                         <Skeleton className="h-11 w-11 rounded-full" />

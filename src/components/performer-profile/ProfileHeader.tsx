@@ -320,7 +320,7 @@ export default function ProfileHeader({
                           variant="secondary"
                           className="bg-green-100 text-green-700 hover:bg-green-200 border-green-200 px-2 py-0.5 h-6"
                         >
-                          Online
+                          Онлайн
                         </Badge>
                       )}
                     </div>

@@ -17,7 +17,6 @@ import * as z from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { getRussianRegionsWithCities } from "@/services/geo";
-import { Separator } from "@/components/ui/separator";
 import {
   Mail,
   Loader2,
@@ -27,13 +26,15 @@ import {
   FileText,
   Lock,
   MapPin,
+  CheckCircle2,
+  Briefcase,
+  Users,
 } from "lucide-react";
 import { registerPerformerWithVerification } from "@/services/auth";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
-// 1. Updated Schema: Validates the formatted phone mask (+7 XXX XXX XX-XX)
 const formSchema = z
   .object({
     accountType: z.enum(
@@ -104,18 +105,15 @@ export function RegisterPerformerForm() {
 
   const accountType = form.watch("accountType");
 
-  // 2. Phone Formatter Function
   const handlePhoneChange = (
     e: React.ChangeEvent<HTMLInputElement>,
     onChange: (val: string) => void,
   ) => {
     const val = e.target.value;
-
     if (!val || val === "+7" || val === "+7 " || val === "+") {
       onChange("");
       return;
     }
-
     const digits = val.replace(/\D/g, "");
     if (!digits) return;
 
@@ -125,7 +123,6 @@ export function RegisterPerformerForm() {
     } else if (digits.startsWith("9")) {
       coreDigits = digits;
     }
-
     coreDigits = coreDigits.slice(0, 10);
 
     let formatted = "+7 ";
@@ -140,9 +137,7 @@ export function RegisterPerformerForm() {
   const onSubmit = async (values: FormValues) => {
     setIsSubmitting(true);
     try {
-      // Clean phone before sending: +7 999 123 45-67 -> +79991234567
       const cleanPhone = "+7" + values.phone.replace(/\D/g, "").slice(1);
-
       const result = await registerPerformerWithVerification(
         {
           accountType: values.accountType,
@@ -159,10 +154,6 @@ export function RegisterPerformerForm() {
 
       if (result.success) {
         setIsSuccess(true);
-        toast({
-          title: "Успешно!",
-          description: "Проверьте почту для подтверждения.",
-        });
         form.reset();
       } else {
         toast({
@@ -199,15 +190,16 @@ export function RegisterPerformerForm() {
 
   if (isSuccess) {
     return (
-      <div className="text-center p-8 bg-green-50/50 border border-green-200 rounded-xl animate-in fade-in zoom-in-95 duration-500">
-        <div className="mx-auto h-12 w-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4">
-          <Mail className="h-6 w-6" />
+      <div className="text-center p-8 md:p-6 bg-green-50/50 border border-green-200 rounded-2xl md:rounded-xl animate-in fade-in zoom-in-95 duration-500">
+        <div className="mx-auto h-16 w-16 md:h-12 md:w-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4 ring-4 ring-green-50">
+          <CheckCircle2 className="h-8 w-8 md:h-6 md:w-6" />
         </div>
-        <h3 className="text-xl font-semibold text-green-800">
+        <h3 className="text-2xl md:text-xl font-bold text-green-800 tracking-tight">
           Заявка принята!
         </h3>
-        <p className="text-muted-foreground mt-2">
-          Мы отправили ссылку для подтверждения на ваш Email.
+        <p className="text-muted-foreground mt-3 md:mt-2 text-base md:text-sm leading-relaxed">
+          Мы отправили ссылку для подтверждения на ваш Email. Пожалуйста,
+          проверьте почту.
         </p>
       </div>
     );
@@ -217,136 +209,139 @@ export function RegisterPerformerForm() {
     <Form {...form}>
       <form
         onSubmit={form.handleSubmit(onSubmit)}
-        className="space-y-3 text-left"
+        className="space-y-4 md:space-y-2 text-left"
       >
-        {/* КЛАССИЧЕСКИЕ РАДИО-КНОПКИ В ДВА СТОЛБЦА */}
+        {/* PREMIUM 2x2 RADIO BUTTON CARDS */}
         <FormField
           control={form.control}
           name="accountType"
           render={({ field }) => (
-            <FormItem className="space-y-3">
-              <FormLabel className="text-foreground">Тип аккаунта *</FormLabel>
+            <FormItem className="space-y-3 md:space-y-2.5">
+              <FormLabel className="font-semibold ml-1 text-sm md:text-xs text-foreground/80">
+                Тип аккаунта
+              </FormLabel>
               <FormControl>
                 <RadioGroup
                   onValueChange={field.onChange}
                   defaultValue={field.value}
-                  className="grid grid-cols-2 gap-4"
+                  className="grid grid-cols-2 gap-3 md:gap-4"
                 >
-                  <FormItem className="flex items-center space-x-2 space-y-0">
+                  <FormItem>
                     <FormControl>
-                      <RadioGroupItem value="selfEmployed" />
+                      <RadioGroupItem
+                        value="selfEmployed"
+                        className="peer sr-only"
+                      />
                     </FormControl>
-                    <FormLabel className="font-normal cursor-pointer">
-                      Самозанятый
+                    <FormLabel className="flex flex-col items-center justify-center rounded-xl md:rounded-lg border-2 border-muted bg-transparent p-4 md:p-3 hover:bg-muted/50 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer transition-all h-full">
+                      <User className="mb-2 h-6 w-6 md:h-5 md:w-5 text-muted-foreground peer-data-[state=checked]:text-primary" />
+                      <span className="text-sm md:text-xs font-semibold text-center leading-tight">
+                        Самозанятый
+                      </span>
                     </FormLabel>
                   </FormItem>
-                  <FormItem className="flex items-center space-x-2 space-y-0">
+                  <FormItem>
                     <FormControl>
-                      <RadioGroupItem value="individualEntrepreneur" />
+                      <RadioGroupItem
+                        value="individualEntrepreneur"
+                        className="peer sr-only"
+                      />
                     </FormControl>
-                    <FormLabel className="font-normal cursor-pointer">
-                      ИП
+                    <FormLabel className="flex flex-col items-center justify-center rounded-xl md:rounded-lg border-2 border-muted bg-transparent p-4 md:p-3 hover:bg-muted/50 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer transition-all h-full">
+                      <Briefcase className="mb-2 h-6 w-6 md:h-5 md:w-5 text-muted-foreground peer-data-[state=checked]:text-primary" />
+                      <span className="text-sm md:text-xs font-semibold text-center leading-tight">
+                        ИП
+                      </span>
                     </FormLabel>
                   </FormItem>
-                  <FormItem className="flex items-center space-x-2 space-y-0">
+                  <FormItem>
                     <FormControl>
-                      <RadioGroupItem value="legalEntity" />
+                      <RadioGroupItem
+                        value="legalEntity"
+                        className="peer sr-only"
+                      />
                     </FormControl>
-                    <FormLabel className="font-normal cursor-pointer">
-                      Юр. лицо
+                    <FormLabel className="flex flex-col items-center justify-center rounded-xl md:rounded-lg border-2 border-muted bg-transparent p-4 md:p-3 hover:bg-muted/50 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer transition-all h-full">
+                      <Building className="mb-2 h-6 w-6 md:h-5 md:w-5 text-muted-foreground peer-data-[state=checked]:text-primary" />
+                      <span className="text-sm md:text-xs font-semibold text-center leading-tight">
+                        Юр. лицо
+                      </span>
                     </FormLabel>
                   </FormItem>
-                  <FormItem className="flex items-center space-x-2 space-y-0">
+                  <FormItem>
                     <FormControl>
-                      <RadioGroupItem value="agency" />
+                      <RadioGroupItem value="agency" className="peer sr-only" />
                     </FormControl>
-                    <FormLabel className="font-normal cursor-pointer">
-                      Агентство
+                    <FormLabel className="flex flex-col items-center justify-center rounded-xl md:rounded-lg border-2 border-muted bg-transparent p-4 md:p-3 hover:bg-muted/50 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer transition-all h-full">
+                      <Users className="mb-2 h-6 w-6 md:h-5 md:w-5 text-muted-foreground peer-data-[state=checked]:text-primary" />
+                      <span className="text-sm md:text-xs font-semibold text-center leading-tight">
+                        Агентство
+                      </span>
                     </FormLabel>
                   </FormItem>
                 </RadioGroup>
               </FormControl>
-              <FormMessage />
+              <FormMessage className="ml-1 text-xs" />
             </FormItem>
           )}
         />
 
+        {/* FULL WIDTH: NAME */}
         <FormField
           control={form.control}
           name="name"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>
+              <FormLabel className="font-semibold ml-1 text-sm md:text-xs text-foreground/80">
                 {["selfEmployed", "individualEntrepreneur"].includes(
                   accountType,
                 )
-                  ? "ФИО *"
-                  : "Название организации *"}
+                  ? "ФИО руководителя"
+                  : "Контактное лицо"}
               </FormLabel>
               <FormControl>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <div className="relative group">
+                  <User className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 md:h-4 md:w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
                   <Input
-                    className="pl-10 bg-muted/30 focus-visible:bg-background transition-colors"
+                    className="pl-11 md:pl-10 h-12 md:h-10 rounded-xl md:rounded-lg bg-muted/40 focus:bg-background transition-all border-muted-foreground/20 text-base md:text-sm"
                     placeholder={
                       ["selfEmployed", "individualEntrepreneur"].includes(
                         accountType,
                       )
                         ? "Иван Иванов"
-                        : "Eventomir"
+                        : "Менеджер Иван"
                     }
                     {...field}
                   />
                 </div>
               </FormControl>
-              <FormMessage />
+              <FormMessage className="ml-1 text-xs" />
             </FormItem>
           )}
         />
 
-        <FormField
-          control={form.control}
-          name="phone"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Номер телефона *</FormLabel>
-              <FormControl>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    className="pl-10 bg-muted/30 focus-visible:bg-background transition-colors"
-                    placeholder="+7 999 000 00-00"
-                    value={field.value}
-                    onChange={(e) => handlePhoneChange(e, field.onChange)}
-                    onBlur={field.onBlur}
-                    name={field.name}
-                  />
-                </div>
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
+        {/* LEGAL ENTITY / AGENCY FIELDS */}
         {["legalEntity", "agency"].includes(accountType) && (
-          <div className="p-5 bg-muted/20 border border-border/50 rounded-xl animate-in fade-in zoom-in-95">
+          <div className="p-4 bg-muted/20 border border-border/50 rounded-2xl md:rounded-xl space-y-4 animate-in fade-in zoom-in-95">
             <FormField
               control={form.control}
               name="companyName"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Брендовое название (необязательно)</FormLabel>
+                  <FormLabel className="font-semibold ml-1 text-sm md:text-xs text-foreground/80">
+                    Брендовое название (необязательно)
+                  </FormLabel>
                   <FormControl>
-                    <div className="relative">
-                      <Building className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <div className="relative group">
+                      <Building className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 md:h-4 md:w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
                       <Input
-                        className="pl-10 bg-background"
-                        placeholder="Eventomir"
+                        className="pl-11 md:pl-10 h-12 md:h-10 rounded-xl md:rounded-lg bg-background focus:bg-background transition-all border-muted-foreground/20 text-base md:text-sm"
+                        placeholder="Eventomir Agency"
                         {...field}
                       />
                     </div>
                   </FormControl>
-                  <FormMessage />
+                  <FormMessage className="ml-1 text-xs" />
                 </FormItem>
               )}
             />
@@ -355,103 +350,143 @@ export function RegisterPerformerForm() {
               name="inn"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>ИНН *</FormLabel>
+                  <FormLabel className="font-semibold ml-1 text-sm md:text-xs text-foreground/80">
+                    ИНН
+                  </FormLabel>
                   <FormControl>
-                    <div className="relative">
-                      <FileText className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <div className="relative group">
+                      <FileText className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 md:h-4 md:w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
                       <Input
-                        className="pl-10 bg-background"
+                        className="pl-11 md:pl-10 h-12 md:h-10 rounded-xl md:rounded-lg bg-background focus:bg-background transition-all border-muted-foreground/20 text-base md:text-sm"
                         placeholder="10 или 12 цифр"
                         {...field}
                       />
                     </div>
                   </FormControl>
-                  <FormMessage />
+                  <FormMessage className="ml-1 text-xs" />
                 </FormItem>
               )}
             />
           </div>
         )}
 
+        {/* FULL WIDTH: EMAIL */}
         <FormField
           control={form.control}
           name="email"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Email *</FormLabel>
+              <FormLabel className="font-semibold ml-1 text-sm md:text-xs text-foreground/80">
+                Email
+              </FormLabel>
               <FormControl>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <div className="relative group">
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 md:h-4 md:w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
                   <Input
-                    className="pl-10 bg-muted/30 focus-visible:bg-background transition-colors"
+                    className="pl-11 md:pl-10 h-12 md:h-10 rounded-xl md:rounded-lg bg-muted/40 focus:bg-background transition-all border-muted-foreground/20 text-base md:text-sm"
                     type="email"
                     placeholder="mail@example.com"
                     {...field}
                   />
                 </div>
               </FormControl>
-              <FormMessage />
+              <FormMessage className="ml-1 text-xs" />
             </FormItem>
           )}
         />
+
+        {/* HALF WIDTH GRID: PHONE & CITY */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 md:gap-4">
+          <FormField
+            control={form.control}
+            name="phone"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="font-semibold ml-1 text-sm md:text-xs text-foreground/80">
+                  Телефон
+                </FormLabel>
+                <FormControl>
+                  <div className="relative group">
+                    <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 md:h-4 md:w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                    <Input
+                      className="pl-11 md:pl-10 h-12 md:h-10 rounded-xl md:rounded-lg bg-muted/40 focus:bg-background transition-all border-muted-foreground/20 text-base md:text-sm"
+                      placeholder="+7 999 000 00-00"
+                      value={field.value}
+                      onChange={(e) => handlePhoneChange(e, field.onChange)}
+                      onBlur={field.onBlur}
+                      name={field.name}
+                    />
+                  </div>
+                </FormControl>
+                <FormMessage className="ml-1 text-xs" />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="city"
+            render={({ field }) => (
+              <FormItem className="relative">
+                <FormLabel className="font-semibold ml-1 text-sm md:text-xs text-foreground/80">
+                  Город
+                </FormLabel>
+                <FormControl>
+                  <div className="relative group">
+                    <MapPin className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 md:h-4 md:w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                    <Input
+                      className="pl-11 md:pl-10 h-12 md:h-10 rounded-xl md:rounded-lg bg-muted/40 focus:bg-background transition-all border-muted-foreground/20 text-base md:text-sm"
+                      placeholder="Вводить город..."
+                      value={cityInput}
+                      onChange={handleCitySearch}
+                      onBlur={field.onBlur}
+                    />
+                  </div>
+                </FormControl>
+                {filteredCities.length > 0 && (
+                  <div className="absolute z-50 w-full bg-background border border-border/50 rounded-xl shadow-xl mt-2 py-2 overflow-hidden animate-in fade-in">
+                    {filteredCities.map((city) => (
+                      <div
+                        key={city}
+                        className="px-4 py-2.5 hover:bg-muted/50 cursor-pointer text-sm font-medium transition-colors"
+                        onClick={() => {
+                          setCityInput(city);
+                          form.setValue("city", city);
+                          setFilteredCities([]);
+                        }}
+                      >
+                        {city}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <FormMessage className="ml-1 text-xs" />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        {/* FULL WIDTH: PASSWORD */}
         <FormField
           control={form.control}
           name="password"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Пароль *</FormLabel>
+              <FormLabel className="font-semibold ml-1 text-sm md:text-xs text-foreground/80">
+                Пароль
+              </FormLabel>
               <FormControl>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <div className="relative group">
+                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 md:h-4 md:w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
                   <Input
-                    className="pl-10 bg-muted/30 focus-visible:bg-background transition-colors"
+                    className="pl-11 md:pl-10 h-12 md:h-10 rounded-xl md:rounded-lg bg-muted/40 focus:bg-background transition-all border-muted-foreground/20 text-base md:text-sm"
                     type="password"
                     placeholder="••••••••"
                     {...field}
                   />
                 </div>
               </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="city"
-          render={({ field }) => (
-            <FormItem className="relative">
-              <FormLabel>Город оказания услуг *</FormLabel>
-              <FormControl>
-                <div className="relative">
-                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    className="pl-10 bg-muted/30 focus-visible:bg-background transition-colors"
-                    placeholder="Начните вводить город..."
-                    value={cityInput}
-                    onChange={handleCitySearch}
-                    onBlur={field.onBlur}
-                  />
-                </div>
-              </FormControl>
-              {filteredCities.length > 0 && (
-                <div className="absolute z-50 w-full bg-popover border border-border/50 rounded-lg shadow-xl mt-1 py-1 overflow-hidden animate-in fade-in">
-                  {filteredCities.map((city) => (
-                    <div
-                      key={city}
-                      className="px-4 py-2 hover:bg-accent/50 cursor-pointer text-sm transition-colors"
-                      onClick={() => {
-                        setCityInput(city);
-                        form.setValue("city", city);
-                        setFilteredCities([]);
-                      }}
-                    >
-                      {city}
-                    </div>
-                  ))}
-                </div>
-              )}
-              <FormMessage />
+              <FormMessage className="ml-1 text-xs" />
             </FormItem>
           )}
         />
@@ -460,20 +495,21 @@ export function RegisterPerformerForm() {
           control={form.control}
           name="agreement"
           render={({ field }) => (
-            <FormItem className="flex flex-row items-start space-x-3 space-y-0 p-3 bg-muted/10 rounded-lg border border-border/40">
+            <FormItem className="flex flex-row items-start space-x-3 space-y-0 mt-6 p-4 md:p-3 bg-muted/20 rounded-xl md:rounded-lg border border-border/40 transition-colors hover:bg-muted/30">
               <FormControl>
                 <Checkbox
                   checked={field.value}
                   onCheckedChange={field.onChange}
+                  className="mt-1 md:mt-0.5"
                 />
               </FormControl>
-              <div className="space-y-1 leading-none">
-                <FormLabel className="text-sm font-normal text-muted-foreground cursor-pointer">
+              <div className="space-y-1 leading-tight">
+                <FormLabel className="text-sm md:text-xs font-medium text-muted-foreground cursor-pointer">
                   Я принимаю{" "}
                   <Link
                     href="/documents/terms-of-service"
                     target="_blank"
-                    className="underline text-foreground hover:text-primary transition-colors"
+                    className="underline text-foreground hover:text-primary transition-colors underline-offset-2"
                   >
                     Пользовательское соглашение
                   </Link>{" "}
@@ -481,13 +517,13 @@ export function RegisterPerformerForm() {
                   <Link
                     href="/documents/privacy-policy"
                     target="_blank"
-                    className="underline text-foreground hover:text-primary transition-colors"
+                    className="underline text-foreground hover:text-primary transition-colors underline-offset-2"
                   >
                     Политику обработки данных
                   </Link>
                   . *
                 </FormLabel>
-                <FormMessage />
+                <FormMessage className="text-xs" />
               </div>
             </FormItem>
           )}
@@ -495,47 +531,24 @@ export function RegisterPerformerForm() {
 
         <Button
           type="submit"
-          size="lg"
-          className="w-full text-base font-medium shadow-md transition-all hover:shadow-lg"
           disabled={isSubmitting}
+          className="w-full h-12 md:h-10 rounded-xl md:rounded-lg font-bold text-base md:text-sm mt-6 shadow-md hover:shadow-lg transition-all"
         >
           {isSubmitting ? (
-            <>
-              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-              Создание аккаунта...
-            </>
-          ) : (
-            "Зарегистрироваться"
-          )}
+            <Loader2 className="mr-2 h-5 w-5 md:h-4 md:w-4 animate-spin" />
+          ) : null}
+          {isSubmitting ? "Создание аккаунта..." : "Зарегистрироваться"}
         </Button>
 
-        {/* <div className="relative my-6">
-          <div className="absolute inset-0 flex items-center">
-            <Separator />
-          </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-background px-2 text-muted-foreground">
-              Или войдите через
-            </span>
-          </div>
-        </div> */}
-        {/* 
-        <div className="grid grid-cols-2 gap-4">
-          <Button
-            variant="outline"
-            type="button"
-            className="w-full bg-background hover:bg-muted/50"
+        <div className="mt-8 md:mt-6 text-center text-sm md:text-xs font-medium text-muted-foreground">
+          Уже есть аккаунт?{" "}
+          <Link
+            href="/login"
+            className="text-foreground font-bold hover:text-primary transition-colors underline-offset-4 hover:underline"
           >
-            Google
-          </Button>
-          <Button
-            variant="outline"
-            type="button"
-            className="w-full bg-background hover:bg-muted/50"
-          >
-            Яндекс
-          </Button>
-        </div> */}
+            Войти
+          </Link>
+        </div>
       </form>
     </Form>
   );

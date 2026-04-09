@@ -66,7 +66,7 @@ import { formatPhoneNumber } from "@/utils/helper";
 import { apiRequest } from "@/utils/api-client";
 
 // --- Real-Time & Chat Imports ---
-import { useSocket } from "@/components/providers/socket-provider";
+import { useSocket } from "@/components/providers/SocketProvider";
 import ChatDialog from "@/components/chat/ChatDialog";
 import { createOrGetChat } from "@/services/chat";
 

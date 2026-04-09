@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { Loader2, MessageSquare } from "lucide-react";
-import { useSocket } from "@/components/providers/socket-provider";
+import { useSocket } from "@/components/providers/SocketProvider";
 
 interface ChatListItem {
   id: string;

@@ -1,80 +1,101 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import { Toaster } from "@/components/ui/toaster";
-import { Providers } from "@/lib/providers";
+import { Providers } from "@/components/providers/Providers";
 import { getSiteSettings } from "@/services/settings";
-import type { SiteSettings } from "@/types/globals.d";
-import { Suspense } from "react";
 
-// SEO metadata dynamically generated from Admin Panel settings
+// --- VIEWPORT CONFIGURATION (Next.js 14+ Standard) ---
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#09090b" },
+  ],
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  colorScheme: "light dark",
+};
+
+// --- SEO & OPEN GRAPH METADATA ---
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getSiteSettings();
 
-  // Extract variables with safe fallbacks
+  // 1. Core Variables with Safe Fallbacks
   const siteName = settings?.siteName || "Eventomir";
+  const defaultDescription = `Найдите лучших фотографов, диджеев, ведущих, поваров, транспорт и других профессионалов для вашего мероприятия в России на ${siteName}.`;
+
+  // 2. Absolute URLs for Social Cards
+  // WhatsApp and Telegram strictly require absolute URLs for images.
+  const appDomain =
+    process.env.NEXT_PUBLIC_BASE_URL || "https://app.eventomir.ru";
   const favicon = settings?.faviconUrl || "/favicon.ico";
-  const logo = settings?.logoUrl || "/images/og-image.png";
+
+  // Best Practice: If logoUrl is empty, fallback to a specific 1200x630 OG image in your public folder
+  const ogImage = settings?.logoUrl || "/images/og-image.png";
 
   return {
+    metadataBase: new URL(appDomain),
     title: {
-      default: `${siteName}: Платформа для поиска исполнителей на мероприятия`,
+      default: `${siteName} — Платформа для поиска исполнителей на мероприятия`,
       template: `%s | ${siteName}`,
     },
-    description: `Найдите лучших фотографов, диджеев, ведущих, поваров, транспорт и других профессионалов для вашего мероприятия в России на ${siteName}. Удобный поиск, отзывы, портфолио.`,
-    metadataBase: new URL(
-      process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:9003",
-    ),
-    alternates: {
-      canonical: "/",
-      languages: {
-        "ru-RU": "/",
-      },
-    },
-    // Dynamic Favicon Injection
-    icons: {
-      icon: favicon,
-      apple: favicon,
-    },
-    openGraph: {
-      title: `${siteName}: Найдите лучших исполнителей для мероприятий`,
-      description:
-        "Платформа для поиска фотографов, DJ, ведущих и других профессионалов для свадьбы, дня рождения, корпоратива.",
-      url: "/",
-      siteName: siteName,
-      images: [
-        {
-          url: logo, // Dynamic Logo for social media previews
-          width: 1200,
-          height: 630,
-          alt: `Логотип ${siteName}`,
-        },
-      ],
-      locale: "ru_RU",
-      type: "website",
-    },
-    twitter: {
-      card: "summary_large_image",
-      title: `${siteName}: Найдите лучших исполнителей для мероприятий`,
-      description:
-        "Платформа для поиска фотографов, DJ, ведущих и других профессионалов для свадьбы, дня рождения, корпоратива.",
-      images: {
-        url: logo, // Dynamic Logo
-        alt: `Логотип ${siteName}`,
-      },
-    },
+    description: defaultDescription,
+    applicationName: siteName,
+    authors: [{ name: `${siteName} Team`, url: appDomain }],
+    generator: "Next.js",
     keywords: [
       "организация мероприятий",
       "поиск исполнителей",
       "фотограф на свадьбу",
       "DJ на праздник",
       "ведущий на корпоратив",
-      "кейтеринг",
-      "декор мероприятий",
       "аренда транспорта",
-      "артисты",
-      "планирование событий",
-      siteName, // Add dynamic site name to keywords
+      siteName,
     ],
+    creator: `${siteName} Team`,
+    publisher: siteName,
+    formatDetection: {
+      telephone: true,
+      address: true,
+      email: true,
+    },
+
+    // --- OPEN GRAPH (Facebook, WhatsApp, LinkedIn) ---
+    openGraph: {
+      type: "website",
+      locale: "ru_RU",
+      url: "/",
+      title: `${siteName} — Ваш гид в мире событий`,
+      description: defaultDescription,
+      siteName: siteName,
+      images: [
+        {
+          url: ogImage,
+          width: 1200, // Optimal width for large cards
+          height: 630, // Optimal height for large cards
+          alt: `Логотип и баннер ${siteName}`,
+          type: "image/png", // Helps WhatsApp parse the image faster
+        },
+      ],
+    },
+
+    // --- TWITTER / TELEGRAM CARDS ---
+    twitter: {
+      card: "summary_large_image", // Forces a large, beautiful image card (not a tiny square)
+      title: `${siteName} — Поиск профи для мероприятий`,
+      description: defaultDescription,
+      images: [ogImage],
+      creator: "@eventomir", // Optional: Add your Twitter handle if you have one
+    },
+
+    // --- ICONS & PWA ---
+    icons: {
+      icon: favicon,
+      shortcut: favicon,
+      apple: favicon, // Essential for iOS Home Screen sharing
+    },
+    manifest: "/manifest.json",
+
+    // --- ROBOTS & SEARCH ENGINES ---
     robots: {
       index: true,
       follow: true,
@@ -82,18 +103,24 @@ export async function generateMetadata(): Promise<Metadata> {
         index: true,
         follow: true,
         "max-video-preview": -1,
-        "max-image-preview": "large",
+        "max-image-preview": "large", // Tells Google to show large image snippets
         "max-snippet": -1,
       },
     },
+
+    // --- VERIFICATION ---
     verification: {
-      google: "ВАШ_КОД_ВЕРИФИКАЦИИ_GOOGLE",
-      yandex: "ВАШ_КОД_ВЕРИФИКАЦИИ_ЯНДЕКС",
+      google: "ВАШ_КОД_ВЕРИФИКАЦИИ_GOOGLE", // Replace in production
+      yandex: "ВАШ_КОД_ВЕРИФИКАЦИИ_ЯНДЕКС", // Replace in production
     },
-    manifest: "/manifest.json",
-    authors: [{ name: `${siteName} Team`, url: "/" }],
-    creator: `${siteName} Team`,
-    publisher: siteName,
+
+    // Canonical links prevent duplicate content penalties
+    alternates: {
+      canonical: "/",
+      languages: {
+        "ru-RU": "/",
+      },
+    },
   };
 }
 
@@ -120,19 +147,13 @@ export default async function RootLayout({ children }: RootLayoutProps) {
           href="https://fonts.gstatic.com"
           crossOrigin="anonymous"
         />
-        {/* Base fallback font. The actual font chosen in the Admin Panel 
-            will override this via the SiteThemeProvider CSS variable injection */}
         <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
           rel="stylesheet"
         />
       </head>
       <body className="antialiased flex flex-col min-h-screen">
-        {/* Pass the fetched settings down to the Providers (and thus to SiteThemeProvider) */}
-        <Providers initialSettings={settings}>
-          <Suspense>{children}</Suspense>
-          <Toaster />
-        </Providers>
+        <Providers initialSettings={settings}>{children}</Providers>
       </body>
     </html>
   );
