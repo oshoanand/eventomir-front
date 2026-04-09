@@ -45,6 +45,11 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "lh3.googleusercontent.com",
       },
+      // 5. Yandex Avatars
+      {
+        protocol: "https",
+        hostname: "avatars.yandex.net",
+      },
     ],
   },
 };
