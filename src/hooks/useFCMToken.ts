@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react"; // Removed useRef
 import { getToken, onMessage } from "firebase/messaging";
 import { messaging } from "@/lib/firebase";
 import { apiRequest } from "@/utils/api-client";
@@ -11,7 +11,6 @@ const VAPID_KEY = process.env.NEXT_PUBLIC_VAPID_KEY;
 
 export default function useFCMToken() {
   const { data: session, status } = useSession();
-  const syncedTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
     // 🚨 1. Wait until the user is fully logged in
@@ -36,16 +35,20 @@ export default function useFCMToken() {
               serviceWorkerRegistration: registration,
             });
 
+            // 🚨 FIX: Use sessionStorage instead of useRef
+            // This flag will survive page refreshes!
+            const hasSyncedThisSession = sessionStorage.getItem("fcm_synced");
+
             // 5. Send to backend ONLY if it hasn't been synced yet this session
-            if (currentToken && syncedTokenRef.current !== currentToken) {
-              // This hits the route we built, which saves the token AND subscribes to the topic!
+            if (currentToken && !hasSyncedThisSession) {
               await apiRequest({
                 method: "POST",
                 url: "/api/fcm/save-fcm",
                 data: { token: currentToken },
               });
 
-              syncedTokenRef.current = currentToken;
+              // Mark as synced for this browser tab so it doesn't run again on refresh
+              sessionStorage.setItem("fcm_synced", "true");
               console.log("✅ FCM Token synced and subscribed to topics");
             }
 
