@@ -1,11 +1,11 @@
 importScripts(
-  "https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js",
+  "https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js",
 );
 importScripts(
-  "https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js",
+  "https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js",
 );
 
-// 1. Initialize Firebase inside the Service Worker
+// 1. Initialize Firebase
 const firebaseConfig = {
   apiKey: "AIzaSyAEFVxhBdqjvecjA_aj5TAD8lI30NPFglU",
   authDomain: "zepo-c03d7.firebaseapp.com",
@@ -18,26 +18,23 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 
-// 2. Retrieve an instance of Firebase Messaging
 const messaging = firebase.messaging();
 
-// 3. Handle Background Messages
+// 2. Handle Background Messages
 messaging.onBackgroundMessage((payload) => {
   console.log(
     "[firebase-messaging-sw.js] Received background message ",
     payload,
   );
 
-  // 🚨 FIX 1 & 2: Prevent Double Notifications & Crashes
-  // If the payload contains a 'notification' object, Firebase's SDK displays it automatically.
-  // We only manually show the notification if the backend sent a DATA-ONLY message.
+  // If the backend sent a 'notification' block, Firebase SDK handles the UI automatically.
   if (payload.notification) {
-    // Return early to let the Firebase SDK handle the UI automatically
     return;
   }
 
   // Handle DATA-ONLY payloads manually
   const notificationTitle = payload.data?.title || "Новое уведомление";
+
   const notificationOptions = {
     body: payload.data?.body || "",
     icon: "/icons/icon-192.png", // Make sure this exists in your public folder
@@ -45,30 +42,35 @@ messaging.onBackgroundMessage((payload) => {
     data: { url: payload.data?.click_action || payload.data?.url || "/" },
   };
 
+  // You MUST return this promise, otherwise Android thinks the Service Worker failed
   return self.registration.showNotification(
     notificationTitle,
     notificationOptions,
   );
 });
 
-// 4. Handle Notification Click (Smart Tab Focusing)
+// 3. Handle Notification Click (Smart Tab Focusing)
 self.addEventListener("notificationclick", function (event) {
   event.notification.close();
 
-  // Determine the URL to open (fallback to root if not provided)
-  const urlToOpen = event.notification.data?.url || "/";
+  // 🚨 CRITICAL FIX: When Firebase auto-generates the notification, it hides the data inside FCM_MSG
+  let urlToOpen = "/";
+  if (event.notification.data?.url) {
+    urlToOpen = event.notification.data.url;
+  } else if (event.notification.data?.FCM_MSG?.data?.url) {
+    urlToOpen = event.notification.data.FCM_MSG.data.url;
+  }
 
-  // 🚨 FIX 3: Check if the PWA/Tab is already open. If yes, focus it. If not, open a new window.
   event.waitUntil(
     clients
       .matchAll({ type: "window", includeUncontrolled: true })
       .then((windowClients) => {
-        // 1. Check if there is already a window/tab open with the target app
+        // 1. Check if there is already a window/tab open with the app
         for (let i = 0; i < windowClients.length; i++) {
           const client = windowClients[i];
-          // If the app is open (we check origin to be safe) and can be focused
+
           if (client.url.includes(self.location.origin) && "focus" in client) {
-            // Optionally navigate the existing client to the specific URL
+            // Navigate the existing tab to the correct URL and focus it
             client.navigate(urlToOpen);
             return client.focus();
           }
