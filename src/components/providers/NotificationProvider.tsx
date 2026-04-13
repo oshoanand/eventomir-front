@@ -10,12 +10,10 @@ import React, {
 } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
-import { useSocket } from "@/components/providers/socket-provider";
+import { useSocket } from "@/components/providers/SocketProvider";
 import {
   NotificationContextType,
   NotificationItem,
-  TokenPayload,
-  JobPayload,
 } from "@/types/notification";
 
 const NotificationContext = createContext<NotificationContextType | undefined>(
@@ -54,77 +52,58 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
 
       const { type, data } = payload;
 
-      // --- A. Handle "TOKEN" type ---
-      if (type === "TOKEN") {
-        const item: TokenPayload = { ...data, type: "TOKEN" };
-        setNotifications((prev) => [item, ...prev]);
-        setUnreadCount((prev) => prev + 1);
-        playNotificationSound();
+      // 🚨 1. Time Check (Prevents spam on page refresh when socket dumps history)
+      const notifTime = payload.createdAt
+        ? new Date(payload.createdAt).getTime()
+        : Date.now();
+      const isOldMessage = Date.now() - notifTime > 10000; // Older than 10 seconds
 
-        toast({
-          title: "New Token Generated 🎟️",
-          description: `Token: ${data.tokenCode}`,
-          variant: "success",
-          duration: 8000,
-          action: {
-            label: "View",
-            onClick: () => router.push("/tokens"),
-          },
-        });
-      }
-
-      // --- B. Handle "JOB" type ---
-      else if (type === "JOB") {
-        const item: JobPayload = { ...data, type: "JOB" };
-        setNotifications((prev) => [item, ...prev]);
-        setUnreadCount((prev) => prev + 1);
-        playNotificationSound();
-
-        toast({
-          title: "New Job Posted 🚛",
-          description: `${data.location} | ${data.cost}₽`,
-          variant: "default",
-          duration: 8000,
-          action: {
-            label: "Jobs",
-            onClick: () => router.push("/jobs"),
-          },
-        });
-      }
-
-      // --- C. Handle "CHAT_MESSAGE" type ---
-      else if (type === "CHAT_MESSAGE") {
+      // Handle "CHAT_MESSAGE" type ---
+      if (type === "CHAT_MESSAGE") {
         const chatItem: NotificationItem = {
           id: payload.id || Date.now().toString(),
           type: "CHAT_MESSAGE",
           message: payload.message || `Новое сообщение от ${data?.senderName}`,
           isRead: false,
-          createdAt: new Date().toISOString(),
+          createdAt: payload.createdAt || new Date().toISOString(),
           data: {
             chatId: data?.chatId,
             senderName: data?.senderName,
             preview: data?.preview,
+            url: data?.url || `/chat/${data?.chatId}`, // Ensure easy deep linking
           },
         };
 
-        // 🚨 FIX: We add it to the dropdown list, but we DO NOT increment `unreadCount`
+        // We add it to the dropdown list, but we DO NOT increment `unreadCount`
         // Chat messages use their own DB count! We also don't play sound here.
         setNotifications((prev) => [chatItem, ...prev]);
       }
 
-      // --- D. Handle Generic/System types ---
+      // Handle Generic/System types ---
       else {
-        setNotifications((prev) => [
-          { ...payload, id: Date.now().toString() },
-          ...prev,
-        ]);
-        setUnreadCount((prev) => prev + 1);
-        playNotificationSound();
+        // 🚨 2. Safely map to the NotificationItem interface
+        const genericItem: NotificationItem = {
+          id: payload.id || Date.now().toString(),
+          type: type || "SYSTEM",
+          message: payload.message || payload.body || "Системное уведомление",
+          isRead: false,
+          createdAt: payload.createdAt || new Date().toISOString(),
+          data: data || {},
+        };
 
-        toast({
-          title: payload.message || "Уведомление",
-          description: "Новое сообщение от системы",
-        });
+        setNotifications((prev) => [genericItem, ...prev]);
+        setUnreadCount((prev) => prev + 1);
+
+        // 🚨 3. Only play sound and show toast if it's a NEW notification
+        if (!isOldMessage) {
+          playNotificationSound();
+          toast({
+            variant: "success",
+            title: payload.title || "Уведомление",
+            description:
+              payload.message || payload.body || "Новое сообщение от системы",
+          });
+        }
       }
     };
 

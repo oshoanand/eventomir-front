@@ -48,6 +48,7 @@ import {
   Briefcase,
   ChevronLeft,
   ChevronRight,
+  Layers,
 } from "lucide-react";
 
 // Services & Hooks
@@ -58,27 +59,21 @@ import {
   getPerformersPaginated,
   type PerformerProfile,
 } from "@/services/performer";
-import { getSiteSettings } from "@/services/settings"; // <-- Imported your settings service
 import { cn } from "@/utils/utils";
 
-// Fallback categories in case the backend API fails or settings are empty
-const FALLBACK_CATEGORIES = [
-  "Фотограф",
-  "Студия",
-  "DJ",
-  "Ведущие",
-  "Дизайнер",
-  "Декоратор",
-  "Видеограф",
-  "Флорист",
-  "Повар",
-  "Транспорт",
-  "Аниматор",
-  "Визажист",
-  "Стилист",
-  "Ресторан",
-  "Артисты",
-  "Стендаперы",
+// 🚨 IMPORT REACT QUERY HOOK FOR FRESH SETTINGS 🚨
+import {
+  useGeneralSettingsQuery,
+  type SiteCategory,
+} from "@/services/settings";
+
+// Fallback categories in case settings are completely empty
+const FALLBACK_CATEGORIES: SiteCategory[] = [
+  { id: "1", name: "Фотограф", icon: "Camera", link: "", subCategories: [] },
+  { id: "2", name: "DJ", icon: "Music", link: "", subCategories: [] },
+  { id: "3", name: "Ведущие", icon: "Mic", link: "", subCategories: [] },
+  { id: "4", name: "Дизайнер", icon: "Palette", link: "", subCategories: [] },
+  { id: "5", name: "Видеограф", icon: "Film", link: "", subCategories: [] },
 ];
 
 const PAGE_SIZE = 12;
@@ -90,17 +85,29 @@ const SearchPage = () => {
   const pathname = usePathname();
   const { toast } = useToast();
 
-  // Dynamic Categories State
-  const [categories, setCategories] = useState<string[]>([]);
-  const [isLoadingCategories, setIsLoadingCategories] = useState(true);
+  const { data: settings, isLoading: isLoadingCategories } =
+    useGeneralSettingsQuery();
 
-  // Filter States (Initialized from URL parameters if present)
+  // Safely extract categories from fresh settings
+  const categories =
+    settings?.siteCategories && settings.siteCategories.length > 0
+      ? settings.siteCategories
+      : FALLBACK_CATEGORIES;
+
+  // --- FILTER STATES ---
   const [cityInput, setCityInput] = useState(searchParams.get("city") || "");
   const [minPrice, setMinPrice] = useState(searchParams.get("priceMin") || "");
   const [maxPrice, setMaxPrice] = useState(searchParams.get("priceMax") || "");
   const [selectedService, setSelectedService] = useState<string | null>(
     searchParams.get("category"),
   );
+
+  // 🚨 NEW: Array state to support multiple sub-category selections
+  const initialSubCats = searchParams.get("subCategories");
+  const [selectedSubCategories, setSelectedSubCategories] = useState<string[]>(
+    initialSubCats ? initialSubCats.split(",") : [],
+  );
+
   const [selectedAccountType, setSelectedAccountType] = useState(
     searchParams.get("accountType") || "all",
   );
@@ -109,7 +116,7 @@ const SearchPage = () => {
     searchParams.get("onlyVip") === "true",
   );
 
-  // Pagination & Results States
+  // --- RESULTS STATES ---
   const [currentPage, setCurrentPage] = useState(
     Number(searchParams.get("page")) || 1,
   );
@@ -118,19 +125,48 @@ const SearchPage = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
 
-  // Autocomplete States
+  // Autocomplete
   const [regions, setRegions] = useState<
     { name: string; cities: { name: string }[] }[]
   >([]);
   const [autocompleteResults, setAutocompleteResults] = useState<string[]>([]);
 
-  // Update URL function (Syncs state to URL for sharing)
+  // 🚨 DERIVED STATE: Get the active category object to display its subcategories
+  const activeCategoryObj = categories.find((c) => c.name === selectedService);
+  const availableSubCategories = activeCategoryObj?.subCategories || [];
+
+  // EFFECT: Clear invalid subcategories if the main category changes
+  useEffect(() => {
+    if (selectedService && activeCategoryObj) {
+      const validSubNames =
+        activeCategoryObj.subCategories?.map((s) => s.name) || [];
+
+      setSelectedSubCategories((prev) => {
+        const filtered = prev.filter((sub) => validSubNames.includes(sub));
+        // 🚨 PREVENT INFINITE LOOP: Only update state if something was actually removed
+        if (filtered.length !== prev.length) {
+          return filtered;
+        }
+        return prev;
+      });
+    } else {
+      // 🚨 PREVENT INFINITE LOOP: Only clear if the array isn't already empty
+      setSelectedSubCategories((prev) => (prev.length > 0 ? [] : prev));
+    }
+  }, [selectedService, activeCategoryObj]); // Removed the volatile array from dependencies
+
   const updateURLParams = useCallback(
     (page: number) => {
       const params = new URLSearchParams();
       if (cityInput) params.set("city", cityInput);
       if (selectedService && selectedService !== "_all_")
         params.set("category", selectedService);
+
+      // Pass multiple sub-categories as a comma-separated string
+      if (selectedSubCategories.length > 0) {
+        params.set("subCategories", selectedSubCategories.join(","));
+      }
+
       if (minPrice) params.set("priceMin", minPrice);
       if (maxPrice) params.set("priceMax", maxPrice);
       if (selectedAccountType !== "all")
@@ -143,6 +179,7 @@ const SearchPage = () => {
     [
       cityInput,
       selectedService,
+      selectedSubCategories,
       minPrice,
       maxPrice,
       selectedAccountType,
@@ -152,7 +189,6 @@ const SearchPage = () => {
     ],
   );
 
-  // Fetch Results Function
   const fetchResults = useCallback(
     async (page: number) => {
       setIsSearching(true);
@@ -161,6 +197,11 @@ const SearchPage = () => {
           page,
           pageSize: PAGE_SIZE,
           category: selectedService === "_all_" ? undefined : selectedService,
+          // Backend should handle splitting the comma-separated string
+          subCategories:
+            selectedSubCategories.length > 0
+              ? selectedSubCategories.join(",")
+              : undefined,
           city: cityInput || undefined,
           priceMin: minPrice ? Number(minPrice) : undefined,
           priceMax: maxPrice ? Number(maxPrice) : undefined,
@@ -184,6 +225,7 @@ const SearchPage = () => {
     },
     [
       selectedService,
+      selectedSubCategories,
       cityInput,
       minPrice,
       maxPrice,
@@ -194,50 +236,15 @@ const SearchPage = () => {
     ],
   );
 
-  // --- FETCH DYNAMIC CATEGORIES AND REGIONS ON MOUNT ---
   useEffect(() => {
-    // 1. Fetch Geolocation Data
     getRussianRegionsWithCities().then(setRegions).catch(console.error);
-
-    // 2. Fetch Categories using your dedicated settings service
-    const loadCategories = async () => {
-      try {
-        const settings = await getSiteSettings();
-
-        if (
-          settings &&
-          settings.siteCategories &&
-          settings.siteCategories.length > 0
-        ) {
-          // Extract just the category names to populate the dropdown
-          const fetchedCategories = settings.siteCategories.map(
-            (cat) => cat.name,
-          );
-          setCategories(fetchedCategories);
-        } else {
-          throw new Error("Categories array was empty");
-        }
-      } catch (error) {
-        console.warn(
-          "Failed to load categories from backend. Using fallback list.",
-          error,
-        );
-        setCategories(FALLBACK_CATEGORIES);
-      } finally {
-        setIsLoadingCategories(false);
-      }
-    };
-
-    loadCategories();
   }, []);
 
-  // Initial search fetch based on URL params on Mount
   useEffect(() => {
     if (mounted) fetchResults(currentPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted]);
 
-  // Handlers
   const handleSearchClick = () => {
     setCurrentPage(1);
     fetchResults(1);
@@ -260,13 +267,21 @@ const SearchPage = () => {
             cityName.toLowerCase().startsWith(input.toLowerCase()),
           ),
       );
-      setAutocompleteResults([...new Set(results)].slice(0, 10)); // Show max 10
+      setAutocompleteResults([...new Set(results)].slice(0, 10));
     } else {
       setAutocompleteResults([]);
     }
   };
 
-  // Prevent hydration errors
+  // 🚨 NEW: Toggle function for multi-select
+  const toggleSubCategory = (subName: string) => {
+    setSelectedSubCategories((prev) =>
+      prev.includes(subName)
+        ? prev.filter((name) => name !== subName)
+        : [...prev, subName],
+    );
+  };
+
   if (!mounted) {
     return (
       <div className="container mx-auto py-10">
@@ -294,7 +309,7 @@ const SearchPage = () => {
                   }
                   disabled={isLoadingCategories}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="bg-muted/30">
                     <SelectValue
                       placeholder={
                         isLoadingCategories ? "Загрузка..." : "Все услуги"
@@ -304,14 +319,15 @@ const SearchPage = () => {
                   <SelectContent>
                     <SelectItem value="_all_">Все услуги</SelectItem>
                     {categories.map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {c}
+                      <SelectItem key={c.id} value={c.name}>
+                        {c.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
 
+              {/* Date Select */}
               <div className="space-y-2">
                 <Label>Дата мероприятия</Label>
                 <Popover>
@@ -319,7 +335,7 @@ const SearchPage = () => {
                     <Button
                       variant={"outline"}
                       className={cn(
-                        "w-full justify-start text-left font-normal",
+                        "w-full justify-start text-left font-normal bg-muted/30",
                         !selectedDate && "text-muted-foreground",
                       )}
                     >
@@ -344,13 +360,14 @@ const SearchPage = () => {
                 </Popover>
               </div>
 
+              {/* Account Type */}
               <div className="space-y-2">
                 <Label>Тип исполнителя</Label>
                 <Select
                   value={selectedAccountType}
                   onValueChange={setSelectedAccountType}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="bg-muted/30">
                     <SelectValue placeholder="Тип аккаунта" />
                   </SelectTrigger>
                   <SelectContent>
@@ -361,6 +378,7 @@ const SearchPage = () => {
                 </Select>
               </div>
 
+              {/* City Input */}
               <div className="space-y-2 relative">
                 <Label>Город</Label>
                 <Input
@@ -368,6 +386,7 @@ const SearchPage = () => {
                   placeholder="Введите город..."
                   value={cityInput}
                   onChange={handleCityInputChange}
+                  className="bg-muted/30"
                 />
                 {autocompleteResults.length > 0 && (
                   <div className="absolute z-50 mt-1 w-full rounded-md border bg-background shadow-lg max-h-60 overflow-y-auto">
@@ -388,7 +407,48 @@ const SearchPage = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+            {/* DYNAMIC SUB-CATEGORY BLOCK */}
+            {availableSubCategories.length > 0 && (
+              <div className="pt-4 border-t border-dashed animate-in slide-in-from-top-4 fade-in duration-300">
+                <Label className="mb-3 flex items-center gap-2 text-sm font-semibold text-primary">
+                  <Layers className="h-4 w-4" /> Уточните специализацию:
+                </Label>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant={
+                      selectedSubCategories.length === 0 ? "default" : "outline"
+                    }
+                    size="sm"
+                    className="rounded-full shadow-sm"
+                    onClick={() => setSelectedSubCategories([])}
+                  >
+                    Все в категории "{activeCategoryObj?.name}"
+                  </Button>
+                  {availableSubCategories.map((sub) => {
+                    const isSelected = selectedSubCategories.includes(sub.name);
+                    return (
+                      <Button
+                        key={sub.id}
+                        variant={isSelected ? "default" : "outline"}
+                        size="sm"
+                        className={cn(
+                          "rounded-full shadow-sm transition-all",
+                          isSelected
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-background",
+                        )}
+                        onClick={() => toggleSubCategory(sub.name)}
+                      >
+                        {sub.name}
+                      </Button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Price & Search Row */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end pt-2">
               <div className="space-y-2">
                 <Label>Бюджет (₽)</Label>
                 <div className="flex items-center gap-2">
@@ -397,6 +457,7 @@ const SearchPage = () => {
                     placeholder="от"
                     value={minPrice}
                     onChange={(e) => setMinPrice(e.target.value)}
+                    className="bg-muted/30"
                   />
                   <span className="text-muted-foreground">-</span>
                   <Input
@@ -404,6 +465,7 @@ const SearchPage = () => {
                     placeholder="до"
                     value={maxPrice}
                     onChange={(e) => setMaxPrice(e.target.value)}
+                    className="bg-muted/30"
                   />
                 </div>
               </div>
@@ -425,7 +487,7 @@ const SearchPage = () => {
               <div className="lg:col-span-2 flex gap-2">
                 <Button
                   variant="destructive"
-                  className="flex-grow font-bold shadow-lg shadow-destructive/20"
+                  className="flex-grow font-bold shadow-lg shadow-destructive/20 h-10"
                   onClick={handleSearchClick}
                   disabled={isSearching}
                 >
@@ -433,7 +495,7 @@ const SearchPage = () => {
                     <Search className="mr-2 h-4 w-4 animate-bounce" />
                   ) : (
                     <Search className="mr-2 h-4 w-4" />
-                  )}
+                  )}{" "}
                   Найти исполнителей
                 </Button>
                 <div className="flex gap-1">
@@ -442,6 +504,7 @@ const SearchPage = () => {
                     size="icon"
                     onClick={() => setViewMode("list")}
                     title="Список"
+                    className="h-10 w-10"
                   >
                     <List className="h-4 w-4" />
                   </Button>
@@ -450,6 +513,7 @@ const SearchPage = () => {
                     size="icon"
                     onClick={() => setViewMode("map")}
                     title="Карта"
+                    className="h-10 w-10"
                   >
                     <MapIcon className="h-4 w-4" />
                   </Button>
@@ -460,12 +524,12 @@ const SearchPage = () => {
         </Card>
 
         {/* --- RESULTS SECTION --- */}
-        <div className="mt-6 space-y-8">
+        <div className="mt-4 space-y-6">
           <div className="flex justify-between items-center">
             <h2 className="text-2xl font-bold tracking-tight">
               Найдено: {totalResults}
             </h2>
-            <div className="text-sm text-muted-foreground">
+            <div className="text-sm text-muted-foreground font-medium">
               Показано {searchResults.length} на странице
             </div>
           </div>
@@ -473,7 +537,7 @@ const SearchPage = () => {
           {isSearching ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {[1, 2, 3, 4, 5, 6].map((i) => (
-                <Skeleton key={i} className="h-[340px] w-full rounded-xl" />
+                <Skeleton key={i} className="h-[340px] w-full rounded-2xl" />
               ))}
             </div>
           ) : searchResults.length > 0 ? (
@@ -483,12 +547,13 @@ const SearchPage = () => {
                   <Card
                     key={performer.id}
                     className={cn(
-                      "flex flex-col relative transition-all hover:shadow-xl group border-none shadow-sm bg-card overflow-hidden",
-                      performer.isVip && "ring-1 ring-yellow-500/30",
+                      "flex flex-col relative transition-all hover:shadow-xl group border border-muted shadow-sm bg-card overflow-hidden rounded-2xl",
+                      performer.isVip &&
+                        "ring-2 ring-yellow-500/50 border-yellow-500/20",
                     )}
                   >
                     {performer.isVip && (
-                      <div className="absolute top-0 right-0 p-1.5 bg-yellow-500 text-white rounded-bl-lg shadow-sm z-10 flex items-center gap-1 text-[10px] font-bold">
+                      <div className="absolute top-0 right-0 p-1.5 bg-gradient-to-tr from-yellow-600 to-yellow-400 text-white rounded-bl-xl shadow-md z-10 flex items-center gap-1 text-[10px] font-extrabold tracking-wider">
                         <Crown className="h-3 w-3" /> STAR
                       </div>
                     )}
@@ -496,28 +561,29 @@ const SearchPage = () => {
                       <div className="flex items-start justify-between">
                         <Link
                           href={`/performer-profile?id=${performer.id}`}
-                          className="flex items-center gap-3 group/link"
+                          className="flex items-center gap-4 group/link flex-grow"
                         >
-                          <Avatar className="h-14 w-14 border-2 border-background shadow-sm">
+                          <Avatar className="h-16 w-16 border-2 border-background shadow-md">
                             <AvatarImage
                               src={performer.profilePicture || ""}
                               alt={performer.name}
+                              className="object-cover"
                             />
-                            <AvatarFallback>
+                            <AvatarFallback className="bg-primary/10 text-primary font-bold text-xl">
                               {performer.name.substring(0, 1).toUpperCase()}
                             </AvatarFallback>
                           </Avatar>
-                          <div>
-                            <CardTitle className="text-lg group-hover/link:text-primary transition-colors line-clamp-1">
+                          <div className="flex flex-col overflow-hidden">
+                            <CardTitle className="text-lg group-hover/link:text-primary transition-colors truncate">
                               {performer.name}
                             </CardTitle>
-                            <CardDescription className="flex items-center text-xs gap-1 mt-0.5">
-                              <MapPin className="h-3 w-3 text-primary" />
-                              {performer.city}
+                            <CardDescription className="flex items-center text-xs gap-1 mt-1 font-medium">
+                              <MapPin className="h-3 w-3 text-primary/70 shrink-0" />{" "}
+                              <span className="truncate">{performer.city}</span>
                             </CardDescription>
                             {performer.parentAgencyName && (
-                              <div className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground font-bold uppercase tracking-tight">
-                                <Briefcase className="h-2.5 w-2.5" /> от{" "}
+                              <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-muted-foreground font-bold uppercase tracking-tight bg-muted/50 w-fit px-2 py-0.5 rounded-full">
+                                <Briefcase className="h-3 w-3" /> от{" "}
                                 {performer.parentAgencyName}
                               </div>
                             )}
@@ -527,37 +593,37 @@ const SearchPage = () => {
                       </div>
                     </CardHeader>
                     <CardContent className="flex-grow">
-                      <p className="text-sm text-muted-foreground line-clamp-3 italic leading-relaxed">
-                        {performer.description || "Нет описания"}
+                      <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed">
+                        {performer.description || "О себе не рассказано"}
                       </p>
-                      <div className="flex flex-wrap gap-1.5 mt-3">
-                        {performer.roles.slice(0, 3).map((r) => (
+                      <div className="flex flex-wrap gap-1.5 mt-4">
+                        {performer.roles.slice(0, 4).map((r) => (
                           <Badge
                             key={r}
                             variant="secondary"
-                            className="text-[10px] bg-primary/5 text-primary border-none"
+                            className="text-[10px] bg-primary/10 text-primary hover:bg-primary/20 transition-colors border-none"
                           >
                             {r}
                           </Badge>
                         ))}
                       </div>
                     </CardContent>
-                    <CardFooter className="flex justify-between items-center pt-4 border-t bg-muted/5">
+                    <CardFooter className="flex justify-between items-center pt-5 border-t bg-muted/10">
                       <div className="flex flex-col">
-                        <span className="text-[10px] text-muted-foreground uppercase font-bold">
-                          Цена
+                        <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider mb-0.5">
+                          Стоимость
                         </span>
                         <span className="text-sm font-black text-primary">
                           {performer.priceRange && performer.priceRange[0] > 0
-                            ? `${performer.priceRange[0].toLocaleString()} ₽`
+                            ? `от ${performer.priceRange[0].toLocaleString()} ₽`
                             : "По запросу"}
                         </span>
                       </div>
                       <Button
                         asChild
-                        variant={performer.isVip ? "destructive" : "outline"}
+                        variant={performer.isVip ? "destructive" : "default"}
                         size="sm"
-                        className="font-bold"
+                        className="font-bold rounded-full px-5 shadow-sm"
                       >
                         <Link href={`/performer-profile?id=${performer.id}`}>
                           Подробнее
@@ -570,36 +636,54 @@ const SearchPage = () => {
 
               {/* Pagination Controls */}
               {totalPages > 1 && (
-                <div className="flex justify-center items-center gap-4 mt-10">
+                <div className="flex justify-center items-center gap-4 mt-12 bg-card border rounded-full w-fit mx-auto p-2 shadow-sm">
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="icon"
+                    className="rounded-full"
                     onClick={() => handlePageChange(currentPage - 1)}
                     disabled={currentPage === 1}
                   >
-                    <ChevronLeft className="h-4 w-4" />
+                    <ChevronLeft className="h-5 w-5" />
                   </Button>
-                  <div className="text-sm font-medium">
+                  <div className="text-sm font-semibold px-4 text-muted-foreground">
                     Страница {currentPage} из {totalPages}
                   </div>
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="icon"
+                    className="rounded-full"
                     onClick={() => handlePageChange(currentPage + 1)}
                     disabled={currentPage === totalPages}
                   >
-                    <ChevronRight className="h-4 w-4" />
+                    <ChevronRight className="h-5 w-5" />
                   </Button>
                 </div>
               )}
             </>
           ) : (
-            <div className="text-center py-20 bg-muted/10 rounded-2xl border-2 border-dashed">
-              <Search className="h-12 w-12 mx-auto text-muted-foreground opacity-20 mb-4" />
-              <h3 className="text-xl font-bold">Ничего не найдено</h3>
-              <p className="text-muted-foreground">
-                Попробуйте изменить параметры поиска.
+            <div className="text-center py-24 bg-muted/10 rounded-3xl border-2 border-dashed">
+              <Search className="h-16 w-16 mx-auto text-muted-foreground opacity-20 mb-4" />
+              <h3 className="text-2xl font-bold mb-2">Ничего не найдено</h3>
+              <p className="text-muted-foreground max-w-sm mx-auto">
+                Попробуйте изменить параметры поиска, убрать фильтры или выбрать
+                другой город.
               </p>
+              <Button
+                variant="outline"
+                className="mt-6 rounded-full"
+                onClick={() => {
+                  setSelectedService(null);
+                  setSelectedSubCategories([]);
+                  setCityInput("");
+                  setMinPrice("");
+                  setMaxPrice("");
+                  setOnlyVip(false);
+                  handleSearchClick();
+                }}
+              >
+                Сбросить фильтры
+              </Button>
             </div>
           )}
         </div>

@@ -1,186 +1,3 @@
-// "use client";
-
-// import Link from "next/link";
-// import { Separator } from "@/components/ui/separator";
-// import { Skeleton } from "@/components/ui/skeleton";
-// import { Send } from "lucide-react";
-// import { useSession } from "next-auth/react";
-// import { VkontakteIcon, TelegramIcon } from "@/components/icons";
-
-// import { useSiteSettings } from "@/components/providers/SiteThemeProvider";
-
-// const Footer = () => {
-//   const settings = useSiteSettings();
-//   const { status } = useSession();
-//   const currentYear = new Date().getFullYear();
-//   const isLoading = !settings;
-
-//   const isLoggedIn = status === "authenticated";
-
-//   const contacts = settings?.contacts;
-
-//   return (
-//     <footer className="bg-muted text-muted-foreground py-8 mt-16">
-//       <div className="container mx-auto px-4">
-//         <div className="grid grid-cols-1 md:grid-cols-4 gap-y-8 md:gap-x-8">
-//           {/* Section 1: About Us */}
-//           <div>
-//             <h3 className="text-lg font-semibold text-foreground mb-4">
-//               {settings?.siteName || "Eventomir"}
-//             </h3>
-//             <p className="text-sm">
-//               Платформа для поиска и бронирования лучших исполнителей для ваших
-//               мероприятий.
-//             </p>
-//           </div>
-
-//           {/* Section 2: Quick Links */}
-//           <div>
-//             <h3 className="text-lg font-semibold text-foreground mb-4">
-//               Навигация
-//             </h3>
-//             <nav className="flex flex-col space-y-2 text-sm">
-//               <Link href="/" className="hover:text-foreground hover:underline">
-//                 Главная
-//               </Link>
-//               <Link
-//                 href="/search"
-//                 className="hover:text-foreground hover:underline"
-//               >
-//                 Поиск
-//               </Link>
-//               <Link
-//                 href="/pricing"
-//                 className="hover:text-foreground hover:underline"
-//               >
-//                 Тарифы
-//               </Link>
-//               <Link
-//                 href="/blog"
-//                 className="hover:text-foreground hover:underline"
-//               >
-//                 Блог
-//               </Link>
-//               <Link
-//                 href="/about"
-//                 className="hover:text-foreground hover:underline"
-//               >
-//                 О нас
-//               </Link>
-//             </nav>
-//           </div>
-
-//           {/* Section 3: For Users */}
-//           <div>
-//             <h3 className="text-lg font-semibold text-foreground mb-4">
-//               Пользователям
-//             </h3>
-//             <nav className="flex flex-col space-y-2 text-sm">
-//               {/* Conditional rendering based on auth status */}
-//               {!isLoggedIn && (
-//                 <>
-//                   <Link
-//                     href="/login"
-//                     className="hover:text-foreground hover:underline"
-//                   >
-//                     Войти
-//                   </Link>
-//                   <Link
-//                     href="/register-customer"
-//                     className="hover:text-foreground hover:underline"
-//                   >
-//                     Регистрация заказчика
-//                   </Link>
-//                   <Link
-//                     href="/register-performer"
-//                     className="hover:text-foreground hover:underline"
-//                   >
-//                     Регистрация исполнителя
-//                   </Link>
-//                 </>
-//               )}
-//               <Link
-//                 href="/partnership"
-//                 className="hover:text-foreground hover:underline"
-//               >
-//                 Партнерская программа
-//               </Link>
-//               <Link
-//                 href="/documents"
-//                 className="hover:text-foreground hover:underline"
-//               >
-//                 Документы
-//               </Link>
-//             </nav>
-//           </div>
-
-//           {/* Section 4: Contacts & Social Media */}
-//           <div>
-//             <h3 className="text-lg font-semibold text-foreground mb-4">
-//               Контакты
-//             </h3>
-//             <div className="text-sm space-y-2">
-//               {isLoading ? (
-//                 <>
-//                   <Skeleton className="h-4 w-40" />
-//                   <Skeleton className="h-4 w-32" />
-//                 </>
-//               ) : (
-//                 <>
-//                   <p>Email: {contacts?.email || "[Ваш Email]"}</p>
-//                   <p>Телефон: {contacts?.phone || "[Ваш Телефон]"}</p>
-//                 </>
-//               )}
-//             </div>
-//             <div className="flex space-x-4 mt-4">
-//               {isLoading ? (
-//                 <>
-//                   <Skeleton className="h-5 w-5 rounded-full" />
-//                   <Skeleton className="h-5 w-5 rounded-full" />
-//                 </>
-//               ) : (
-//                 <>
-//                   {contacts?.vkLink && (
-//                     <Link
-//                       href={contacts.vkLink}
-//                       aria-label="VK"
-//                       target="_blank"
-//                       rel="noopener noreferrer"
-//                       className="text-muted-foreground hover:text-foreground"
-//                     >
-//                       <VkontakteIcon className="w-8 h-8" />
-//                     </Link>
-//                   )}
-//                   {contacts?.telegramLink && (
-//                     <Link
-//                       href={contacts.telegramLink}
-//                       aria-label="Telegram"
-//                       target="_blank"
-//                       rel="noopener noreferrer"
-//                       className="text-muted-foreground hover:text-foreground"
-//                     >
-//                       <TelegramIcon className="w-8 h-8" />
-//                     </Link>
-//                   )}
-//                 </>
-//               )}
-//             </div>
-//           </div>
-//         </div>
-//         <Separator className="my-8 bg-border" />
-//         <div className="text-center text-xs">
-//           <p>
-//             &copy; {currentYear} ООО {settings?.siteName || "Eventomir"}. Все
-//             права защищены. 18+
-//           </p>
-//         </div>
-//       </div>
-//     </footer>
-//   );
-// };
-
-// export default Footer;
-
 "use client";
 
 import Link from "next/link";
@@ -202,149 +19,119 @@ const Footer = () => {
   const siteName = settings?.siteName || "Eventomir";
 
   return (
-    <footer className="bg-background border-t border-border/40 pt-16 pb-8 mt-auto">
-      <div className="container mx-auto px-4 md:px-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 lg:gap-8">
-          {/* Section 1: Brand & About */}
-          <div className="space-y-6">
+    <footer className="bg-background border-t border-border/50 pt-12 md:pt-16 pb-6 md:pb-8 mt-auto">
+      <div className="container mx-auto px-5 md:px-8">
+        {/* Mobile: 2-col grid | Desktop: 4-col grid */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-10 md:gap-8">
+          {/* Section 1: Brand & About (Takes full width on mobile) */}
+          <div className="col-span-2 lg:col-span-1 space-y-5 md:space-y-6 pr-4">
             <div className="flex items-center">
-              <span className="text-2xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/70">
+              <span className="text-2xl md:text-3xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/70">
                 {siteName}
               </span>
             </div>
-            <p className="text-sm text-muted-foreground leading-relaxed max-w-xs">
-              Ведущая платформа для поиска и бронирования лучших исполнителей и
-              услуг для вашего идеального мероприятия.
+            <p className="text-xs mb-4">
+              ООО «АМУЛЕТ КОМПАНИ»
+              <br />
+              ИНН: 6319258622
+              <br />
+              ОГРН: 1226300038360
             </p>
-            <div className="flex items-center space-x-4 pt-2">
-              {isLoading ? (
-                <div className="flex gap-3">
-                  <Skeleton className="h-10 w-10 rounded-full" />
-                  <Skeleton className="h-10 w-10 rounded-full" />
-                </div>
-              ) : (
-                <>
-                  {contacts?.vkLink && (
-                    <Link
-                      href={contacts.vkLink}
-                      aria-label="VK"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="h-10 w-10 flex items-center justify-center rounded-full bg-muted hover:bg-primary/10 hover:text-primary transition-all duration-300"
-                    >
-                      <VkontakteIcon className="w-5 h-5" />
-                    </Link>
-                  )}
-                  {contacts?.telegramLink && (
-                    <Link
-                      href={contacts.telegramLink}
-                      aria-label="Telegram"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="h-10 w-10 flex items-center justify-center rounded-full bg-muted hover:bg-primary/10 hover:text-primary transition-all duration-300"
-                    >
-                      <TelegramIcon className="w-5 h-5" />
-                    </Link>
-                  )}
-                </>
-              )}
-            </div>
+            <p className="text-sm">
+              Платформа для поиска и бронирования лучших исполнителей для ваших
+              мероприятий.
+            </p>
           </div>
 
-          {/* Section 2: Quick Links */}
-          <div className="space-y-6">
-            <h3 className="text-base font-bold uppercase tracking-wider text-foreground">
-              Платформа
+          {/* Section 2: Quick Links (Takes half width on mobile) */}
+          <div className="col-span-1 space-y-4 md:space-y-6">
+            <h3 className="text-[13px] md:text-sm font-bold uppercase tracking-wider text-foreground">
+              Навигация
             </h3>
-            <nav className="flex flex-col space-y-3.5 text-sm font-medium text-muted-foreground">
+            <nav className="flex flex-col space-y-1.5 md:space-y-3 text-[15px] md:text-sm font-medium text-muted-foreground">
               <Link
                 href="/"
-                className="hover:text-primary transition-colors flex items-center gap-2 group"
+                className="hover:text-primary transition-colors py-1 md:py-0 inline-block w-fit"
               >
-                <span className="h-1 w-1 rounded-full bg-primary/0 group-hover:bg-primary transition-colors" />
                 Главная
               </Link>
               <Link
                 href="/search"
-                className="hover:text-primary transition-colors flex items-center gap-2 group"
+                className="hover:text-primary transition-colors py-1 md:py-0 inline-block w-fit"
               >
-                <span className="h-1 w-1 rounded-full bg-primary/0 group-hover:bg-primary transition-colors" />
                 Поиск услуг
               </Link>
               <Link
                 href="/pricing"
-                className="hover:text-primary transition-colors flex items-center gap-2 group"
+                className="hover:text-primary transition-colors py-1 md:py-0 inline-block w-fit"
               >
-                <span className="h-1 w-1 rounded-full bg-primary/0 group-hover:bg-primary transition-colors" />
                 Тарифы
               </Link>
               <Link
                 href="/blog"
-                className="hover:text-primary transition-colors flex items-center gap-2 group"
+                className="hover:text-primary transition-colors py-1 md:py-0 inline-block w-fit"
               >
-                <span className="h-1 w-1 rounded-full bg-primary/0 group-hover:bg-primary transition-colors" />
                 Блог и статьи
               </Link>
               <Link
                 href="/about"
-                className="hover:text-primary transition-colors flex items-center gap-2 group"
+                className="hover:text-primary transition-colors py-1 md:py-0 inline-block w-fit"
               >
-                <span className="h-1 w-1 rounded-full bg-primary/0 group-hover:bg-primary transition-colors" />
                 О компании
               </Link>
             </nav>
           </div>
 
-          {/* Section 3: For Users */}
-          <div className="space-y-6">
-            <h3 className="text-base font-bold uppercase tracking-wider text-foreground">
-              Сотрудничество
+          {/* Section 3: For Users (Takes half width on mobile) */}
+          <div className="col-span-1 space-y-4 md:space-y-6">
+            <h3 className="text-[13px] md:text-sm font-bold uppercase tracking-wider text-foreground">
+              Пользователям
             </h3>
-            <nav className="flex flex-col space-y-3.5 text-sm font-medium text-muted-foreground">
+            <nav className="flex flex-col space-y-1.5 md:space-y-3 text-[15px] md:text-sm font-medium text-muted-foreground">
               {!isLoggedIn && (
                 <>
                   <Link
                     href="/register-customer"
-                    className="hover:text-primary transition-colors flex items-center gap-2 group"
+                    className="hover:text-primary transition-colors py-1 md:py-0 inline-block w-fit"
                   >
-                    <span className="h-1 w-1 rounded-full bg-primary/0 group-hover:bg-primary transition-colors" />
-                    Стать заказчиком
+                    Я заказчик
                   </Link>
                   <Link
                     href="/register-performer"
-                    className="hover:text-primary transition-colors flex items-center gap-2 group"
+                    className="hover:text-primary transition-colors py-1 md:py-0 inline-block w-fit"
                   >
-                    <span className="h-1 w-1 rounded-full bg-primary/0 group-hover:bg-primary transition-colors" />
-                    Стать исполнителем
+                    Я исполнитель
                   </Link>
                 </>
               )}
               <Link
-                href="/partnership"
-                className="hover:text-primary transition-colors flex items-center gap-2 group"
+                href={
+                  process.env.NEXT_PUBLIC_PARTNER_APP_URL ||
+                  "https://partner.eventomir.ru"
+                }
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-primary transition-colors py-1 md:py-0 flex items-center gap-1.5 w-fit"
               >
-                <span className="h-1 w-1 rounded-full bg-primary/0 group-hover:bg-primary transition-colors" />
-                Партнерская программа{" "}
-                <ExternalLink className="h-3 w-3 opacity-50" />
+                Партнерам <ExternalLink className="h-3 w-3 opacity-50" />
               </Link>
               <Link
                 href="/documents"
-                className="hover:text-primary transition-colors flex items-center gap-2 group"
+                className="hover:text-primary transition-colors py-1 md:py-0 inline-block w-fit"
               >
-                <span className="h-1 w-1 rounded-full bg-primary/0 group-hover:bg-primary transition-colors" />
-                Юридические документы
+                Документы
               </Link>
             </nav>
           </div>
 
-          {/* Section 4: Contacts */}
-          <div className="space-y-6">
-            <h3 className="text-base font-bold uppercase tracking-wider text-foreground">
+          {/* Section 4: Contacts (Takes full width on mobile) */}
+          <div className="col-span-2 lg:col-span-1 space-y-4 md:space-y-6 lg:pl-4">
+            <h3 className="text-[13px] md:text-sm font-bold uppercase tracking-wider text-foreground">
               Контакты
             </h3>
-            <div className="space-y-4 text-sm font-medium text-muted-foreground">
+            <div className=" text-[15px] md:text-sm font-medium text-muted-foreground">
               {isLoading ? (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   <Skeleton className="h-5 w-[80%]" />
                   <Skeleton className="h-5 w-[60%]" />
                 </div>
@@ -353,26 +140,57 @@ const Footer = () => {
                   {contacts?.email && (
                     <a
                       href={`mailto:${contacts.email}`}
-                      className="flex items-start gap-3 hover:text-primary transition-colors"
+                      className="flex items-center gap-3 hover:text-primary transition-colors group pt-2 -ml-2 rounded-lg hover:bg-muted/50 w-fit"
                     >
-                      <Mail className="h-5 w-5 shrink-0 text-primary/70" />
-                      <span>{contacts.email}</span>
+                      <div className="bg-primary/10 p-2 rounded-full text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                        <Mail className="h-4 w-4 shrink-0" />
+                      </div>
+                      <span className="font-semibold">{contacts.email}</span>
                     </a>
                   )}
                   {contacts?.phone && (
                     <a
                       href={`tel:${contacts.phone}`}
-                      className="flex items-start gap-3 hover:text-primary transition-colors"
+                      className="flex items-center gap-3 hover:text-primary transition-colors group pt-2 -ml-2 rounded-lg hover:bg-muted/50 w-fit"
                     >
-                      <Phone className="h-5 w-5 shrink-0 text-primary/70" />
-                      <span>{contacts.phone}</span>
+                      <div className="bg-primary/10 p-2 rounded-full text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                        <Phone className="h-4 w-4 shrink-0" />
+                      </div>
+                      <span className="font-semibold">{contacts.phone}</span>
                     </a>
                   )}
-                  <div className="flex items-start gap-3">
-                    <MapPin className="h-5 w-5 shrink-0 text-primary/70" />
-                    <span className="leading-snug">
-                      Россия, онлайн-платформа
-                    </span>
+                  <div className="flex items-center gap-2 pt-2 -ml-2">
+                    {isLoading ? (
+                      <div className="flex gap-3">
+                        <Skeleton className="h-11 w-11 rounded-full" />
+                        <Skeleton className="h-11 w-11 rounded-full" />
+                      </div>
+                    ) : (
+                      <>
+                        {contacts?.vkLink && (
+                          <Link
+                            href={contacts.vkLink}
+                            aria-label="VK"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="h-8 w-8 shrink-0 flex items-center justify-center rounded-full bg-primary/10 hover:bg-primary hover:text-primary-foreground transition-all duration-300"
+                          >
+                            <VkontakteIcon className="w-5 h-5" />
+                          </Link>
+                        )}
+                        {contacts?.telegramLink && (
+                          <Link
+                            href={contacts.telegramLink}
+                            aria-label="Telegram"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="h-8 w-8 shrink-0 flex items-center justify-center rounded-full bg-primary/10 hover:bg-primary hover:text-primary-foreground transition-all duration-300"
+                          >
+                            <TelegramIcon className="w-5 h-5" />
+                          </Link>
+                        )}
+                      </>
+                    )}
                   </div>
                 </>
               )}
@@ -380,26 +198,27 @@ const Footer = () => {
           </div>
         </div>
 
-        <Separator className="my-8 bg-border/50" />
+        <Separator className="my-8 md:my-10 bg-border/50" />
 
-        {/* Bottom Footer */}
-        <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-muted-foreground font-medium">
-          <p>
-            &copy; {currentYear} ООО «{siteName}». Все права защищены.
-          </p>
-          <div className="flex items-center gap-6">
-            <span className="px-2 py-1 bg-muted rounded-md text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+        {/* Bottom Footer: Column-reverse on mobile so copyright is last */}
+        <div className="flex flex-col-reverse md:flex-row items-center justify-between gap-6 text-sm text-muted-foreground font-medium text-center md:text-left">
+          <p className="opacity-80 text-[13px] md:text-sm">
+            &copy; {currentYear} ООО «{siteName}». Все права защищены.{" "}
+            <span className="px-2 py-0.5 bg-muted rounded border border-border/50 text-[10px] font-black uppercase tracking-widest text-muted-foreground/80 shadow-sm">
               18+
             </span>
+          </p>
+
+          <div className="flex flex-wrap justify-center items-center gap-4 md:gap-6">
             <Link
               href="/documents#privacy"
-              className="hover:text-primary transition-colors"
+              className="hover:text-primary transition-colors underline-offset-4 hover:underline"
             >
               Конфиденциальность
             </Link>
             <Link
               href="/documents#terms"
-              className="hover:text-primary transition-colors"
+              className="hover:text-primary transition-colors underline-offset-4 hover:underline"
             >
               Условия использования
             </Link>

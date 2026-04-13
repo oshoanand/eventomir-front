@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { useToast } from "@/hooks/use-toast"; // <-- Added for Share feedback
+import { useToast } from "@/hooks/use-toast";
 import {
   MapPin,
   Edit2,
@@ -14,12 +14,12 @@ import {
   MessageCircle,
   CalendarCheck,
   Camera,
-  DollarSign,
   Share2,
   Trash2,
   Check,
   X,
   Loader2,
+  Lock,
 } from "lucide-react";
 import { cn } from "@/utils/utils";
 
@@ -28,6 +28,7 @@ interface ProfileHeaderProps {
   isOwnProfile: boolean;
   isFavorite: boolean;
   isOnline?: boolean;
+  performerHasChat?: boolean; // 🚨 Added to determine if chat is permitted
 
   onPartialUpdate: (
     dataToUpdate: Partial<PerformerProfile>,
@@ -48,6 +49,7 @@ export default function ProfileHeader({
   isOwnProfile,
   isFavorite,
   isOnline = false,
+  performerHasChat = false, // 🚨 Passed from the parent evaluation
   onPartialUpdate,
   onToggleFavorite,
   onOpenChat,
@@ -57,22 +59,18 @@ export default function ProfileHeader({
 }: ProfileHeaderProps) {
   const { toast } = useToast();
 
-  // --- Local Edit State ---
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // File Upload Loading States
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [isUploadingCover, setIsUploadingCover] = useState(false);
 
-  // Temporary draft data for text fields
   const [draftData, setDraftData] = useState({
     name: profile.name || "",
     city: profile.city || "",
     priceRange: profile.priceRange || [0, 0],
   });
 
-  // Sync draft data if the profile updates from outside
   useEffect(() => {
     if (!isEditing) {
       setDraftData({
@@ -83,7 +81,6 @@ export default function ProfileHeader({
     }
   }, [profile, isEditing]);
 
-  // --- Handlers ---
   const handleSave = async () => {
     setIsSaving(true);
     try {
@@ -109,7 +106,6 @@ export default function ProfileHeader({
     setIsEditing(false);
   };
 
-  // Immediate upload for avatar and cover images
   const handleFileChange = async (
     e: React.ChangeEvent<HTMLInputElement>,
     type: "profilePicture" | "backgroundPicture",
@@ -144,7 +140,6 @@ export default function ProfileHeader({
     }
   };
 
-  // --- Logic for Price Display ---
   const renderPriceField = () => {
     if (isEditing) {
       return (
@@ -193,12 +188,10 @@ export default function ProfileHeader({
     const minPrice = profile.priceRange?.[0] || 0;
     const maxPrice = profile.priceRange?.[1] || 0;
 
-    // Don't show the badge at all if there's no price range set yet
     if (minPrice === 0 && maxPrice === 0) return null;
 
     return (
       <div className="flex items-center gap-1.5 text-lg font-semibold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-1 rounded-full border border-emerald-100 dark:border-emerald-900 mt-2 w-fit">
-        {/* <DollarSign className="h-4 w-4" /> */}
         <span>
           {minPrice === maxPrice && minPrice > 0
             ? `${minPrice.toLocaleString()} ₽`
@@ -320,7 +313,7 @@ export default function ProfileHeader({
                           variant="secondary"
                           className="bg-green-100 text-green-700 hover:bg-green-200 border-green-200 px-2 py-0.5 h-6"
                         >
-                          Online
+                          Онлайн
                         </Badge>
                       )}
                     </div>
@@ -409,8 +402,15 @@ export default function ProfileHeader({
                         variant="outline"
                         className="flex-1"
                         onClick={onOpenChat}
+                        // We still allow the click so the informative toast shows up
                       >
-                        <MessageCircle className="mr-2 h-4 w-4" /> Чат
+                        {/* 🚨 Show a lock icon if the performer's plan doesn't permit chat */}
+                        {!performerHasChat ? (
+                          <Lock className="mr-2 h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <MessageCircle className="mr-2 h-4 w-4" />
+                        )}
+                        Чат
                       </Button>
                       <Button
                         variant="outline"
@@ -430,7 +430,7 @@ export default function ProfileHeader({
                       <Button
                         variant="outline"
                         size="icon"
-                        onClick={handleShare} // <-- Fixed
+                        onClick={handleShare}
                         title="Поделиться"
                       >
                         <Share2 className="h-4 w-4" />

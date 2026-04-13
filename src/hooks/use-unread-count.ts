@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { apiRequest } from "@/utils/api-client";
-import { useSocket } from "@/components/providers/socket-provider";
+import { useSocket } from "@/components/providers/SocketProvider";
 
 export function useUnreadCount() {
   const [count, setCount] = useState(0);

@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/utils/api-client";
 import { BookingRequest } from "@/services/booking";
-import { UserSubscription } from "@/services/payment"; // Added import
+import { UserSubscription } from "@/services/payment";
 
 export type ModerationStatus = "pending_approval" | "approved" | "rejected";
 
@@ -34,19 +34,13 @@ export interface RecommendationLetter {
   moderationStatus: ModerationStatus;
 }
 
-// Payment/Subscription stub (adjust path as needed)
-export interface SubscriptionPlanDetails {
-  id: string;
-  name: string;
-}
-
 export interface Review {
   id: string;
   performerId: string;
   customerName: string;
   rating: number;
   comment?: string;
-  date: Date; // The backend likely sends this as a string, frontend needs Date
+  date: Date;
 }
 
 export interface PerformerProfileBase {
@@ -75,8 +69,10 @@ export interface PerformerProfileBase {
   profileMetaTitle?: string;
   profileMetaDescription?: string;
   profileKeywords?: string;
-  subscriptionPlanId: SubscriptionPlanDetails["id"];
-  subscriptionEndDate: Date | null;
+
+  // 🚨 FIX: Allow plan ID to be null if no subscription exists
+  subscriptionPlanId?: string | null;
+  subscriptionEndDate?: Date | null;
   moderationStatus: ModerationStatus;
   parentAgencyId?: string;
   parentAgencyName?: string;
@@ -99,8 +95,8 @@ export interface PerformerProfile extends PerformerProfileBase {
   certificates?: Certificate[];
   recommendationLetters?: RecommendationLetter[];
   reviews?: Review[];
-  isVip?: boolean; // Added for search functionality
-  subscription?: UserSubscription | null; // 🚨 Added to support subscription tracking
+  isVip?: boolean;
+  subscription?: UserSubscription | null;
 }
 
 export type TransportDetails = {
@@ -149,107 +145,47 @@ export type UpdatePerformerProfileParams = Partial<
   backgroundPictureFile?: File | null;
 };
 
-// --- API FUNCTIONS (Internal/Private) ---
+// --- UTILITY: HYDRATE DATES ---
+// 🚨 CRITICAL FIX: Converts ISO string dates from the JSON response back into actual JavaScript Date objects.
+// If this isn't done, the Calendar component will crash when trying to render booked dates.
+const hydrateProfileDates = (data: any): PerformerProfile => {
+  if (!data) return data;
 
-const mapProfileFromPublicView = (data: any): Partial<PerformerProfile> => ({
-  id: data.id,
-  name: data.name,
-  companyName: data.company_name,
-  description: data.description,
-  profilePicture: data.profile_picture,
-  backgroundPicture: data.background_picture,
-  roles: data.roles || [],
-  city: data.city,
-  priceRange: data.price_range,
-  latitude: data.latitude,
-  longitude: data.longitude,
-  accountType: data.account_type,
-  moderationStatus: data.moderation_status,
-  parentAgencyId: data.parent_agency_id,
-  details: data.details,
-});
-
-const mapProfileFromPrivateTable = (data: any): PerformerProfile => {
   return {
-    id: data.id,
-    name: data.name,
-    companyName: data.company_name,
-    accountType: data.account_type,
-    inn: data.inn,
-    description: data.description,
-    contactPhone: data.phone,
-    contactEmail: data.email,
-    email: data.email,
-    profilePicture: data.profile_picture,
-    profilePictureAltText: data.profile_picture_alt_text,
-    backgroundPicture: data.background_picture,
-    backgroundPictureAltText: data.background_picture_alt_text,
-    roles: data.roles || [],
-    city: data.city,
-    priceRange: data.price_range,
-    latitude: data.latitude,
-    longitude: data.longitude,
-    profileMetaTitle: data.profile_meta_title,
-    profileMetaDescription: data.profile_meta_description,
-    profileKeywords: data.profile_keywords,
-    subscriptionPlanId: data.subscription_plan_id,
-    subscriptionEndDate: data.subscription_end_date
-      ? new Date(data.subscription_end_date)
+    ...data,
+    subscriptionEndDate: data.subscriptionEndDate
+      ? new Date(data.subscriptionEndDate)
       : null,
-    moderationStatus: data.moderation_status,
-    parentAgencyId: data.parent_agency_id,
-    subProfileIds: data.sub_profile_ids || [],
-    details: data.details || {},
-    subscription: data.subscription || null,
-    gallery:
-      data.gallery_items
-        ?.map((item: any) => ({
-          id: item.id,
-          title: item.title,
-          imageUrls: item.image_urls,
-          description: item.description,
-          metaTitle: item.meta_title,
-          metaDescription: item.meta_description,
-          keywords: item.keywords,
-          imageAltText: item.image_alt_text,
-          moderationStatus: item.moderation_status,
+    bookedDates: Array.isArray(data.bookedDates)
+      ? data.bookedDates.map((d: string) => new Date(d))
+      : [],
+    bookingRequests: Array.isArray(data.bookingRequests)
+      ? data.bookingRequests.map((req: any) => ({
+          ...req,
+          // Handle backend sending either 'date' or 'eventDate'
+          date: req.date ? new Date(req.date) : new Date(req.eventDate),
+          createdAt: req.createdAt ? new Date(req.createdAt) : new Date(),
         }))
-        .filter((item: GalleryItem) => item.moderation_status === "approved") ||
-      [], // Only show approved items
-    certificates:
-      data.certificates?.filter(
-        (item: Certificate) => item.moderationStatus === "approved",
-      ) || [],
-    recommendationLetters:
-      data.recommendation_letters?.filter(
-        (item: RecommendationLetter) => item.moderationStatus === "approved",
-      ) || [],
-    bookedDates:
-      data.bookings
-        ?.filter((b: any) => b.status === "confirmed")
-        .map((b: any) => new Date(b.date)) || [],
-    bookingRequests:
-      data.bookings?.map((b: any) => ({
-        id: b.id,
-        date: new Date(b.date),
-        customerId: b.customer_id,
-        customerName: b.customer_name,
-        status: b.status,
-        details: b.details,
-        price: b.price,
-        service: b.service,
-        performerId: b.performer_id,
-      })) || [],
+      : [],
+    reviews: Array.isArray(data.reviews)
+      ? data.reviews.map((review: any) => ({
+          ...review,
+          date: review.date ? new Date(review.date) : new Date(),
+        }))
+      : [],
   };
 };
+
+// --- API FUNCTIONS (Internal/Private) ---
 
 const fetchPerformerProfileFn = async (
   performerId: string,
 ): Promise<PerformerProfile> => {
-  return await apiRequest<PerformerProfile>({
+  const data = await apiRequest<any>({
     method: "get",
     url: `/api/performers/profile/${performerId}`,
   });
+  return hydrateProfileDates(data);
 };
 
 const updatePerformerProfileFn = async ({
@@ -261,15 +197,21 @@ const updatePerformerProfileFn = async ({
 }): Promise<PerformerProfile> => {
   const formData = new FormData();
 
+  // Handle standard string fields
   if (data.name) formData.append("name", data.name);
   if (data.description) formData.append("description", data.description);
   if (data.city) formData.append("city", data.city);
   if (data.contactPhone) formData.append("phone", data.contactPhone);
 
+  // Handle Arrays
   if (data.roles) {
     formData.append("roles", JSON.stringify(data.roles));
   }
+  if (data.priceRange) {
+    formData.append("priceRange", JSON.stringify(data.priceRange));
+  }
 
+  // Handle Files
   if (data.profilePictureFile) {
     formData.append("profilePicture", data.profilePictureFile);
   }
@@ -277,16 +219,14 @@ const updatePerformerProfileFn = async ({
     formData.append("backgroundPicture", data.backgroundPictureFile);
   }
 
-  if (data.priceRange) {
-    formData.append("priceRange", JSON.stringify(data.priceRange));
-  }
-
-  return await apiRequest<PerformerProfile>({
+  const response = await apiRequest<any>({
     method: "patch",
     url: `/api/performers/${performerId}`,
     data: formData,
     headers: { "Content-Type": undefined },
   });
+
+  return hydrateProfileDates(response);
 };
 
 const deletePerformerProfileFn = async (performerId: string): Promise<void> => {
@@ -452,9 +392,6 @@ const removeRecommendationLetterFn = async ({
 
 // --- PUBLIC EXPORTED FUNCTIONS (Non-Hook) ---
 
-/**
- * Interface for paginated search results
- */
 export interface PaginatedResult<T> {
   items: T[];
   total: number;
@@ -462,9 +399,6 @@ export interface PaginatedResult<T> {
   pageSize: number;
 }
 
-/**
- * Get Performers Paginated (Connects to new Node.js / Redis endpoint)
- */
 export const getPerformersPaginated = async (
   params: Record<string, any>,
 ): Promise<PaginatedResult<PerformerProfile>> => {
@@ -487,9 +421,6 @@ export const getPerformersPaginated = async (
   });
 };
 
-/**
- * Legacy Search Performers (Used by older hooks)
- */
 export const searchPerformersApi = async (
   params: Record<string, any>,
 ): Promise<PerformerProfile[]> => {
@@ -512,9 +443,6 @@ export const searchPerformersApi = async (
   });
 };
 
-/**
- * Fetch Batch Performers by ID (Used for Compare/Favorites)
- */
 export const getPerformersByIds = async (
   ids: string[],
 ): Promise<PerformerWithRating[]> => {
@@ -525,6 +453,26 @@ export const getPerformersByIds = async (
     method: "get",
     url: `/api/performers/batch?ids=${idsParam}`,
   });
+};
+
+export const getPerformerProfile = async (
+  performerId: string,
+): Promise<PerformerProfile | null> => {
+  console.log(`Загрузка профиля исполнителя ${performerId}...`);
+
+  try {
+    const data = await apiRequest<any>({
+      method: "get",
+      url: `/api/performers/${performerId}`,
+    });
+
+    if (!data) return null;
+
+    return hydrateProfileDates(data);
+  } catch (error) {
+    console.error(`Ошибка загрузки профиля исполнителя ${performerId}:`, error);
+    return null;
+  }
 };
 
 // --- REACT QUERY HOOKS (Public) ---
@@ -669,40 +617,4 @@ export const useRemoveRecommendationLetter = () => {
       });
     },
   });
-};
-
-export const getPerformerProfile = async (
-  performerId: string,
-): Promise<PerformerProfile | null> => {
-  console.log(`Загрузка профиля исполнителя ${performerId}...`);
-
-  try {
-    const data = await apiRequest<PerformerProfile>({
-      method: "get",
-      url: `/api/performers/${performerId}`,
-    });
-
-    if (!data) {
-      return null;
-    }
-
-    const hydratedProfile: PerformerProfile = {
-      ...data,
-      bookedDates: data.bookedDates?.map((date: any) => new Date(date)) || [],
-      bookingRequests: data.bookingRequests?.map((req: any) => ({
-        ...req,
-        eventDate: new Date(req.eventDate),
-        createdAt: new Date(req.createdAt),
-      })),
-      reviews: data.reviews?.map((review: any) => ({
-        ...review,
-        date: new Date(review.date),
-      })),
-    };
-
-    return hydratedProfile;
-  } catch (error) {
-    console.error(`Ошибка загрузки профиля исполнителя ${performerId}:`, error);
-    return null;
-  }
 };

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 
-import { useSocket } from "@/components/providers/socket-provider";
+import { useSocket } from "@/components/providers/SocketProvider";
 import {
   PerformerProfile,
   usePerformerProfile,
@@ -29,6 +29,7 @@ import { createOrGetChat } from "@/services/chat";
 import { getSiteSettings } from "@/services/settings";
 import { useReviews } from "@/services/reviews";
 import { apiRequest } from "@/utils/api-client";
+import { useTariff } from "@/hooks/use-tariff";
 
 // --- Components ---
 import SubscriptionStatusCard from "@/components/profile/SubscriptionStatusCard";
@@ -63,6 +64,8 @@ import {
   Wallet,
   PlusCircle,
   CreditCard,
+  ChevronRight,
+  ChevronDown,
 } from "lucide-react";
 
 import ChatDialog from "@/components/chat/ChatDialog";
@@ -83,6 +86,17 @@ const getImageUrl = (path: string | undefined | null) => {
   if (path.startsWith("http")) return path;
   return `${API_BASE}${path}`;
 };
+
+interface SubCategory {
+  id: string;
+  name: string;
+}
+
+interface SiteCategory {
+  id: string;
+  name: string;
+  subCategories?: SubCategory[];
+}
 
 const ProfileSkeleton = () => (
   <div className="space-y-8 container max-w-5xl mx-auto py-10 px-4 animate-pulse">
@@ -107,6 +121,7 @@ export default function PerformerProfilePage() {
   const { toast } = useToast();
 
   const { onlineUsers } = useSocket() || { onlineUsers: [] };
+  const { canPerformAction, getLimit } = useTariff();
 
   const urlProfileId = searchParams.get("id");
   const sessionUser = session?.user;
@@ -129,7 +144,7 @@ export default function PerformerProfilePage() {
   const isPerformerOnline = profile ? onlineUsers.includes(profile.id) : false;
   const { data: reviews = [] } = useReviews(targetProfileId || null);
 
-  const [adminCategories, setAdminCategories] = useState<string[]>([]);
+  const [adminCategories, setAdminCategories] = useState<SiteCategory[]>([]);
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
   const [tempSelectedRoles, setTempSelectedRoles] = useState<string[]>([]);
   const [isSavingCategories, setIsSavingCategories] = useState(false);
@@ -157,13 +172,23 @@ export default function PerformerProfilePage() {
   const [isCertificateDialogOpen, setIsCertificateDialogOpen] = useState(false);
   const [isLetterDialogOpen, setIsLetterDialogOpen] = useState(false);
 
-  // --- Wallet State ---
   const [isTopUpDialogOpen, setIsTopUpDialogOpen] = useState(false);
   const [topUpAmount, setTopUpAmount] = useState<number | "">("");
   const [isProcessingTopUp, setIsProcessingTopUp] = useState(false);
-  const [walletBalance, setWalletBalance] = useState<number>(0); // 🚨 NEW: Dedicated wallet state
+  const [walletBalance, setWalletBalance] = useState<number>(0);
 
-  // 🚨 NEW: Fetch secure wallet balance directly from /api/users/me
+  // 🚨 EVALUATE TARGET PERFORMER'S SUBSCRIPTION FEATURES
+  const targetSub = (profile as any)?.subscription;
+  const targetFeatures = targetSub?.plan?.features;
+  let performerHasChat = false;
+
+  if (targetFeatures && typeof targetFeatures.chatSupport !== "undefined") {
+    performerHasChat = !!targetFeatures.chatSupport;
+  } else {
+    performerHasChat =
+      targetSub?.planId === "STANDARD" || targetSub?.planId === "PREMIUM";
+  }
+
   const fetchWallet = useCallback(async () => {
     if (!isOwnProfile) return;
     try {
@@ -193,19 +218,16 @@ export default function PerformerProfilePage() {
   useEffect(() => {
     getSiteSettings()
       .then((settings) => {
-        if (settings?.siteCategories)
-          setAdminCategories(settings.siteCategories.map((c) => c.name));
+        if (settings?.siteCategories) {
+          setAdminCategories(settings.siteCategories);
+        }
       })
       .catch(console.error);
   }, []);
 
-  // --- Expiration Notification Hook ---
   useEffect(() => {
-    // Ensure we only show this warning to the actual owner of the profile
     if (profile && isOwnProfile) {
-      // Check if their subscription plan object exists and has expired
       if (profile.subscription?.status === "EXPIRED") {
-        // Use a short timeout so the toast doesn't get buried by initial page load animations
         setTimeout(() => {
           toast({
             variant: "destructive",
@@ -217,7 +239,6 @@ export default function PerformerProfilePage() {
     }
   }, [profile, isOwnProfile, toast]);
 
-  // Handle Redirect from Tinkoff & Webhook Race Conditions
   useEffect(() => {
     const topupStatus = searchParams.get("topup");
     const paymentStatus = searchParams.get("payment");
@@ -228,28 +249,23 @@ export default function PerformerProfilePage() {
         description: "Ожидаем подтверждение от банка. Пожалуйста, подождите...",
       });
 
-      // SMART POLLING: Check for the updated balance
       let attempts = 0;
       const pollInterval = setInterval(() => {
         attempts++;
         refetchProfile();
-        fetchWallet(); // 🚨 NEW: Ask the secure endpoint for the latest balance
+        fetchWallet();
 
         if (attempts >= 4) {
           clearInterval(pollInterval);
           toast({
             title: "Баланс обновлен!",
             description: "Средства успешно зачислены на ваш кошелек.",
-            // @ts-ignore
-            variant: "success",
+            variant: "success" as any,
           });
         }
-      }, 1500); // Check every 1.5 seconds
+      }, 1500);
 
-      // Clean up the URL immediately so a manual refresh doesn't trigger this again
       router.replace("/performer-profile", { scroll: false });
-
-      // Cleanup interval if component unmounts
       return () => clearInterval(pollInterval);
     }
 
@@ -259,21 +275,19 @@ export default function PerformerProfilePage() {
         title: "Ошибка оплаты",
         description: "Платеж был отклонен или отменен банком.",
       });
-      router.replace("/performer-profile", { scroll: false }); // Fixed redirect
+      router.replace("/performer-profile", { scroll: false });
     }
 
     if (paymentStatus === "success") {
       toast({
         title: "Успешно!",
         description: "Заявка успешно оплачена и опубликована.",
-        // @ts-ignore
-        variant: "success",
+        variant: "success" as any,
       });
-      router.replace("/performer-profile", { scroll: false }); // Fixed redirect
+      router.replace("/performer-profile", { scroll: false });
     }
   }, [searchParams, toast, router, refetchProfile, fetchWallet]);
 
-  // --- UNIVERSAL PARTIAL UPDATE HANDLER ---
   const handlePartialUpdate = async (
     dataToUpdate: Partial<PerformerProfile>,
     files?: {
@@ -287,7 +301,7 @@ export default function PerformerProfilePage() {
         { performerId: profile.id, data: { ...dataToUpdate, ...files } },
         {
           onSuccess: () => {
-            toast({ variant: "success", title: "Изменения сохранены" });
+            toast({ variant: "success" as any, title: "Изменения сохранены" });
             resolve();
           },
           onError: (error) => {
@@ -306,6 +320,17 @@ export default function PerformerProfilePage() {
       setIsCategoryDialogOpen(false);
     } finally {
       setIsSavingCategories(false);
+    }
+  };
+
+  const handleCategoryToggle = (category: SiteCategory, isChecked: boolean) => {
+    if (isChecked) {
+      setTempSelectedRoles((prev) => [...prev, category.name]);
+    } else {
+      const subNames = category.subCategories?.map((s) => s.name) || [];
+      setTempSelectedRoles((prev) =>
+        prev.filter((r) => r !== category.name && !subNames.includes(r)),
+      );
     }
   };
 
@@ -345,7 +370,10 @@ export default function PerformerProfilePage() {
           city: profile.city,
           roles: profile.roles,
         });
-        toast({ description: "Добавлено в избранное" });
+        toast({
+          variant: "success" as any,
+          description: "Добавлено в избранное",
+        });
       }
       setIsFavorite(!isFavorite);
     } catch (e) {
@@ -354,13 +382,25 @@ export default function PerformerProfilePage() {
   };
 
   const handleOpenChat = async () => {
-    if (!profile || !sessionUser)
+    if (!profile || !sessionUser) {
       return toast({ variant: "destructive", title: "Войдите в систему" });
-    if (profile.id === sessionUser.id)
+    }
+    if (profile.id === sessionUser.id) {
       return toast({
         variant: "destructive",
         title: "Вы не можете отправить сообщение самому себе",
       });
+    }
+
+    if (!performerHasChat && !isOwnProfile) {
+      return toast({
+        variant: "destructive",
+        title: "Чат недоступен",
+        description:
+          "Тарифный план данного исполнителя не поддерживает личные сообщения.",
+      });
+    }
+
     try {
       const chatId = await createOrGetChat(profile.id);
       setCurrentChatId(chatId);
@@ -406,6 +446,17 @@ export default function PerformerProfilePage() {
     description: string,
   ) => {
     if (!profile) return false;
+
+    const currentCount = profile.gallery?.length || 0;
+    if (isOwnProfile && !canPerformAction("maxPhotoUpload", currentCount)) {
+      toast({
+        variant: "destructive",
+        title: "Лимит достигнут",
+        description: `Вы достигли максимального количества фото (${getLimit("maxPhotoUpload")}) для вашего тарифа.`,
+      });
+      return false;
+    }
+
     if (file.size > 15 * 1024 * 1024) {
       toast({ variant: "destructive", title: "Файл слишком большой" });
       return false;
@@ -417,7 +468,7 @@ export default function PerformerProfilePage() {
         title,
         description,
       });
-      toast({ title: "Фото добавлено" });
+      toast({ variant: "success" as any, title: "Фото добавлено" });
       return true;
     } catch {
       return false;
@@ -435,7 +486,7 @@ export default function PerformerProfilePage() {
         file,
         description,
       });
-      toast({ title: "Добавлено" });
+      toast({ variant: "success" as any, title: "Добавлено" });
       return true;
     } catch {
       return false;
@@ -450,7 +501,7 @@ export default function PerformerProfilePage() {
         file,
         description,
       });
-      toast({ title: "Добавлено" });
+      toast({ variant: "success" as any, title: "Добавлено" });
       return true;
     } catch {
       return false;
@@ -510,9 +561,11 @@ export default function PerformerProfilePage() {
     );
   }
 
-  if (isOwnProfile && profile.accountType === "agency") {
+  // 🚨 CORRECTED AGENCY VIEW ROUTING
+  // If the user owns the profile AND it's an agency AND they aren't looking at a specific sub-profile ID
+  if (isOwnProfile && profile.accountType === "agency" && !urlProfileId) {
     return (
-      <div className="container mx-auto py-10">
+      <div className="container mx-auto py-10 px-4 max-w-7xl">
         <AgencyDashboard profile={profile} />
       </div>
     );
@@ -526,6 +579,7 @@ export default function PerformerProfilePage() {
           isOwnProfile={isOwnProfile}
           isFavorite={isFavorite}
           isOnline={isPerformerOnline}
+          performerHasChat={performerHasChat}
           onPartialUpdate={handlePartialUpdate}
           onDeleteProfile={handleDeleteProfile}
           onToggleFavorite={handleToggleFavorite}
@@ -665,7 +719,21 @@ export default function PerformerProfilePage() {
               <GalleryManager
                 gallery={profile.gallery || []}
                 isOwnProfile={isOwnProfile}
-                onAddOrEdit={() => setIsGalleryDialogOpen(true)}
+                onAddOrEdit={() => {
+                  const currentCount = profile.gallery?.length || 0;
+                  if (
+                    isOwnProfile &&
+                    !canPerformAction("maxPhotoUpload", currentCount)
+                  ) {
+                    toast({
+                      variant: "destructive",
+                      title: "Лимит достигнут",
+                      description: `Ваш тариф позволяет загрузить не более ${getLimit("maxPhotoUpload")} фото. Перейдите во вкладку "Подписка", чтобы обновить план.`,
+                    });
+                    return;
+                  }
+                  setIsGalleryDialogOpen(true);
+                }}
                 onDelete={(id) =>
                   removeGalleryItemMutation.mutate({
                     performerId: profile.id,
@@ -720,7 +788,7 @@ export default function PerformerProfilePage() {
                   </div>
                 </TabsContent>
 
-                {/* --- NEW WALLET DASHBOARD --- */}
+                {/* --- WALLET DASHBOARD --- */}
                 <TabsContent
                   value="wallet"
                   className="m-0 focus-visible:outline-none"
@@ -736,7 +804,6 @@ export default function PerformerProfilePage() {
                             Баланс счета
                           </p>
                           <h3 className="text-5xl font-extrabold tracking-tight mb-6">
-                            {/* 🚨 CHANGED: Using our specific walletBalance state variable */}
                             {walletBalance.toLocaleString("ru-RU")} ₽
                           </h3>
                           <Button
@@ -761,7 +828,6 @@ export default function PerformerProfilePage() {
                     </div>
                   </div>
                 </TabsContent>
-                {/* ------------------------- */}
 
                 <TabsContent
                   value="calendar"
@@ -777,7 +843,6 @@ export default function PerformerProfilePage() {
 
       {/* --- MODALS --- */}
 
-      {/* Wallet Top Up Dialog */}
       <Dialog open={isTopUpDialogOpen} onOpenChange={setIsTopUpDialogOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
@@ -821,42 +886,87 @@ export default function PerformerProfilePage() {
         </DialogContent>
       </Dialog>
 
-      {/* Category Edit Dialog */}
       <Dialog
         open={isCategoryDialogOpen}
         onOpenChange={setIsCategoryDialogOpen}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>Специализации</DialogTitle>
             <DialogDescription>
-              Выберите категории, в которых вы оказываете услуги.
+              Выберите основные категории и уточните услуги (подкатегории),
+              которые вы оказываете.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-4 py-4 max-h-[60vh] overflow-y-auto pr-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4 max-h-[60vh] overflow-y-auto pr-2">
             {adminCategories.length > 0 ? (
-              adminCategories.map((category) => (
-                <div
-                  key={category}
-                  className="flex items-start space-x-2 border rounded-lg p-3 hover:bg-muted/50 transition-colors"
-                >
-                  <Checkbox
-                    id={`cat-${category}`}
-                    checked={tempSelectedRoles.includes(category)}
-                    onCheckedChange={() => toggleTempRole(category)}
-                  />
-                  <Label
-                    htmlFor={`cat-${category}`}
-                    className="text-sm font-medium leading-none cursor-pointer w-full"
+              adminCategories.map((category) => {
+                const isCategorySelected = tempSelectedRoles.includes(
+                  category.name,
+                );
+                return (
+                  <div
+                    key={category.id}
+                    className={`flex flex-col border rounded-lg p-4 transition-all duration-300 ${
+                      isCategorySelected
+                        ? "bg-muted/30 border-primary/40 shadow-sm"
+                        : "hover:bg-muted/10"
+                    }`}
                   >
-                    {category}
-                  </Label>
-                </div>
-              ))
+                    <div className="flex items-start space-x-3">
+                      <Checkbox
+                        id={`cat-${category.id}`}
+                        checked={isCategorySelected}
+                        onCheckedChange={(checked) =>
+                          handleCategoryToggle(category, !!checked)
+                        }
+                      />
+                      <Label
+                        htmlFor={`cat-${category.id}`}
+                        className="text-base font-semibold leading-none cursor-pointer w-full flex justify-between items-center"
+                      >
+                        {category.name}
+                        {category.subCategories &&
+                          category.subCategories.length > 0 &&
+                          (isCategorySelected ? (
+                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                          ))}
+                      </Label>
+                    </div>
+
+                    {isCategorySelected &&
+                      category.subCategories &&
+                      category.subCategories.length > 0 && (
+                        <div className="ml-7 flex flex-col space-y-3 mt-4 pt-3 border-t border-dashed animate-in slide-in-from-top-2 fade-in duration-200">
+                          {category.subCategories.map((sub) => (
+                            <div
+                              key={sub.id}
+                              className="flex items-center space-x-2"
+                            >
+                              <Checkbox
+                                id={`sub-${sub.id}`}
+                                checked={tempSelectedRoles.includes(sub.name)}
+                                onCheckedChange={() => toggleTempRole(sub.name)}
+                              />
+                              <Label
+                                htmlFor={`sub-${sub.id}`}
+                                className="text-sm font-medium leading-none cursor-pointer"
+                              >
+                                {sub.name}
+                              </Label>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                  </div>
+                );
+              })
             ) : (
-              <div className="col-span-2 text-center py-8 text-muted-foreground">
+              <div className="col-span-full text-center py-8 text-muted-foreground">
                 <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
-                Загрузка...
+                Загрузка категорий...
               </div>
             )}
           </div>
@@ -877,7 +987,6 @@ export default function PerformerProfilePage() {
         </DialogContent>
       </Dialog>
 
-      {/* Booking Dialog */}
       <Dialog open={isBookingOpen} onOpenChange={setIsBookingOpen}>
         <DialogContent>
           <DialogHeader>

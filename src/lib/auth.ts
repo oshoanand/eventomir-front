@@ -25,15 +25,22 @@ CustomAdapter.createUser = async (data: any) => {
   });
 };
 
-// 2. Intercept Account Linking (This is where we know if it's Yandex/Google/VK)
+// 2. Intercept Account Linking
 const originalLinkAccount = CustomAdapter.linkAccount;
 CustomAdapter.linkAccount = async (account: any) => {
-  // Update the user's auth_provider in the database to match the social network
   await prisma.user.update({
     where: { id: account.userId },
     data: { auth_provider: account.provider },
   });
   return originalLinkAccount!(account);
+};
+
+// 🚨 Define a basic fallback in case the user has no subscription yet
+const DEFAULT_FREE_FEATURES = {
+  maxPhotoUpload: 3,
+  emailSupport: true,
+  chatSupport: false,
+  profileSeo: false,
 };
 
 export const authOptions: NextAuthOptions = {
@@ -42,9 +49,6 @@ export const authOptions: NextAuthOptions = {
     strategy: "jwt",
   },
   providers: [
-    // -------------------------------------------------------------
-    // 1. OAUTH PROVIDERS
-    // -------------------------------------------------------------
     YandexProvider({
       clientId: process.env.YANDEX_CLIENT_ID as string,
       clientSecret: process.env.YANDEX_CLIENT_SECRET as string,
@@ -61,9 +65,6 @@ export const authOptions: NextAuthOptions = {
       allowDangerousEmailAccountLinking: true,
     }),
 
-    // -------------------------------------------------------------
-    // 2. CREDENTIALS PROVIDER
-    // -------------------------------------------------------------
     CredentialsProvider({
       name: "Credentials",
       credentials: {
@@ -79,9 +80,13 @@ export const authOptions: NextAuthOptions = {
             );
           }
 
+          // Fetch the user AND their active subscription plan features
           const user = await prisma.user.findUnique({
-            where: {
-              email: credentials.email,
+            where: { email: credentials.email },
+            include: {
+              subscription: {
+                include: { plan: true },
+              },
             },
           });
 
@@ -99,9 +104,24 @@ export const authOptions: NextAuthOptions = {
           }
 
           const secret = process.env.NEXTAUTH_SECRET;
-
           if (!secret) {
             throw new Error("Server configuration error");
+          }
+
+          // 🚨 Evaluate Subscription State & Expiration Date
+          const now = new Date();
+          const sub = user.subscription;
+          let activeFeatures = DEFAULT_FREE_FEATURES;
+          let subEndDate = null;
+
+          if (sub && sub.isActive && (!sub.endDate || sub.endDate > now)) {
+            // Merge database JSON features over the defaults
+            activeFeatures = {
+              ...DEFAULT_FREE_FEATURES,
+              ...(sub.plan.features as any),
+            };
+            // Format the end date for the frontend JIT lock
+            subEndDate = sub.endDate ? sub.endDate.toISOString() : null;
           }
 
           const token = jwt.sign(
@@ -114,9 +134,7 @@ export const authOptions: NextAuthOptions = {
               exp: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
             },
             secret,
-            {
-              algorithm: "HS256",
-            },
+            { algorithm: "HS256" },
           );
 
           if (user.role === "partner") {
@@ -128,10 +146,6 @@ export const authOptions: NextAuthOptions = {
             );
           }
 
-          // 🚨 THE FIX: Fallback to empty strings for null values
-          // We also cast 'as any' here because NextAuth's strict internal
-          // User type doesn't officially support 'accessToken' out of the box
-          // without heavy module augmentation.
           return {
             id: user.id,
             name: user.name || "",
@@ -139,6 +153,8 @@ export const authOptions: NextAuthOptions = {
             phone: user.phone || "",
             role: user.role || "customer",
             accessToken: token,
+            features: activeFeatures,
+            subscriptionEndDate: subEndDate, // 🚨 Pass expiration date forward
           } as any;
         } catch (error: any) {
           console.error("Authorize Error:", error.message);
@@ -152,10 +168,7 @@ export const authOptions: NextAuthOptions = {
               "Требуется указать адрес электронной почты и пароль" ||
             error.message === "Неверный адрес электронной почты или пароль!";
 
-          if (isCustomError) {
-            throw error;
-          }
-
+          if (isCustomError) throw error;
           throw new Error("Проверьте свой адрес электронной почты еще раз!");
         }
       },
@@ -163,7 +176,6 @@ export const authOptions: NextAuthOptions = {
   ],
 
   callbacks: {
-    // --- SIGN IN CALLBACK ---
     async signIn() {
       return true;
     },
@@ -172,38 +184,45 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user, account, trigger, session }) {
       if (trigger === "update" && session?.role) {
         token.role = session.role;
-
-        const secret = process.env.NEXTAUTH_SECRET;
-        if (secret) {
-          token.accessToken = jwt.sign(
-            {
-              id: token.id,
-              name: token.name,
-              email: token.email,
-              role: session.role,
-              iat: Math.floor(Date.now() / 1000),
-              exp: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
-            },
-            secret,
-            { algorithm: "HS256" },
-          );
-        }
       }
 
+      // If user logs in via OAuth (Google/Yandex/VK), we don't have their features yet.
+      // We must fetch them from the database here.
       if (user) {
         token.id = user.id;
         token.image = user.image ? user.image.toString() : null;
         token.name = user.name ? user.name.toString() : "";
         token.email = user.email ? user.email.toString() : "";
-
-        const userRole = (user as any).role || null;
-        token.role = userRole;
+        token.role = (user as any).role || null;
 
         const isOAuth = ["yandex", "google", "vk"].includes(
           account?.provider || "",
         );
 
         if (isOAuth) {
+          // Fetch features and expiration date from DB for OAuth logins
+          const dbUser = await prisma.user.findUnique({
+            where: { id: user.id },
+            include: { subscription: { include: { plan: true } } },
+          });
+
+          const now = new Date();
+          const sub = dbUser?.subscription;
+          let activeFeatures = DEFAULT_FREE_FEATURES;
+          let subEndDate = null;
+
+          // 🚨 Check if subscription is valid and unexpired
+          if (sub && sub.isActive && (!sub.endDate || sub.endDate > now)) {
+            activeFeatures = {
+              ...DEFAULT_FREE_FEATURES,
+              ...(sub.plan.features as any),
+            };
+            subEndDate = sub.endDate ? sub.endDate.toISOString() : null;
+          }
+
+          token.features = activeFeatures;
+          token.subscriptionEndDate = subEndDate; // 🚨 Inject to token
+
           const secret = process.env.NEXTAUTH_SECRET;
           if (secret) {
             token.accessToken = jwt.sign(
@@ -211,7 +230,7 @@ export const authOptions: NextAuthOptions = {
                 id: user.id,
                 name: user.name,
                 email: user.email,
-                role: userRole,
+                role: token.role,
                 iat: Math.floor(Date.now() / 1000),
                 exp: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
               },
@@ -220,7 +239,10 @@ export const authOptions: NextAuthOptions = {
             );
           }
         } else {
+          // It's a Credentials login, features/dates were already fetched in authorize()
           token.accessToken = (user as any).accessToken;
+          token.features = (user as any).features;
+          token.subscriptionEndDate = (user as any).subscriptionEndDate; // 🚨 Inject to token
         }
       }
       return token;
@@ -234,6 +256,9 @@ export const authOptions: NextAuthOptions = {
         session.user.name = token.name as string;
         session.user.email = token.email as string;
         session.user.role = token.role as string;
+        (session.user as any).features = token.features as Record<string, any>;
+        (session.user as any).subscriptionEndDate =
+          token.subscriptionEndDate as string | null;
         (session.user as any).accessToken = token.accessToken as string;
       }
       return session;
