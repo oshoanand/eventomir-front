@@ -13,18 +13,25 @@ export interface SubscriptionPlan {
   priceMonthly: number;
   priceHalfYearly?: number | null;
   priceYearly?: number | null;
-  features: string[];
+  // 🚨 CRITICAL FIX: Updated from string[] to Record<string, any> to support the JSON Feature Matrix
+  features: Record<string, any>;
   isActive: boolean;
 }
 
 export interface UserSubscription {
   id: string;
   planId: string;
-  planName: string; // Convenient to have from backend
+  planName?: string; // Convenient to have mapped from backend
+
+  // 🚨 FIX: Aligning with your Prisma schema fields
+  isActive: boolean;
+  autoRenew: boolean;
+
+  // Status mapped for the frontend UI logic
   status: "ACTIVE" | "EXPIRED" | "CANCELLED";
-  startDate: string;
-  endDate: string | null;
-  pricePaid: number;
+  startDate: string | Date;
+  endDate: string | Date | null;
+  pricePaid?: number;
 }
 
 export interface PaymentResponse {
@@ -46,7 +53,7 @@ export const getSubscriptionPlans = async (): Promise<SubscriptionPlan[]> => {
 
 /**
  * Fetches the current active subscription for the logged-in user.
- * Endpoint: GET /api/users/me/subscription
+ * Endpoint: GET /api/payments/me/subscription
  */
 export const getCurrentSubscription =
   async (): Promise<UserSubscription | null> => {
@@ -56,7 +63,7 @@ export const getCurrentSubscription =
         url: "/api/payments/me/subscription",
       });
     } catch (error) {
-      // Return null if 404 or no subscription
+      // Return null silently if 404 (user has no active subscription) or 401
       return null;
     }
   };
@@ -66,7 +73,7 @@ export const getCurrentSubscription =
  * Endpoint: POST /api/payments/checkout
  *
  * @param planId - The ID of the subscription plan to purchase.
- * @param interval - The billing interval for the subscription (e.g., "month", "half_year", "year").
+ * @param interval - The billing interval for the subscription.
  * @param paymentMethod - The preferred payment method ("card" or "wallet").
  * @returns An object containing the checkoutUrl.
  */
@@ -82,6 +89,10 @@ export const initiateCheckout = async (
   });
 };
 
+/**
+ * Fetches the dynamic price for a Paid Request creation.
+ * Endpoint: GET /api/payments/request-price
+ */
 export const getPaidRequestPrice = async (): Promise<number> => {
   const response = await apiRequest<{ price: number }>({
     method: "get",

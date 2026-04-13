@@ -1,51 +1,3 @@
-// // types/next-auth.d.ts
-// import NextAuth, { DefaultSession } from "next-auth";
-
-// declare module "next-auth" {
-//   /**
-//    * Extends the built-in session user type
-//    */
-//   interface Session {
-//     user: {
-//       id: string;
-//       name: string;
-//       phone: string;
-//       image?: string | null;
-//       email?: string | null;
-//       role: string;
-//       accessToken: string;
-//     };
-//   }
-
-//   /**
-//    * Extends the built-in user type
-//    */
-//   interface User {
-//     id: string;
-//     name: string;
-//     phone: string;
-//     image?: string | null;
-//     email?: string | null;
-//     role: string;
-//     accessToken: string;
-//   }
-// }
-
-// declare module "next-auth/jwt" {
-//   /**
-//    * Extends the built-in JWT type
-//    */
-//   interface JWT {
-//     id: string;
-//     role: string;
-//     name: string;
-//     phone: string;
-//     image?: string | null;
-//     email?: string | null;
-//     accessToken: string;
-//   }
-// }
-
 // types/next-auth.d.ts
 import { DefaultSession } from "next-auth";
 
@@ -56,6 +8,8 @@ declare module "next-auth" {
       role: string;
       phone?: string | null;
       accessToken: string;
+      features: Record<string, any>;
+      subscriptionEndDate?: string | null;
     } & DefaultSession["user"];
   }
 
@@ -64,6 +18,8 @@ declare module "next-auth" {
     role: string;
     phone?: string | null;
     accessToken: string;
+    features: Record<string, any>;
+    subscriptionEndDate?: string | null;
   }
 }
 
@@ -72,5 +28,8 @@ declare module "next-auth/jwt" {
     id: string;
     role: string;
     accessToken: string;
+    // 🚨 FIX: Add features to the JWT token payload
+    features: Record<string, any>;
+    subscriptionEndDate?: string | null;
   }
 }

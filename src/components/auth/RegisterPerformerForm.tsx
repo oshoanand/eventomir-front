@@ -35,6 +35,41 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
+// const formSchema = z
+//   .object({
+//     accountType: z.enum(
+//       ["selfEmployed", "individualEntrepreneur", "legalEntity", "agency"],
+//       { required_error: "Выберите тип аккаунта." },
+//     ),
+//     email: z.string().email("Введите корректный email."),
+//     password: z.string().min(8, "Минимум 8 символов."),
+//     name: z.string().min(2, "Минимум 2 символа."),
+//     companyName: z.string().optional(),
+//     phone: z
+//       .string()
+//       .regex(
+//         /^\+7 \d{3} \d{3} \d{2}-\d{2}$/,
+//         "Введите полный номер телефона (10 цифр).",
+//       ),
+//     inn: z.string().optional(),
+//     city: z.string().min(2, "Выберите город."),
+//     agreement: z.boolean().refine((val) => val === true, {
+//       message: "Необходимо согласиться с условиями.",
+//     }),
+//   })
+//   .refine(
+//     (data) => {
+//       if (["legalEntity", "agency"].includes(data.accountType)) {
+//         return !!data.inn && /^\d{10}$|^\d{12}$/.test(data.inn);
+//       }
+//       return true;
+//     },
+//     {
+//       message: "Для юр. лица или агентства ИНН является обязательным.",
+//       path: ["inn"],
+//     },
+//   );
+
 const formSchema = z
   .object({
     accountType: z.enum(
@@ -43,7 +78,7 @@ const formSchema = z
     ),
     email: z.string().email("Введите корректный email."),
     password: z.string().min(8, "Минимум 8 символов."),
-    name: z.string().min(2, "Минимум 2 символа."),
+    name: z.string().min(6, "Минимум 6 символа."),
     companyName: z.string().optional(),
     phone: z
       .string()
@@ -57,18 +92,57 @@ const formSchema = z
       message: "Необходимо согласиться с условиями.",
     }),
   })
-  .refine(
-    (data) => {
-      if (["legalEntity", "agency"].includes(data.accountType)) {
-        return !!data.inn && /^\d{10}$|^\d{12}$/.test(data.inn);
+  .superRefine((data, ctx) => {
+    // Determine if the selected account type requires business details
+    const needsCompanyAndInn = [
+      "individualEntrepreneur",
+      "legalEntity",
+      "agency",
+    ].includes(data.accountType);
+
+    if (needsCompanyAndInn) {
+      // 1. Validate Company Name
+      if (!data.companyName || data.companyName.trim().length < 2) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Укажите название компании или ИП.",
+          path: ["companyName"],
+        });
       }
-      return true;
-    },
-    {
-      message: "Для юр. лица или агентства ИНН является обязательным.",
-      path: ["inn"],
-    },
-  );
+
+      // 2. Validate INN Presence and Length dynamically
+      if (!data.inn || data.inn.trim() === "") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "ИНН обязателен для данного типа аккаунта.",
+          path: ["inn"],
+        });
+      } else {
+        const innClean = data.inn.trim();
+
+        if (data.accountType === "individualEntrepreneur") {
+          // Exactly 10 digits for ИП
+          if (!/^\d{10}$/.test(innClean)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Для ИП ИНН должен состоять ровно из 10 цифр.",
+              path: ["inn"],
+            });
+          }
+        } else if (["legalEntity", "agency"].includes(data.accountType)) {
+          // 10 to 12 digits for Юр. лицо or Агентство
+          if (!/^\d{10,12}$/.test(innClean)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message:
+                "Для Юр. лица или Агентства ИНН должен содержать от 10 до 12 цифр.",
+              path: ["inn"],
+            });
+          }
+        }
+      }
+    }
+  });
 
 type FormValues = z.infer<typeof formSchema>;
 
@@ -321,7 +395,9 @@ export function RegisterPerformerForm() {
         />
 
         {/* LEGAL ENTITY / AGENCY FIELDS */}
-        {["legalEntity", "agency"].includes(accountType) && (
+        {["individualEntrepreneur", "legalEntity", "agency"].includes(
+          accountType,
+        ) && (
           <div className="p-4 bg-muted/20 border border-border/50 rounded-2xl md:rounded-xl space-y-4 animate-in fade-in zoom-in-95">
             <FormField
               control={form.control}
