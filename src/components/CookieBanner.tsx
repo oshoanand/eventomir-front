@@ -71,16 +71,16 @@ const CookieBanner = () => {
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-base">
           <Cookie className="h-5 w-5 text-primary" />
-          Использование Cookies {/* Cookie Usage */}
+          Использование куки {/* Cookie Usage */}
         </CardTitle>
       </CardHeader>
       <CardContent className="text-sm pb-4">
         {/* Updated banner text */}
         {/* Обновленный текст баннера */}
         <p>
-          Мы используем файлы cookie для улучшения работы сайта Eventomir и
-          вашего взаимодействия с ним. Продолжая использовать сайт, вы
-          соглашаетесь с нашими{" "}
+          Мы используем файлы куки для улучшения работы сайта Eventomir и вашего
+          взаимодействия с ним. Продолжая использовать сайт, вы соглашаетесь с
+          нашими{" "}
           {/* We use cookies to improve the performance of the Eventomir site and your interaction with it. By continuing to use the site, you agree to our */}
           <Link href="/documents" className="underline hover:text-primary">
             условиями использования и политиками

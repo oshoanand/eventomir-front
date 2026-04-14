@@ -41,6 +41,7 @@
     "@yudiel/react-qr-scanner": "^2.5.1",
     "axios": "^1.13.2",
     "bcryptjs": "^3.0.3",
+    "browser-image-compression": "^2.0.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^3.6.0",
@@ -61,13 +62,15 @@
     "react-day-picker": "^8.10.1",
     "react-dom": "^19.2.1",
     "react-hook-form": "^7.54.2",
+    "react-intersection-observer": "^10.0.3",
     "react-leaflet": "^5.0.0",
     "recharts": "^2.15.1",
     "socket.io-client": "^4.8.3",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.0.1",
     "tailwindcss-animate": "^1.0.7",
-    "zod": "^3.24.2"
+    "zod": "^3.24.2",
+    "zustand": "^5.0.12"
   },
   "devDependencies": {
     "@types/jsonwebtoken": "^9.0.10",

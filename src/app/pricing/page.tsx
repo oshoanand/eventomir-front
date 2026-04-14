@@ -57,7 +57,7 @@ const PlanSkeleton = () => (
   </Card>
 );
 
-// Helper to map backend JSON keys to readable Russian text
+// Helper to map backend JSON keys to readable Russian text (Fallback for legacy data)
 const FEATURE_TRANSLATIONS: Record<string, string> = {
   maxPhotoUpload: "Макс. фотографий",
   emailSupport: "Поддержка по Email",
@@ -80,7 +80,8 @@ const PricingContent = () => {
   const [currentSub, setCurrentSub] = useState<UserSubscription | null>(null);
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
-  const [interval, setInterval] = useState<BillingInterval>("month");
+  const [billingInterval, setBillingInterval] =
+    useState<BillingInterval>("month"); // Renamed to avoid shadowing window.setInterval
 
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(
@@ -96,7 +97,7 @@ const PricingContent = () => {
       toast({
         title: "Оплата прошла успешно!",
         description: "Ваша подписка была успешно обновлена.",
-        variant: "success",
+        variant: "default", // Changed from "success" to "default" as standard shadcn uses default/destructive
       });
       router.replace("/pricing");
     } else if (paymentStatus === "error") {
@@ -157,7 +158,7 @@ const PricingContent = () => {
     let savingsPercent = 0;
 
     if (
-      interval === "half_year" &&
+      billingInterval === "half_year" &&
       plan.priceHalfYearly !== null &&
       plan.priceHalfYearly !== undefined
     ) {
@@ -170,7 +171,7 @@ const PricingContent = () => {
         );
       }
     } else if (
-      interval === "year" &&
+      billingInterval === "year" &&
       plan.priceYearly !== null &&
       plan.priceYearly !== undefined
     ) {
@@ -215,7 +216,7 @@ const PricingContent = () => {
     try {
       const response = await initiateCheckout(
         selectedPlan.id,
-        interval,
+        billingInterval,
         method as any,
       );
 
@@ -224,7 +225,7 @@ const PricingContent = () => {
         toast({
           title: "Успешно!",
           description: "Подписка оплачена с баланса кошелька.",
-          variant: "success",
+          variant: "default",
         });
         window.location.reload();
       } else {
@@ -249,7 +250,7 @@ const PricingContent = () => {
   return (
     <div className="container mx-auto py-16 px-4 animate-in fade-in duration-700">
       <div className="text-center mb-12 space-y-4">
-        <h1 className="text-4xl lg:text-5xl font-extrabold tracking-tight">
+        <h1 className="text-3xl lg:text-5xl font-bold tracking-tight">
           Тарифные планы
         </h1>
         <p className="max-w-2xl mx-auto text-lg text-muted-foreground">
@@ -260,13 +261,13 @@ const PricingContent = () => {
       </div>
 
       {/* BILLING CYCLE TOGGLE */}
-      <div className="flex justify-center mb-16">
-        <div className="inline-flex items-center p-1.5 bg-muted/50 rounded-full border shadow-sm">
+      <div className="flex justify-center mb-4 md:mb-16">
+        {/* <div className="inline-flex items-center p-1.5 bg-muted/50 rounded-full border shadow-sm">
           <button
-            onClick={() => setInterval("month")}
+            onClick={() => setBillingInterval("month")}
             className={cn(
               "px-6 py-2.5 rounded-full text-sm font-semibold transition-all duration-300",
-              interval === "month"
+              billingInterval === "month"
                 ? "bg-background shadow-md text-foreground"
                 : "text-muted-foreground hover:text-foreground",
             )}
@@ -274,21 +275,21 @@ const PricingContent = () => {
             Ежемесячно
           </button>
           <button
-            onClick={() => setInterval("half_year")}
+            onClick={() => setBillingInterval("half_year")}
             className={cn(
               "px-6 py-2.5 rounded-full text-sm font-semibold transition-all duration-300",
-              interval === "half_year"
+              billingInterval === "half_year"
                 ? "bg-background shadow-md text-foreground"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
-            6 Месяцев
+            6Месяцев
           </button>
           <button
-            onClick={() => setInterval("year")}
+            onClick={() => setBillingInterval("year")}
             className={cn(
               "px-6 py-2.5 rounded-full text-sm font-semibold transition-all duration-300 relative",
-              interval === "year"
+              billingInterval === "year"
                 ? "bg-background shadow-md text-foreground"
                 : "text-muted-foreground hover:text-foreground",
             )}
@@ -298,11 +299,55 @@ const PricingContent = () => {
               Выгодно
             </span>
           </button>
+        </div> */}
+        <div className="flex sm:inline-flex  w-full md:max-w-[360px]  mx-auto items-center p-1 sm:p-1.5 bg-muted/50 rounded-full border shadow-sm">
+          <button
+            onClick={() => setBillingInterval("month")}
+            className={cn(
+              "flex-1 sm:flex-none px-1 sm:px-6 py-2 sm:py-2.5 rounded-full text-[11px] sm:text-sm font-semibold transition-all duration-300 whitespace-nowrap",
+              billingInterval === "month"
+                ? "bg-primary shadow-md text-foreground"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <span className="hidden sm:inline">Ежемесячно</span>
+            <span className="sm:hidden">1 мес.</span>
+          </button>
+
+          <button
+            onClick={() => setBillingInterval("half_year")}
+            className={cn(
+              "flex-1 sm:flex-none px-1 sm:px-6 py-2 sm:py-2.5 rounded-full text-[11px] sm:text-sm font-semibold transition-all duration-300 whitespace-nowrap",
+              billingInterval === "half_year"
+                ? "bg-primary shadow-md text-foreground"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <span className="hidden sm:inline">6 Месяцев</span>
+            <span className="sm:hidden">6 мес.</span>
+          </button>
+
+          <button
+            onClick={() => setBillingInterval("year")}
+            className={cn(
+              "flex-1 sm:flex-none px-1 sm:px-6 py-2 sm:py-2.5 rounded-full text-[11px] sm:text-sm font-semibold transition-all duration-300 relative whitespace-nowrap",
+              billingInterval === "year"
+                ? "bg-primary shadow-md text-foreground"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <span className="hidden sm:inline">Годовой</span>
+            <span className="sm:hidden">1 год</span>
+
+            <span className="absolute -top-2.5 -right-1 sm:-top-3 sm:-right-3 bg-gradient-to-r from-emerald-500 to-green-600 text-[8px] sm:text-[10px] font-bold text-white px-1.5 sm:px-2 py-0.5 rounded-full shadow-sm animate-pulse z-10">
+              Выгодно
+            </span>
+          </button>
         </div>
       </div>
 
       {/* PLANS GRID */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start max-w-7xl mx-auto">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-2 md:gap-8 items-start max-w-7xl mx-auto">
         {isLoading ? (
           <>
             <PlanSkeleton />
@@ -324,22 +369,36 @@ const PricingContent = () => {
                 getPriceDetails(plan);
               const isPriceAvailable = price !== undefined && price !== null;
 
-              // 🚨 UI/UX UPGRADE: Parse and Sort Features (True first, False last)
+              // 🚨 ROBUST FIX: Parse Rich Feature Objects AND Fallback to Flat
               const displayFeatures = Object.entries(plan.features || {})
-                .map(([key, value]) => {
-                  const labelName = FEATURE_TRANSLATIONS[key] || key;
-                  let included = false;
-                  let displayLabel = labelName;
+                .map(([key, rawValue]) => {
+                  // Determine if the value from the DB is our new Rich Object or a legacy flat primitive
+                  const isRichObject =
+                    rawValue &&
+                    typeof rawValue === "object" &&
+                    !Array.isArray(rawValue);
 
-                  if (typeof value === "boolean") {
-                    included = value;
-                  } else if (typeof value === "number") {
+                  // Extract the actual value and custom label
+                  const actualValue = isRichObject
+                    ? (rawValue as any).value
+                    : rawValue;
+                  const actualLabel =
+                    isRichObject && (rawValue as any).label
+                      ? (rawValue as any).label
+                      : FEATURE_TRANSLATIONS[key] || key;
+
+                  let included = false;
+                  let displayLabel = actualLabel;
+
+                  if (typeof actualValue === "boolean") {
+                    included = actualValue;
+                  } else if (typeof actualValue === "number") {
                     // Treat 0 as excluded for limits
-                    included = value > 0;
-                    displayLabel = `${labelName}: ${value > 0 ? value : "Нет"}`;
+                    included = actualValue > 0;
+                    displayLabel = `${actualLabel}: ${actualValue > 0 ? actualValue : "Нет"}`;
                   } else {
-                    included = !!value;
-                    displayLabel = `${labelName}: ${value}`;
+                    included = !!actualValue;
+                    displayLabel = `${actualLabel}: ${actualValue}`;
                   }
 
                   return { label: displayLabel, included };

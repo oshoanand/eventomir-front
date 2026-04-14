@@ -115,7 +115,7 @@ export default function ClientNotificationUI() {
   return (
     <>
       {/* --- GLOBAL FLOATING INBOX BUTTON --- */}
-      <div className="fixed bottom-6 right-6 z-40">
+      <div className="hidden md:fixed bottom-6 right-6 z-40">
         <Button
           onClick={() => setIsInboxOpen(true)}
           size="icon"

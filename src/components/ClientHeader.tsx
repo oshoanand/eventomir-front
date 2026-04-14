@@ -6,7 +6,8 @@ import dynamic from "next/dynamic";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
-import { Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Search, Bell } from "lucide-react";
 import { SettingsContext } from "@/components/providers/Providers";
 
 const ClientMenu = dynamic(() => import("@/components/ClientMenu"), {
@@ -35,8 +36,8 @@ function ClientHeader() {
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/85 backdrop-blur-lg supports-[backdrop-filter]:bg-background/60 transition-all duration-300 shadow-sm">
-      <div className="container mx-auto flex h-16 items-center justify-between px-4 lg:px-8">
+    <header className="sticky top-0 z-50 w-full bg-background/90 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70 transition-all duration-300 shadow-sm md:shadow-none border-b border-transparent md:border-border">
+      <div className="container mx-auto flex h-14 md:h-16 items-center justify-between px-4 lg:px-8">
         {/* Left: Logo & Desktop Search */}
         <div className="flex items-center gap-6 md:gap-10 w-full md:w-auto">
           <Link
@@ -46,6 +47,7 @@ function ClientHeader() {
             {settings?.siteName || "Eventomir"}
           </Link>
 
+          {/* Search bar is only visible on desktop (lg:flex) */}
           <form
             onSubmit={handleSearch}
             className="hidden lg:flex relative group w-[300px] xl:w-[450px]"
@@ -61,15 +63,35 @@ function ClientHeader() {
           </form>
         </div>
 
-        {/* Right: Desktop Profile Menu */}
-        {/* Hidden on mobile (md:flex) because the BottomNav handles mobile profiles */}
-        <div className="hidden md:flex items-center gap-4">
-          <ClientMenu
-            isLoggedIn={isLoggedIn}
-            userRole={userRole}
-            userImage={userImage}
-            userName={userName}
-          />
+        {/* Right Side: Notifications & Desktop Profile Menu */}
+        <div className="flex items-center gap-2 md:gap-4">
+          {/* MOBILE NOTIFICATION BELL (Only visible on mobile if logged in) */}
+          {isLoggedIn && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden relative group flex items-center justify-center h-8 w-8 rounded-full bg-primary/10 hover:bg-primary/20 transition-all duration-300 hover:shadow-sm hover:-translate-y-0.5 active:translate-y-0 active:scale-95"
+              onClick={() => router.push("/notifications")} // Adjust this route to your actual notifications page
+            >
+              <Bell
+                className="h-4 w-4 text-primary transition-transform duration-300 group-hover:scale-110"
+                strokeWidth={2}
+              />
+              {/* Optional: Add an unread badge here if you have that data */}
+              {/* <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-destructive border-2 border-background"></span> */}
+              <span className="sr-only">Уведомления</span>
+            </Button>
+          )}
+
+          {/* DESKTOP PROFILE MENU (Hidden on mobile) */}
+          <div className="hidden md:flex items-center gap-4">
+            <ClientMenu
+              isLoggedIn={isLoggedIn}
+              userRole={userRole}
+              userImage={userImage}
+              userName={userName}
+            />
+          </div>
         </div>
       </div>
     </header>

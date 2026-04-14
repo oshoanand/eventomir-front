@@ -447,7 +447,7 @@ export default function Home() {
   return (
     <div className="flex flex-col gap-16 pb-20 animate-in fade-in duration-700">
       {/* --- HERO SECTION --- */}
-      <section className="relative w-full pt-24 pb-32 overflow-hidden flex flex-col items-center justify-center">
+      <section className="relative w-full py-20 md:py-24 overflow-hidden flex flex-col items-center justify-center">
         {/* Modern Background Gradient */}
         <div className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/10 via-background to-background" />
 
@@ -459,9 +459,9 @@ export default function Home() {
             Твой гид в мире событий
           </Badge>
 
-          <h1 className="text-5xl md:text-7xl font-extrabold mb-6 tracking-tight text-balance leading-tight">
+          <h1 className="text-4xl md:text-7xl font-extrabold mb-6 tracking-tight text-balance leading-tight">
             События, которые{" "}
-            <span className="text-primary bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/60">
+            <span className="text-primary bg-clip-text  bg-gradient-to-r from-primary to-primary/60">
               вдохновляют
             </span>
           </h1>
@@ -474,7 +474,7 @@ export default function Home() {
           {/* Integrated Fast Search Bar */}
           <form
             onSubmit={handleHeroSearch}
-            className="flex flex-col sm:flex-row max-w-2xl mx-auto gap-3 bg-background/80 backdrop-blur-xl p-2 rounded-3xl sm:rounded-full shadow-xl border border-primary/10"
+            className="flex flex-col sm:flex-row max-w-2xl mx-auto gap-3 bg-background/80 backdrop-blur-xl p-2 rounded-3xl sm:rounded-full  border border-primary/10"
           >
             <div className="relative flex-grow flex items-center pl-4">
               <Search className="h-5 w-5 text-muted-foreground shrink-0" />

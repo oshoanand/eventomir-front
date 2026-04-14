@@ -49,6 +49,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Layers,
+  Share2,
 } from "lucide-react";
 
 // Services & Hooks
@@ -61,7 +62,6 @@ import {
 } from "@/services/performer";
 import { cn } from "@/utils/utils";
 
-// 🚨 IMPORT REACT QUERY HOOK FOR FRESH SETTINGS 🚨
 import {
   useGeneralSettingsQuery,
   type SiteCategory,
@@ -102,7 +102,6 @@ const SearchPage = () => {
     searchParams.get("category"),
   );
 
-  // 🚨 NEW: Array state to support multiple sub-category selections
   const initialSubCats = searchParams.get("subCategories");
   const [selectedSubCategories, setSelectedSubCategories] = useState<string[]>(
     initialSubCats ? initialSubCats.split(",") : [],
@@ -131,7 +130,6 @@ const SearchPage = () => {
   >([]);
   const [autocompleteResults, setAutocompleteResults] = useState<string[]>([]);
 
-  // 🚨 DERIVED STATE: Get the active category object to display its subcategories
   const activeCategoryObj = categories.find((c) => c.name === selectedService);
   const availableSubCategories = activeCategoryObj?.subCategories || [];
 
@@ -143,17 +141,15 @@ const SearchPage = () => {
 
       setSelectedSubCategories((prev) => {
         const filtered = prev.filter((sub) => validSubNames.includes(sub));
-        // 🚨 PREVENT INFINITE LOOP: Only update state if something was actually removed
         if (filtered.length !== prev.length) {
           return filtered;
         }
         return prev;
       });
     } else {
-      // 🚨 PREVENT INFINITE LOOP: Only clear if the array isn't already empty
       setSelectedSubCategories((prev) => (prev.length > 0 ? [] : prev));
     }
-  }, [selectedService, activeCategoryObj]); // Removed the volatile array from dependencies
+  }, [selectedService, activeCategoryObj]);
 
   const updateURLParams = useCallback(
     (page: number) => {
@@ -162,7 +158,6 @@ const SearchPage = () => {
       if (selectedService && selectedService !== "_all_")
         params.set("category", selectedService);
 
-      // Pass multiple sub-categories as a comma-separated string
       if (selectedSubCategories.length > 0) {
         params.set("subCategories", selectedSubCategories.join(","));
       }
@@ -197,7 +192,6 @@ const SearchPage = () => {
           page,
           pageSize: PAGE_SIZE,
           category: selectedService === "_all_" ? undefined : selectedService,
-          // Backend should handle splitting the comma-separated string
           subCategories:
             selectedSubCategories.length > 0
               ? selectedSubCategories.join(",")
@@ -273,13 +267,50 @@ const SearchPage = () => {
     }
   };
 
-  // 🚨 NEW: Toggle function for multi-select
   const toggleSubCategory = (subName: string) => {
     setSelectedSubCategories((prev) =>
       prev.includes(subName)
         ? prev.filter((name) => name !== subName)
         : [...prev, subName],
     );
+  };
+
+  // --- SHARE FUNCTIONALITY ---
+  const handleShare = async (performer: PerformerProfile) => {
+    const profileUrl = `${window.location.origin}/performer-profile?id=${performer.id}`;
+    const shareTitle = `Исполнитель ${performer.name} на Eventomir`;
+    const shareText = performer.description
+      ? `${performer.description.substring(0, 100)}...`
+      : `Забронируйте ${performer.name} для вашего мероприятия!`;
+
+    const shareData = {
+      title: shareTitle,
+      text: shareText,
+      url: profileUrl,
+    };
+
+    try {
+      if (
+        navigator.share &&
+        navigator.canShare &&
+        navigator.canShare(shareData)
+      ) {
+        // Native mobile share sheet (WhatsApp, Telegram, Email, etc.)
+        await navigator.share(shareData);
+      } else {
+        // Fallback for desktop/unsupported browsers
+        await navigator.clipboard.writeText(profileUrl);
+        toast({
+          title: "Ссылка скопирована",
+          description: "Ссылка на профиль скопирована в буфер обмена.",
+        });
+      }
+    } catch (error: any) {
+      // User aborted share (AbortError) doesn't need an alert
+      if (error.name !== "AbortError") {
+        console.error("Ошибка при попытке поделиться:", error);
+      }
+    }
   };
 
   if (!mounted) {
@@ -293,7 +324,7 @@ const SearchPage = () => {
   const totalPages = Math.ceil(totalResults / PAGE_SIZE);
 
   return (
-    <div className="container mx-auto py-10">
+    <div className="container px-4 md:px-8 py-2 md:py-10">
       <div className="grid gap-6">
         {/* --- FILTERS SECTION --- */}
         <Card className="border-primary/10 shadow-sm">
@@ -561,9 +592,9 @@ const SearchPage = () => {
                       <div className="flex items-start justify-between">
                         <Link
                           href={`/performer-profile?id=${performer.id}`}
-                          className="flex items-center gap-4 group/link flex-grow"
+                          className="flex items-center gap-4 group/link flex-grow min-w-0 pr-2"
                         >
-                          <Avatar className="h-16 w-16 border-2 border-background shadow-md">
+                          <Avatar className="h-16 w-16 border-2 border-background shadow-md shrink-0">
                             <AvatarImage
                               src={performer.profilePicture || ""}
                               alt={performer.name}
@@ -589,7 +620,23 @@ const SearchPage = () => {
                             )}
                           </div>
                         </Link>
-                        <CompareButton performerId={performer.id} />
+
+                        {/* Share and Compare Buttons */}
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 rounded-full bg-muted/30 hover:bg-muted text-muted-foreground transition-colors"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              handleShare(performer);
+                            }}
+                            title="Поделиться профилем"
+                          >
+                            <Share2 className="h-4 w-4" />
+                          </Button>
+                          <CompareButton performerId={performer.id} />
+                        </div>
                       </div>
                     </CardHeader>
                     <CardContent className="flex-grow">

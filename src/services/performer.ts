@@ -22,16 +22,16 @@ export interface GalleryItem {
 
 export interface Certificate {
   id: string;
-  fileUrl: string;
+  file_url: string; // Updated to match backend mapping if necessary (Prisma outputs file_url)
   description?: string;
-  moderationStatus: ModerationStatus;
+  moderation_status: ModerationStatus;
 }
 
 export interface RecommendationLetter {
   id: string;
-  fileUrl: string;
+  file_url: string; // Updated to match backend mapping
   description?: string;
-  moderationStatus: ModerationStatus;
+  moderation_status: ModerationStatus;
 }
 
 export interface Review {
@@ -41,6 +41,15 @@ export interface Review {
   rating: number;
   comment?: string;
   date: Date;
+}
+
+// NEW: Audio Track Interface
+export interface AudioTrack {
+  id: string;
+  performer_id: string;
+  title: string;
+  file_url: string;
+  created_at: string;
 }
 
 export interface PerformerProfileBase {
@@ -70,7 +79,6 @@ export interface PerformerProfileBase {
   profileMetaDescription?: string;
   profileKeywords?: string;
 
-  // 🚨 FIX: Allow plan ID to be null if no subscription exists
   subscriptionPlanId?: string | null;
   subscriptionEndDate?: Date | null;
   moderationStatus: ModerationStatus;
@@ -94,6 +102,7 @@ export interface PerformerProfile extends PerformerProfileBase {
   selectedDates?: Date[];
   certificates?: Certificate[];
   recommendationLetters?: RecommendationLetter[];
+  audioTracks?: AudioTrack[]; // NEW: Added to profile
   reviews?: Review[];
   isVip?: boolean;
   subscription?: UserSubscription | null;
@@ -146,8 +155,6 @@ export type UpdatePerformerProfileParams = Partial<
 };
 
 // --- UTILITY: HYDRATE DATES ---
-// 🚨 CRITICAL FIX: Converts ISO string dates from the JSON response back into actual JavaScript Date objects.
-// If this isn't done, the Calendar component will crash when trying to render booked dates.
 const hydrateProfileDates = (data: any): PerformerProfile => {
   if (!data) return data;
 
@@ -162,7 +169,6 @@ const hydrateProfileDates = (data: any): PerformerProfile => {
     bookingRequests: Array.isArray(data.bookingRequests)
       ? data.bookingRequests.map((req: any) => ({
           ...req,
-          // Handle backend sending either 'date' or 'eventDate'
           date: req.date ? new Date(req.date) : new Date(req.eventDate),
           createdAt: req.createdAt ? new Date(req.createdAt) : new Date(),
         }))
@@ -197,13 +203,11 @@ const updatePerformerProfileFn = async ({
 }): Promise<PerformerProfile> => {
   const formData = new FormData();
 
-  // Handle standard string fields
   if (data.name) formData.append("name", data.name);
   if (data.description) formData.append("description", data.description);
   if (data.city) formData.append("city", data.city);
   if (data.contactPhone) formData.append("phone", data.contactPhone);
 
-  // Handle Arrays
   if (data.roles) {
     formData.append("roles", JSON.stringify(data.roles));
   }
@@ -211,7 +215,6 @@ const updatePerformerProfileFn = async ({
     formData.append("priceRange", JSON.stringify(data.priceRange));
   }
 
-  // Handle Files
   if (data.profilePictureFile) {
     formData.append("profilePicture", data.profilePictureFile);
   }
@@ -283,7 +286,7 @@ const rejectBookingRequestFn = async ({
   });
 };
 
-// -- Content Management (Gallery/Docs) --
+// -- Content Management (Gallery/Docs/Audio) --
 
 const addGalleryItemFn = async ({
   performerId,
@@ -390,6 +393,41 @@ const removeRecommendationLetterFn = async ({
   });
 };
 
+// NEW: Audio API Functions
+const addAudioTrackFn = async ({
+  performerId,
+  file,
+  title,
+}: {
+  performerId: string;
+  file: File;
+  title: string;
+}): Promise<AudioTrack> => {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("title", title);
+  formData.append("performerId", performerId);
+
+  return await apiRequest<AudioTrack>({
+    method: "post",
+    url: `/api/performers/audio`,
+    data: formData,
+    headers: { "Content-Type": undefined }, // Axios handles multipart/form-data
+  });
+};
+
+const removeAudioTrackFn = async ({
+  trackId,
+}: {
+  performerId: string; // Included to match signature for invalidation
+  trackId: string;
+}): Promise<void> => {
+  return await apiRequest<void>({
+    method: "delete",
+    url: `/api/performers/audio/${trackId}`,
+  });
+};
+
 // --- PUBLIC EXPORTED FUNCTIONS (Non-Hook) ---
 
 export interface PaginatedResult<T> {
@@ -458,8 +496,6 @@ export const getPerformersByIds = async (
 export const getPerformerProfile = async (
   performerId: string,
 ): Promise<PerformerProfile | null> => {
-  console.log(`Загрузка профиля исполнителя ${performerId}...`);
-
   try {
     const data = await apiRequest<any>({
       method: "get",
@@ -611,6 +647,31 @@ export const useRemoveRecommendationLetter = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: removeRecommendationLetterFn,
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["performer", "profile", variables.performerId],
+      });
+    },
+  });
+};
+
+// NEW: React Query Hooks for Audio
+export const useAddAudioTrack = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: addAudioTrackFn,
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["performer", "profile", variables.performerId],
+      });
+    },
+  });
+};
+
+export const useRemoveAudioTrack = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: removeAudioTrackFn,
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
         queryKey: ["performer", "profile", variables.performerId],

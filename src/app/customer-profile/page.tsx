@@ -1,20 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  CardFooter,
-} from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -23,17 +14,15 @@ import {
   History,
   MapPin,
   Phone,
-  Mail,
   KeyRound,
   Send,
-  Bell,
   Trash2,
   Wallet,
   PlusCircle,
   MessageCircle,
   Loader2,
   CreditCard,
-  CheckCircle,
+  X,
 } from "lucide-react";
 
 import { format } from "date-fns";
@@ -48,7 +37,6 @@ import {
   DialogTitle,
   DialogTrigger,
   DialogFooter,
-  DialogClose,
 } from "@/components/ui/dialog";
 import {
   Form,
@@ -62,13 +50,10 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Badge } from "@/components/ui/badge";
-import { formatPhoneNumber } from "@/utils/helper";
 import { apiRequest } from "@/utils/api-client";
 
-// --- Real-Time & Chat Imports ---
-import { useSocket } from "@/components/providers/SocketProvider";
-import ChatDialog from "@/components/chat/ChatDialog";
-import { createOrGetChat } from "@/services/chat";
+// --- Global Zustand Store ---
+import { useChatStore } from "@/store/useChatStore";
 
 // --- Custom Hooks & Services ---
 import {
@@ -79,7 +64,6 @@ import {
 } from "@/services/customer";
 import { useCustomerRequestsQuery } from "@/services/requests";
 import { changePassword, deleteUserAccount } from "@/services/auth";
-import { getNotifications } from "@/services/notifications";
 
 // --- Validation Schemas ---
 const changePasswordSchema = z
@@ -104,7 +88,8 @@ const CustomerProfilePage = () => {
   const searchParams = useSearchParams();
   const { toast } = useToast();
 
-  const { onlineUsers } = useSocket() || { onlineUsers: [] };
+  // Use Zustand store for global online status
+  const onlineUsers = useChatStore((state) => state.onlineUsers);
 
   // --- Data Fetching Hooks ---
   const {
@@ -115,13 +100,11 @@ const CustomerProfilePage = () => {
 
   const { data: orderHistory = [], isLoading: isHistoryLoading } =
     useCustomerOrders();
-
   const { data: paidRequests = [], isLoading: isRequestsLoading } =
     useCustomerRequestsQuery(session?.user?.id);
 
   const updateProfileMutation = useUpdateCustomerProfile();
-
-  const isCustomerOnline = profile ? onlineUsers.includes(profile.id) : false;
+  const isCustomerOnline = profile ? onlineUsers.has(profile.id) : false;
 
   // --- State Management ---
   const [isEditing, setIsEditing] = useState(false);
@@ -141,13 +124,6 @@ const CustomerProfilePage = () => {
   const [topUpAmount, setTopUpAmount] = useState<string>("1000");
   const [isToppingUp, setIsToppingUp] = useState(false);
 
-  // Chat States
-  const [isChatOpen, setIsChatOpen] = useState(false);
-  const [currentChatId, setCurrentChatId] = useState("");
-  const [chatPartnerName, setChatPartnerName] = useState("");
-
-  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
-
   // --- Effects ---
   useEffect(() => {
     if (profile) {
@@ -166,28 +142,22 @@ const CustomerProfilePage = () => {
         description: "Ожидаем подтверждение от банка. Пожалуйста, подождите...",
       });
 
-      // SMART POLLING: Check for the updated balance 4 times over 6 seconds
-      // to give the Tinkoff webhook time to update the database.
       let attempts = 0;
       const pollInterval = setInterval(() => {
         attempts++;
-        refetchProfile(); // Ask the server for the latest balance
+        refetchProfile();
 
         if (attempts >= 4) {
           clearInterval(pollInterval);
           toast({
             title: "Баланс обновлен!",
             description: "Средства успешно зачислены на ваш кошелек.",
-            // @ts-ignore - (Depending on your shadcn setup, 'success' might need to be 'default')
-            variant: "success",
+            variant: "default",
           });
         }
-      }, 1500); // Check every 1.5 seconds
+      }, 1500);
 
-      // Clean up the URL immediately so a manual refresh doesn't trigger this again
       router.replace("/customer-profile", { scroll: false });
-
-      // Cleanup interval if component unmounts
       return () => clearInterval(pollInterval);
     }
 
@@ -204,22 +174,11 @@ const CustomerProfilePage = () => {
       toast({
         title: "Успешно!",
         description: "Заявка успешно оплачена и опубликована.",
-        // @ts-ignore
-        variant: "success",
+        variant: "default",
       });
       router.replace("/customer-profile", { scroll: false });
     }
   }, [searchParams, toast, router, refetchProfile]);
-
-  useEffect(() => {
-    if (session?.user?.id) {
-      getNotifications(session.user.id)
-        .then((notifs) => {
-          setUnreadNotificationsCount(notifs.filter((n) => !n.isRead).length);
-        })
-        .catch((err) => console.error("Failed to fetch notifications", err));
-    }
-  }, [session?.user?.id]);
 
   // --- Forms ---
   const changePasswordForm = useForm<z.infer<typeof changePasswordSchema>>({
@@ -270,6 +229,7 @@ const CustomerProfilePage = () => {
           setIsEditing(false);
           setProfilePictureFile(null);
           toast({
+            variant: "success",
             title: "Профиль обновлен",
             description: "Ваши данные успешно сохранены.",
           });
@@ -296,9 +256,12 @@ const CustomerProfilePage = () => {
         values.currentPassword,
         values.newPassword,
       );
-
       if (result.success) {
-        toast({ title: "Успех", description: result.message });
+        toast({
+          variant: "success",
+          title: "Успех",
+          description: result.message,
+        });
         setIsChangePasswordOpen(false);
         changePasswordForm.reset();
       } else {
@@ -325,7 +288,11 @@ const CustomerProfilePage = () => {
     try {
       const result = await deleteUserAccount(profile.id);
       if (result.success) {
-        toast({ title: "Аккаунт удален", description: result.message });
+        toast({
+          variant: "success",
+          title: "Аккаунт удален",
+          description: result.message,
+        });
         router.push("/");
       } else {
         toast({
@@ -344,6 +311,68 @@ const CustomerProfilePage = () => {
       setIsDeletingAccount(false);
       setIsDeleteAccountOpen(false);
     }
+  };
+  // 1. Helper to format the display value as "+7 999 999 99-99"
+  const formatPhoneDisplay = (phone: string) => {
+    if (!phone) return "";
+
+    // Extract all digits from the backend string (e.g., "+79991234567" -> "79991234567")
+    let digits = phone.replace(/\D/g, "");
+
+    // Strip the country code "7" so we only format the actual 10-digit number
+    if (digits.startsWith("7")) {
+      digits = digits.substring(1);
+    }
+
+    // If there are no user digits left, show nothing (allows placeholder to show)
+    if (digits.length === 0) return "";
+
+    // Apply the mask
+    let formatted = "+7 ";
+    if (digits.length > 0) formatted += digits.substring(0, 3);
+    if (digits.length > 3) formatted += " " + digits.substring(3, 6);
+    if (digits.length > 6) formatted += " " + digits.substring(6, 8);
+    if (digits.length > 8) formatted += "-" + digits.substring(8, 10);
+
+    return formatted;
+  };
+
+  // 2. Custom change handler that safely ignores the prefix during deletion
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const inputValue = e.target.value;
+
+    // If the user completely clears the input, or deletes down to just the prefix
+    if (inputValue === "" || inputValue.trim() === "+7" || inputValue === "+") {
+      setFormData({ ...formData, phone: "" });
+      return;
+    }
+
+    // Strip the literal "+7 " prefix BEFORE we extract digits,
+    // so we don't accidentally count the country code as a user-typed '7'
+    let rawInput = inputValue;
+    if (rawInput.startsWith("+7 ")) {
+      rawInput = rawInput.substring(3);
+    } else if (rawInput.startsWith("+7")) {
+      rawInput = rawInput.substring(2);
+    }
+
+    // Now extract ONLY the digits the user actually typed
+    let digits = rawInput.replace(/\D/g, "");
+
+    // Handle paste scenario (if they paste a full 11-digit number starting with 7 or 8)
+    if (
+      (digits.startsWith("7") || digits.startsWith("8")) &&
+      digits.length >= 11
+    ) {
+      digits = digits.substring(1);
+    }
+
+    // Restrict strictly to 10 digits
+    digits = digits.substring(0, 10);
+
+    // Save to state with the +7 prefix ONLY if there are actually digits typed
+    const backendFormat = digits.length > 0 ? `+7${digits}` : "";
+    setFormData({ ...formData, phone: backendFormat });
   };
 
   const handleTopUpWallet = async () => {
@@ -380,10 +409,8 @@ const CustomerProfilePage = () => {
     }
   };
 
-  const handleOpenChat = async (
-    targetUserId: string,
-    targetUserName: string,
-  ) => {
+  // Navigates directly to the global chat room route
+  const handleOpenChat = (targetUserId: string) => {
     if (!session?.user?.id) return;
     if (targetUserId === session.user.id) {
       toast({
@@ -392,25 +419,20 @@ const CustomerProfilePage = () => {
       });
       return;
     }
-
-    try {
-      const chatId = await createOrGetChat(targetUserId);
-      setCurrentChatId(chatId);
-      setChatPartnerName(targetUserName);
-      setIsChatOpen(true);
-    } catch (e) {
-      toast({ variant: "destructive", title: "Ошибка чата" });
-    }
+    router.push(`/chat/${targetUserId}`);
   };
 
-  // --- Loading Skeletons ---
+  // --- Loading State ---
   if (status === "loading" || isProfileLoading) {
     return (
-      <div className="container mx-auto py-10 max-w-5xl">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Skeleton className="h-80 w-full md:col-span-2" />
-          <Skeleton className="h-80 w-full" />
+      <div className="flex flex-col p-4 space-y-6 pt-safe">
+        <div className="flex flex-col items-center space-y-4">
+          <Skeleton className="h-24 w-24 rounded-full" />
+          <Skeleton className="h-6 w-40" />
+          <Skeleton className="h-4 w-32" />
         </div>
+        <Skeleton className="h-32 w-full rounded-3xl" />
+        <Skeleton className="h-40 w-full rounded-2xl" />
       </div>
     );
   }
@@ -427,566 +449,512 @@ const CustomerProfilePage = () => {
       : "??";
 
   return (
-    <>
-      <div className="container mx-auto py-10 space-y-8 max-w-5xl">
-        {/* --- Top Row: Profile & Wallet --- */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* PROFILE CARD */}
-          <Card className="md:col-span-2 relative shadow-sm border-2">
-            <CardHeader className="flex flex-col items-center text-center relative pb-2">
-              <div className="absolute top-4 right-4 flex gap-2">
-                {isEditing ? (
-                  <>
-                    <Button
-                      variant="default"
-                      onClick={handleSaveChanges}
-                      disabled={updateProfileMutation.isPending}
-                      size="sm"
-                    >
-                      {updateProfileMutation.isPending
-                        ? "Сохранение..."
-                        : "Сохранить"}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setIsEditing(false);
-                        setFormData(profile);
-                      }}
-                      size="sm"
-                    >
-                      Отмена
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <Link href="/notifications">
-                      <Button variant="ghost" size="icon" className="relative">
-                        <Bell className="h-4 w-4" />
-                        {unreadNotificationsCount > 0 && (
-                          <Badge
-                            variant="destructive"
-                            className="absolute -top-1 -right-1 h-3 w-3 p-0 flex items-center justify-center rounded-full text-[10px]"
-                          >
-                            {unreadNotificationsCount}
-                          </Badge>
-                        )}
-                      </Button>
-                    </Link>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setIsEditing(true)}
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
+    <div className="flex flex-col min-h-screen bg-muted/10 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-10 pt-4 md:pt-10">
+      <div className="container mx-auto max-w-3xl px-4 space-y-6">
+        {/* --- 1. PROFILE HEADER --- */}
+        <div className="flex flex-col items-center relative bg-background rounded-3xl p-6 shadow-sm border border-border/50">
+          <div className="absolute top-4 right-4 flex gap-2">
+            {isEditing ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  setIsEditing(false);
+                  setFormData(profile);
+                }}
+                className="h-8 w-8 rounded-full bg-muted/50 text-muted-foreground"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setIsEditing(true)}
+                className="h-8 w-8 rounded-full bg-muted/50 hover:bg-muted text-foreground transition-colors"
+              >
+                <Edit className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
 
-                    {/* Change Password Dialog */}
-                    <Dialog
-                      open={isChangePasswordOpen}
-                      onOpenChange={setIsChangePasswordOpen}
-                    >
-                      <DialogTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          title="Сменить пароль"
-                        >
-                          <KeyRound className="h-4 w-4" />
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="sm:max-w-[425px]">
-                        <DialogHeader>
-                          <DialogTitle>Смена пароля</DialogTitle>
-                          <DialogDescription>
-                            Введите текущий и новый пароль.
-                          </DialogDescription>
-                        </DialogHeader>
-                        <Form {...changePasswordForm}>
-                          <form
-                            onSubmit={changePasswordForm.handleSubmit(
-                              handleChangePasswordSubmit,
-                            )}
-                            className="space-y-4 py-4"
-                          >
-                            <FormField
-                              control={changePasswordForm.control}
-                              name="currentPassword"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Текущий пароль</FormLabel>
-                                  <FormControl>
-                                    <Input type="password" {...field} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={changePasswordForm.control}
-                              name="newPassword"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Новый пароль</FormLabel>
-                                  <FormControl>
-                                    <Input type="password" {...field} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={changePasswordForm.control}
-                              name="confirmPassword"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>
-                                    Подтвердите новый пароль
-                                  </FormLabel>
-                                  <FormControl>
-                                    <Input type="password" {...field} />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <DialogFooter>
-                              <Button
-                                type="submit"
-                                variant="destructive"
-                                disabled={isChangingPassword}
-                              >
-                                {isChangingPassword
-                                  ? "Смена..."
-                                  : "Сменить пароль"}
-                              </Button>
-                            </DialogFooter>
-                          </form>
-                        </Form>
-                      </DialogContent>
-                    </Dialog>
+          <div className="relative mb-3 mt-2">
+            <Avatar className="h-24 w-24 border-4 border-background shadow-md">
+              <AvatarImage
+                src={
+                  profilePictureFile
+                    ? formData.profilePicture
+                    : getImageUrl(profile.profilePicture)
+                }
+                alt={formData.name || profile.name}
+                className="object-cover"
+              />
+              <AvatarFallback className="text-xl font-bold bg-primary/10 text-primary">
+                {getInitials(formData.name || profile.name)}
+              </AvatarFallback>
+            </Avatar>
 
-                    {/* Delete Account Dialog */}
-                    <Dialog
-                      open={isDeleteAccountOpen}
-                      onOpenChange={setIsDeleteAccountOpen}
-                    >
-                      <DialogTrigger asChild>
-                        <Button
-                          variant="destructive"
-                          size="icon"
-                          title="Удалить аккаунт"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Удаление аккаунта</DialogTitle>
-                          <DialogDescription>
-                            Это действие необратимо.
-                          </DialogDescription>
-                        </DialogHeader>
-                        <DialogFooter>
-                          <Button
-                            variant="outline"
-                            onClick={() => setIsDeleteAccountOpen(false)}
-                          >
-                            Отмена
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            onClick={handleDeleteAccount}
-                            disabled={isDeletingAccount}
-                          >
-                            {isDeletingAccount ? "Удаление..." : "Удалить"}
-                          </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
-                  </>
+            {!isEditing && (
+              <span
+                className={cn(
+                  "absolute bottom-1 right-1 h-5 w-5 rounded-full border-4 border-background z-20 transition-all duration-300",
+                  isCustomerOnline ? "bg-emerald-500" : "bg-gray-300",
                 )}
-              </div>
+              />
+            )}
 
-              <div className="relative mb-4 mt-6">
-                <Avatar className="h-24 w-24 border-2 border-primary shadow-sm">
-                  <AvatarImage
-                    src={
-                      profilePictureFile
-                        ? formData.profilePicture
-                        : getImageUrl(profile.profilePicture)
-                    }
-                    alt={formData.name || profile.name}
-                  />
-                  <AvatarFallback>
-                    {getInitials(formData.name || profile.name)}
-                  </AvatarFallback>
-                </Avatar>
+            {isEditing && (
+              <label
+                htmlFor="profilePictureInput"
+                className="absolute bottom-0 right-0 bg-primary text-primary-foreground rounded-full p-2 cursor-pointer hover:bg-primary/90 transition-transform active:scale-95 shadow-md"
+              >
+                <Camera className="h-4 w-4" />
+                <Input
+                  id="profilePictureInput"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handlePictureChange}
+                />
+              </label>
+            )}
+          </div>
 
-                {/* ONLINE STATUS INDICATOR */}
-                {!isEditing && (
-                  <span
-                    className={cn(
-                      "absolute bottom-1 right-1 h-5 w-5 rounded-full border-2 border-background z-20 transition-all duration-300",
-                      isCustomerOnline
-                        ? "bg-green-500 animate-pulse"
-                        : "bg-gray-300",
-                    )}
-                    title={isCustomerOnline ? "В сети" : "Не в сети"}
-                  />
-                )}
+          {isEditing ? (
+            <Input
+              name="name"
+              value={formData.name || ""}
+              onChange={handleFormChange}
+              className="text-xl font-bold mt-2 text-center max-w-[260px] rounded-xl h-11 bg-muted/20 border border-border/60 focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary transition-all"
+              placeholder="Ваше имя"
+            />
+          ) : (
+            <h1 className="text-2xl font-extrabold text-foreground tracking-tight">
+              {profile.name}
+            </h1>
+          )}
+          <p className="text-sm text-muted-foreground mt-1 font-medium">
+            {profile.email}
+          </p>
 
-                {isEditing && (
-                  <label
-                    htmlFor="profilePictureInput"
-                    className="absolute bottom-0 right-0 bg-secondary text-secondary-foreground rounded-full p-1.5 cursor-pointer hover:bg-secondary/80 transition-colors shadow-sm"
-                  >
-                    <Camera className="h-4 w-4" />
-                    <Input
-                      id="profilePictureInput"
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={handlePictureChange}
-                    />
-                  </label>
-                )}
-              </div>
-
+          <div className="flex flex-col sm:flex-row items-center gap-3  mt-4 w-full justify-center">
+            <div className="flex items-center gap-2 bg-muted/40 px-3 py-1.5 rounded-full">
+              <Phone className="h-4 w-4 text-primary" />
               {isEditing ? (
                 <Input
-                  name="name"
-                  value={formData.name || ""}
-                  onChange={handleFormChange}
-                  className="text-xl font-semibold mt-2 text-center max-w-xs"
-                  placeholder="Ваше имя"
+                  name="phone"
+                  value={formatPhoneDisplay(formData.phone || "")}
+                  onChange={handlePhoneChange}
+                  placeholder="+7 999 999 99-99"
+                  className="h-10 w-36 text-[13px] rounded-xl bg-muted/20 border border-border/60 focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary transition-all font-bold"
+                  maxLength={18}
                 />
               ) : (
-                <CardTitle className="text-2xl">{profile.name}</CardTitle>
+                <span className="text-[13px] font-semibold">
+                  {formatPhoneDisplay(profile.phone) || "Телефон не указан"}
+                </span>
               )}
-              <CardDescription className="text-sm">
-                {profile.email}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4 pt-2">
-              <div className="flex flex-col sm:flex-row items-center gap-6 justify-center">
-                <div className="flex items-center gap-2">
-                  <Phone className="h-4 w-4 text-primary/70" />
-                  {isEditing ? (
-                    <Input
-                      name="phone"
-                      value={formData.phone || ""}
-                      onChange={handleFormChange}
-                      placeholder="+7..."
-                      className="h-8 w-36 text-sm"
-                    />
-                  ) : (
-                    <span className="text-sm font-medium">
-                      {formatPhoneNumber(profile.phone) || "Не указан"}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <MapPin className="h-4 w-4 text-primary/70" />
-                  {isEditing ? (
-                    <Input
-                      name="city"
-                      value={formData.city || ""}
-                      onChange={handleFormChange}
-                      placeholder="Город"
-                      className="h-8 w-36 text-sm"
-                    />
-                  ) : (
-                    <span className="text-sm font-medium">
-                      {profile.city || "Не указан"}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* WALLET CARD */}
-          <Card className="border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-4 opacity-10">
-              <Wallet className="h-24 w-24" />
             </div>
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Wallet className="h-5 w-5 text-primary" />
-                Мой кошелек
-              </CardTitle>
-              <CardDescription>Доступный баланс</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-4xl font-bold text-foreground my-2">
-                {profile.walletBalance?.toLocaleString()}{" "}
-                <span className="text-muted-foreground text-2xl">₽</span>
-              </div>
-            </CardContent>
-            <CardFooter>
-              <Dialog open={isTopUpOpen} onOpenChange={setIsTopUpOpen}>
-                <DialogTrigger asChild>
-                  <Button className="w-full font-semibold shadow-sm">
-                    <PlusCircle className="mr-2 h-4 w-4" /> Пополнить баланс
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-md">
-                  <DialogHeader>
-                    <DialogTitle>Пополнение кошелька</DialogTitle>
-                    <DialogDescription>
-                      Выберите сумму или введите свою для пополнения баланса.
-                    </DialogDescription>
-                  </DialogHeader>
+            <div className="flex items-center gap-2 bg-muted/40 px-3 py-1.5 rounded-full">
+              <MapPin className="h-4 w-4 text-primary" />
+              {isEditing ? (
+                <Input
+                  name="city"
+                  value={formData.city || ""}
+                  onChange={handleFormChange}
+                  placeholder="Город"
+                  className="h-10 w-28 text-[13px] rounded-xl bg-muted/20 border border-border/60 focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary transition-all font-bold"
+                />
+              ) : (
+                <span className="text-[13px] font-semibold">
+                  {profile.city || "Город не указан"}
+                </span>
+              )}
+            </div>
+          </div>
 
-                  <div className="py-4 space-y-4">
-                    <div className="grid grid-cols-2 gap-3">
-                      {TOP_UP_PRESETS.map((amount) => (
-                        <Button
-                          key={amount}
-                          type="button"
-                          variant={
-                            topUpAmount === amount.toString()
-                              ? "default"
-                              : "outline"
-                          }
-                          className={cn(
-                            "h-12 text-lg",
-                            topUpAmount === amount.toString() &&
-                              "ring-2 ring-primary/20",
-                          )}
-                          onClick={() => setTopUpAmount(amount.toString())}
-                        >
-                          {amount} ₽
-                        </Button>
-                      ))}
-                    </div>
-                    <div className="space-y-2 pt-2">
-                      <Label>Другая сумма</Label>
-                      <div className="relative">
-                        <Input
-                          type="number"
-                          placeholder="Введите сумму"
-                          value={topUpAmount}
-                          onChange={(e) => setTopUpAmount(e.target.value)}
-                          className="h-12 text-lg pl-4 pr-12"
-                        />
-                        <span className="absolute right-4 top-3 text-muted-foreground font-medium">
-                          ₽
-                        </span>
-                      </div>
-                    </div>
-                  </div>
+          {isEditing && (
+            <div className="w-full flex flex-col gap-3 mt-6 pt-6 border-t border-border/50">
+              <Button
+                onClick={handleSaveChanges}
+                disabled={updateProfileMutation.isPending}
+                className="w-full rounded-xl font-bold h-12 shadow-sm"
+              >
+                {updateProfileMutation.isPending ? (
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                ) : (
+                  "Сохранить изменения"
+                )}
+              </Button>
 
-                  <DialogFooter>
+              <div className="flex gap-2">
+                <Dialog
+                  open={isChangePasswordOpen}
+                  onOpenChange={setIsChangePasswordOpen}
+                >
+                  <DialogTrigger asChild>
                     <Button
                       variant="outline"
-                      onClick={() => setIsTopUpOpen(false)}
+                      className="flex-1 rounded-xl h-11 text-muted-foreground font-semibold"
                     >
-                      Отмена
+                      <KeyRound className="mr-2 h-4 w-4" /> Пароль
                     </Button>
-                    <Button onClick={handleTopUpWallet} disabled={isToppingUp}>
-                      {isToppingUp ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <CreditCard className="mr-2 h-4 w-4" />
-                      )}
-                      Оплатить
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-md rounded-2xl">
+                    <DialogHeader>
+                      <DialogTitle>Смена пароля</DialogTitle>
+                      <DialogDescription>
+                        Введите текущий и новый пароль.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <Form {...changePasswordForm}>
+                      <form
+                        onSubmit={changePasswordForm.handleSubmit(
+                          handleChangePasswordSubmit,
+                        )}
+                        className="space-y-4 pt-2"
+                      >
+                        <FormField
+                          control={changePasswordForm.control}
+                          name="currentPassword"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Текущий пароль</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="password"
+                                  {...field}
+                                  className="rounded-xl bg-muted/50"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={changePasswordForm.control}
+                          name="newPassword"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Новый пароль</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="password"
+                                  {...field}
+                                  className="rounded-xl bg-muted/50"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={changePasswordForm.control}
+                          name="confirmPassword"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Подтвердите пароль</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="password"
+                                  {...field}
+                                  className="rounded-xl bg-muted/50"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <Button
+                          type="submit"
+                          className="w-full rounded-xl mt-2"
+                          disabled={isChangingPassword}
+                        >
+                          {isChangingPassword ? "Смена..." : "Сменить пароль"}
+                        </Button>
+                      </form>
+                    </Form>
+                  </DialogContent>
+                </Dialog>
+
+                <Dialog
+                  open={isDeleteAccountOpen}
+                  onOpenChange={setIsDeleteAccountOpen}
+                >
+                  <DialogTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="flex-1 rounded-xl h-11 text-destructive hover:bg-destructive/10 font-semibold border-destructive/20"
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" /> Удалить
                     </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </CardFooter>
-          </Card>
+                  </DialogTrigger>
+                  <DialogContent className="rounded-2xl">
+                    <DialogHeader>
+                      <DialogTitle>Удаление аккаунта</DialogTitle>
+                      <DialogDescription>
+                        Это действие необратимо. Все ваши данные будут стерты.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0 mt-4">
+                      <Button
+                        variant="outline"
+                        className="rounded-xl w-full"
+                        onClick={() => setIsDeleteAccountOpen(false)}
+                      >
+                        Отмена
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        className="rounded-xl w-full"
+                        onClick={handleDeleteAccount}
+                        disabled={isDeletingAccount}
+                      >
+                        {isDeletingAccount ? "Удаление..." : "Удалить навсегда"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* --- Paid Requests Section --- */}
-        <Card className="shadow-sm">
-          <CardHeader className="flex flex-row justify-between items-center border-b pb-4 bg-muted/20">
+        {/* --- 2. DIGITAL WALLET CARD --- */}
+        <div className="rounded-3xl bg-gradient-to-br from-primary to-primary/80 p-6 text-primary-foreground shadow-lg relative overflow-hidden">
+          <div className="absolute -right-6 -top-6 w-32 h-32 rounded-full bg-white/10 blur-2xl pointer-events-none" />
+          <div className="absolute -left-6 -bottom-6 w-24 h-24 rounded-full bg-black/10 blur-xl pointer-events-none" />
+          <Wallet className="absolute right-4 top-1/2 -translate-y-1/2 h-32 w-32 opacity-[0.07] pointer-events-none" />
+
+          <div className="relative z-10 flex flex-col h-full justify-between gap-6">
             <div>
-              <CardTitle className="flex items-center gap-2">
-                <Send className="h-5 w-5 text-primary" /> Мои платные заявки
-              </CardTitle>
-              <CardDescription className="mt-1">
-                Заявки, отправленные исполнителям напрямую.
-              </CardDescription>
+              <p className="text-primary-foreground/80 font-medium text-sm flex items-center gap-2">
+                <Wallet className="h-4 w-4" /> Баланс кошелька
+              </p>
+              <div className="text-4xl font-black mt-1 tracking-tight">
+                {profile.walletBalance?.toLocaleString()}{" "}
+                <span className="text-2xl font-bold opacity-80">₽</span>
+              </div>
             </div>
+
+            <Dialog open={isTopUpOpen} onOpenChange={setIsTopUpOpen}>
+              <DialogTrigger asChild>
+                <Button className="w-full bg-background/20 hover:bg-background/30 text-primary-foreground backdrop-blur-md border-0 rounded-2xl h-12 font-bold shadow-none active:scale-[0.98] transition-all">
+                  <PlusCircle className="mr-2 h-5 w-5" /> Пополнить
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md rounded-3xl p-6">
+                <DialogHeader>
+                  <DialogTitle className="text-xl font-bold">
+                    Сумма пополнения
+                  </DialogTitle>
+                  <DialogDescription>
+                    Выберите или введите сумму (₽)
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="py-2 space-y-5">
+                  <div className="grid grid-cols-2 gap-3">
+                    {TOP_UP_PRESETS.map((amount) => (
+                      <Button
+                        key={amount}
+                        type="button"
+                        variant={
+                          topUpAmount === amount.toString()
+                            ? "default"
+                            : "outline"
+                        }
+                        className={cn(
+                          "h-14 rounded-2xl font-bold text-lg transition-all",
+                          topUpAmount === amount.toString()
+                            ? "shadow-md"
+                            : "border-border/60 bg-muted/30",
+                        )}
+                        onClick={() => setTopUpAmount(amount.toString())}
+                      >
+                        {amount}
+                      </Button>
+                    ))}
+                  </div>
+                  <div className="relative">
+                    <Input
+                      type="number"
+                      placeholder="Другая сумма"
+                      value={topUpAmount}
+                      onChange={(e) => setTopUpAmount(e.target.value)}
+                      className="h-14 rounded-2xl text-lg font-bold pl-4 pr-12 bg-muted/30 border-border/60"
+                    />
+                    <span className="absolute right-5 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">
+                      ₽
+                    </span>
+                  </div>
+                </div>
+
+                <Button
+                  onClick={handleTopUpWallet}
+                  disabled={isToppingUp}
+                  className="w-full h-14 rounded-2xl font-bold text-lg mt-2"
+                >
+                  {isToppingUp ? (
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  ) : (
+                    <CreditCard className="mr-2 h-5 w-5" />
+                  )}
+                  Оплатить
+                </Button>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </div>
+
+        {/* --- 3. PAID REQUESTS --- */}
+        <section className="space-y-4">
+          <div className="flex justify-between items-center px-1">
+            <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+              Мои заявки
+            </h2>
             <Link href="/create-request">
-              <Button className="shadow-sm">Создать новую</Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-primary font-bold px-2 rounded-full hover:bg-primary/10"
+              >
+                <PlusCircle className="h-4 w-4 mr-1.5" /> Создать
+              </Button>
             </Link>
-          </CardHeader>
-          <CardContent className="pt-6">
-            {isRequestsLoading ? (
-              <div className="space-y-4">
-                <Skeleton className="h-24 w-full" />
-                <Skeleton className="h-24 w-full" />
-              </div>
-            ) : paidRequests.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-lg bg-muted/10">
-                У вас пока нет активных заявок.
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {paidRequests.map((request) => (
-                  <Card
-                    key={request.id}
-                    className="border bg-card hover:bg-muted/10 transition-colors"
-                  >
-                    <CardContent className="p-4 grid grid-cols-1 sm:grid-cols-4 gap-4 items-center">
-                      <div className="col-span-2 sm:col-span-3 space-y-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Badge
-                            variant="secondary"
-                            className="bg-primary/10 text-primary hover:bg-primary/20"
-                          >
-                            {request.category}
-                          </Badge>
-                          {request.city && (
-                            <span className="text-sm text-muted-foreground">
-                              • {request.city}
-                            </span>
-                          )}
-                        </div>
-                        <p className="font-medium text-sm line-clamp-2">
-                          {request.serviceDescription}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-2">
-                          Создано:{" "}
-                          {format(request.createdAt, "d MMMM yyyy", {
-                            locale: ru,
-                          })}
-                        </p>
-                      </div>
-                      <div className="text-left sm:text-right flex flex-row sm:flex-col items-center sm:items-end justify-between">
-                        <Badge
-                          variant={
-                            request.status === "OPEN" ? "default" : "outline"
-                          }
-                          className={
-                            request.status === "OPEN"
-                              ? "bg-emerald-500 hover:bg-emerald-600"
-                              : ""
-                          }
-                        >
-                          {request.status === "OPEN" ? "Открыта" : "Закрыта"}
-                        </Badge>
-                        <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
-                          <MessageCircle className="h-3 w-3" /> Просмотров:{" "}
-                          {request.views}
-                        </p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          </div>
 
-        {/* --- Order History Section --- */}
-        <Card className="shadow-sm">
-          <CardHeader className="border-b pb-4 bg-muted/20">
-            <CardTitle className="flex items-center gap-2">
-              <History className="h-5 w-5 text-primary" /> История заказов
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-6">
-            {isHistoryLoading ? (
-              <div className="space-y-4">
-                <Skeleton className="h-20 w-full" />
-                <Skeleton className="h-20 w-full" />
-              </div>
-            ) : orderHistory.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-lg bg-muted/10">
-                История заказов пуста.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {orderHistory.map((order) => {
-                  const isPerformerOnline = onlineUsers.includes(
-                    order.performerId,
-                  );
-
-                  return (
-                    <div
-                      key={order.id}
-                      className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 border rounded-lg hover:bg-muted/10 transition-colors gap-4"
+          {isRequestsLoading ? (
+            <div className="space-y-3">
+              <Skeleton className="h-28 w-full rounded-3xl" />
+              <Skeleton className="h-28 w-full rounded-3xl" />
+            </div>
+          ) : paidRequests.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 bg-background rounded-3xl border border-dashed border-border/60 text-muted-foreground">
+              <Send className="h-10 w-10 opacity-20 mb-3" />
+              <p className="font-medium text-sm">У вас нет активных заявок</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {paidRequests.map((request) => (
+                <div
+                  key={request.id}
+                  className="bg-background rounded-3xl p-5 shadow-sm border border-border/40 active:scale-[0.99] transition-transform"
+                >
+                  <div className="flex justify-between items-start mb-3">
+                    <Badge
+                      variant="secondary"
+                      className="bg-primary/10 text-primary font-bold rounded-lg px-2.5 py-1"
                     >
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <Link
-                            href={`/performer-profile?id=${order.performerId}`}
-                            className="font-semibold text-base hover:text-primary transition-colors flex items-center gap-2"
-                          >
-                            {order.performerName}
-                          </Link>
+                      {request.category}
+                    </Badge>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "rounded-full border-0 px-2.5 py-1 font-bold text-[10px] uppercase tracking-wider",
+                        request.status === "OPEN"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      {request.status === "OPEN" ? "Открыта" : "Закрыта"}
+                    </Badge>
+                  </div>
+                  <p className="font-semibold text-[15px] leading-snug line-clamp-2 text-foreground mb-3">
+                    {request.serviceDescription}
+                  </p>
+                  <div className="flex justify-between items-center text-xs text-muted-foreground font-medium">
+                    <span className="flex items-center gap-1.5">
+                      <MapPin className="h-3.5 w-3.5" />{" "}
+                      {request.city || "Не указан"}
+                    </span>
+                    <span className="flex items-center gap-1.5 bg-muted/50 px-2 py-1 rounded-md">
+                      <MessageCircle className="h-3.5 w-3.5" /> {request.views}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* --- 4. ORDER HISTORY --- */}
+        <section className="space-y-4 pt-2">
+          <div className="px-1">
+            <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+              История заказов
+            </h2>
+          </div>
+
+          {isHistoryLoading ? (
+            <div className="space-y-3">
+              <Skeleton className="h-24 w-full rounded-3xl" />
+              <Skeleton className="h-24 w-full rounded-3xl" />
+            </div>
+          ) : orderHistory.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 bg-background rounded-3xl border border-dashed border-border/60 text-muted-foreground">
+              <History className="h-10 w-10 opacity-20 mb-3" />
+              <p className="font-medium text-sm">История заказов пуста</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {orderHistory.map((order) => {
+                const isPerformerOnline = onlineUsers.has(order.performerId);
+
+                return (
+                  <div
+                    key={order.id}
+                    className="bg-background rounded-3xl p-5 shadow-sm border border-border/40"
+                  >
+                    <div className="flex justify-between items-start mb-2 gap-4">
+                      <div className="flex-1 min-w-0">
+                        <Link
+                          href={`/performer-profile?id=${order.performerId}`}
+                          className="font-bold text-[15px] text-foreground hover:text-primary transition-colors flex items-center gap-2 truncate"
+                        >
+                          {order.performerName}
                           {isPerformerOnline && (
-                            <div
-                              className="h-2 w-2 rounded-full bg-green-500"
-                              title="В сети"
-                            />
+                            <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
                           )}
-                        </div>
-                        <p className="text-sm text-muted-foreground">
+                        </Link>
+                        <p className="text-[13px] text-muted-foreground mt-0.5 truncate">
                           {order.service}
                         </p>
-                        <Button
-                          variant="link"
-                          size="sm"
-                          className="h-auto p-0 text-xs text-primary flex items-center gap-1"
-                          onClick={() =>
-                            handleOpenChat(
-                              order.performerId,
-                              order.performerName,
-                            )
-                          }
-                        >
-                          <MessageCircle className="h-3 w-3" /> Написать
-                          сообщение
-                        </Button>
                       </div>
-
-                      <div className="flex flex-row sm:flex-col justify-between sm:justify-center sm:items-end w-full sm:w-auto gap-2">
-                        <div className="text-left sm:text-right">
-                          <p className="font-medium">
-                            {order.price
-                              ? `${order.price.toLocaleString()} ₽`
-                              : "Договорная"}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {format(order.date, "d MMM yyyy", { locale: ru })}
-                          </p>
-                        </div>
-                        <Badge
-                          variant={
-                            order.status === "completed"
-                              ? "secondary"
-                              : "default"
-                          }
-                        >
+                      <div className="text-right shrink-0">
+                        <p className="font-bold text-[15px] text-foreground">
+                          {order.price
+                            ? `${order.price.toLocaleString()} ₽`
+                            : "Договорная"}
+                        </p>
+                        <p className="text-[11px] font-medium text-muted-foreground mt-0.5 uppercase tracking-wider">
                           {order.status}
-                        </Badge>
+                        </p>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
 
-      {/* 5. GLOBAL CHAT DIALOG FOR THIS PAGE */}
-      {isChatOpen && session?.user && currentChatId && (
-        <ChatDialog
-          isOpen={isChatOpen}
-          onClose={() => setIsChatOpen(false)}
-          chatId={currentChatId}
-          performerName={chatPartnerName}
-          currentUserId={session.user.id}
-        />
-      )}
-    </>
+                    <div className="flex justify-between items-center mt-4 pt-4 border-t border-border/50">
+                      <span className="text-[12px] font-medium text-muted-foreground">
+                        {format(order.date, "d MMM yyyy", { locale: ru })}
+                      </span>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="rounded-full h-8 px-4 text-xs font-bold bg-primary/10 text-primary hover:bg-primary/20 shadow-none"
+                        onClick={() => handleOpenChat(order.performerId)}
+                      >
+                        <MessageCircle className="h-3.5 w-3.5 mr-1.5" />{" "}
+                        Написать
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      </div>
+    </div>
   );
 };
 

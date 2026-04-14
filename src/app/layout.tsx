@@ -4,6 +4,8 @@ import { Providers } from "@/components/providers/Providers";
 import { getSiteSettings } from "@/services/settings";
 
 // --- VIEWPORT CONFIGURATION (Next.js 14+ Standard) ---
+// This strict configuration is what prevents the app from zooming
+// in when tapping inputs, giving it a true native feel.
 export const viewport: Viewport = {
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
@@ -12,6 +14,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
+  userScalable: false, // Critical for Native App Feel (prevents zoom on input focus)
   colorScheme: "light dark",
 };
 
@@ -152,7 +155,8 @@ export default async function RootLayout({ children }: RootLayoutProps) {
           rel="stylesheet"
         />
       </head>
-      <body className="antialiased flex flex-col min-h-screen">
+      {/* NATIVE UX: Added select-none to base body, overridden inside specific components */}
+      <body className="antialiased flex flex-col min-h-screen font-sans">
         <Providers initialSettings={settings}>{children}</Providers>
       </body>
     </html>

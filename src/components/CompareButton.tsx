@@ -63,7 +63,7 @@ const CompareButton: React.FC<CompareButtonProps> = ({
       const success = addToCompare(performerId);
       if (success) {
         setIsInCompare(true);
-        toast({ title: "Добавлено к сравнению" }); // Added to comparison
+        toast({ variant: "success", title: "Добавлено к сравнению" }); // Added to comparison
       } else {
         toast({
           variant: "destructive",
