@@ -29,7 +29,7 @@ export interface Certificate {
 
 export interface RecommendationLetter {
   id: string;
-  file_url: string; // Updated to match backend mapping
+  file_url: string;
   description?: string;
   moderation_status: ModerationStatus;
 }
