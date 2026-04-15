@@ -64,6 +64,7 @@ export async function generateMetadata(
     if (!res.ok) throw new Error(`Failed to fetch profile: ${res.status}`);
 
     const performer = await res.json();
+    console.log(performer);
 
     const title = `${performer.name} | Eventomir`;
     const description = performer.description
