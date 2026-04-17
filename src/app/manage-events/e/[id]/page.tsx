@@ -6,13 +6,18 @@ import { notFound } from "next/navigation";
 import { MapPin, Calendar, Clock, User } from "lucide-react";
 import EventActionBox from "./EventActionBox";
 
+// Define the type for the async params
+type Props = {
+  params: Promise<{ id: string }>;
+};
+
 // --- DYNAMIC OPEN GRAPH METADATA ---
-// WhatsApp, Telegram, and iMessage read this to create the beautiful preview cards.
 export async function generateMetadata(
-  { params }: { params: { id: string } },
+  { params }: Props,
   parent: ResolvingMetadata,
 ): Promise<Metadata> {
-  const eventId = params.id;
+  // Await the params
+  const { id: eventId } = await params;
 
   const event = await prisma.event.findUnique({
     where: { id: eventId },
@@ -66,13 +71,12 @@ export async function generateMetadata(
 }
 
 // --- MAIN PAGE COMPONENT ---
-export default async function PublicEventPage({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default async function PublicEventPage({ params }: Props) {
+  // Await the params
+  const { id } = await params;
+
   const event = await prisma.event.findUnique({
-    where: { id: params.id },
+    where: { id: id },
     include: { host: { select: { name: true, profile_picture: true } } },
   });
 
@@ -85,7 +89,7 @@ export default async function PublicEventPage({
 
   return (
     <div className="min-h-screen bg-muted/10 pb-20 font-sans selection:bg-primary/20">
-      {/* --- HERO COVER --- */}
+      {/* ... rest of your UI code stays exactly the same ... */}
       <div className="w-full h-[40vh] md:h-[55vh] relative bg-black">
         <img
           src={event.imageUrl || "/images/default-event-og.jpg"}
@@ -120,10 +124,8 @@ export default async function PublicEventPage({
         </div>
       </div>
 
-      {/* --- CONTENT & ACTIONS --- */}
       <div className="container mx-auto px-4 max-w-5xl -mt-8 relative z-20">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Main Details */}
           <div className="lg:col-span-2 space-y-8">
             <div className="bg-card rounded-3xl p-6 sm:p-8 shadow-sm border border-border/50">
               <h2 className="text-xl font-bold mb-6">О мероприятии</h2>
@@ -174,7 +176,6 @@ export default async function PublicEventPage({
             </div>
           </div>
 
-          {/* Interaction Sidebar (Client Component) */}
           <div className="lg:col-span-1">
             <div className="sticky top-24">
               <EventActionBox
