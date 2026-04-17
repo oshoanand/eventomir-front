@@ -1,31 +1,15 @@
 "use client";
 
-import { useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
+import { QRCodeSVG } from "qrcode.react";
+import { toPng } from "html-to-image";
 
 // UI Components
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogDescription,
-} from "@/components/ui/dialog";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -35,14 +19,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { Progress } from "@/components/ui/progress";
 
@@ -55,20 +31,20 @@ import {
   MapPin,
   QrCode,
   Users,
-  Info,
   MoreVertical,
-  Banknote,
+  Share2,
+  Lock,
+  Globe,
+  Download,
+  Loader2,
 } from "lucide-react";
 
 import {
   useMyHostedEventsQuery,
-  useCreateEventMutation,
-  useUpdateEventMutation,
   useDeleteEventMutation,
   Event,
 } from "@/services/events";
 
-// Dropdown Menu for Mobile Actions
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -78,100 +54,102 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-const defaultFormState = {
-  title: "",
-  category: "Мастер-класс",
-  price: 0,
-  date: "",
-  time: "",
-  city: "",
-  address: "",
-  imageUrl: "",
-  description: "",
-  totalTickets: 10,
-  status: "active",
-};
-
 export default function ManageEventsPage() {
   const router = useRouter();
-  const { toast } = useToast();
+  const { toast, promise } = useToast();
   const { data: session, status: sessionStatus } = useSession();
 
-  const isPerformer = session?.user?.role === "performer";
-
-  if (
-    sessionStatus === "unauthenticated" ||
-    (sessionStatus === "authenticated" && !isPerformer)
-  ) {
-    router.push("/login");
-  }
+  const isPerformer =
+    session?.user?.role === "performer" ||
+    session?.user?.role === "administrator";
 
   const { data: events = [], isLoading } = useMyHostedEventsQuery(
     sessionStatus === "authenticated",
-    isPerformer,
+    !!isPerformer,
   );
 
-  const createMutation = useCreateEventMutation();
-  const updateMutation = useUpdateEventMutation();
   const deleteMutation = useDeleteEventMutation();
 
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingEvent, setEditingEvent] = useState<Event | null>(null);
-  const [formData, setFormData] = useState(defaultFormState);
+  // --- ФУНКЦИЯ СКАЧИВАНИЯ ПОСТЕРА С QR ---
+  const handleDownloadBrandedQR = async (event: Event) => {
+    // 1. Create a temporary container that is off-screen but NOT display:none
+    const tempContainer = document.createElement("div");
+    tempContainer.style.position = "fixed";
+    tempContainer.style.left = "-9999px";
+    tempContainer.style.top = "0";
+    document.body.appendChild(tempContainer);
 
-  const editingEventTicketsSold = editingEvent
-    ? (editingEvent.totalTickets || 0) -
-      (editingEvent.availableTickets ?? editingEvent.totalTickets ?? 0)
-    : 0;
-  const editingEventHasSales = editingEventTicketsSold > 0;
+    // 2. We use a separate function to generate the HTML string to avoid React mounting delays
+    const generateAction = async () => {
+      // Find the template and clone it into our temp container
+      const originalNode = document.getElementById(
+        `branded-qr-poster-${event.id}`,
+      );
+      if (!originalNode) throw new Error("Template not found");
 
-  const openCreateDialog = () => {
-    setEditingEvent(null);
-    setFormData(defaultFormState);
-    setIsDialogOpen(true);
-  };
+      const clonedNode = originalNode.cloneNode(true) as HTMLElement;
+      clonedNode.style.display = "flex"; // Ensure it's visible in the clone
+      clonedNode.style.position = "static";
+      tempContainer.appendChild(clonedNode);
 
-  const openEditDialog = (event: Event) => {
-    setEditingEvent(event);
-    setFormData({
-      title: event.title,
-      category: event.category,
-      price: event.price,
-      city: event.city,
-      address: event.address || "",
-      imageUrl: event.imageUrl,
-      date: new Date(event.date).toISOString().slice(0, 16),
-      time: event.time || "",
-      description: event.description || "",
-      totalTickets: event.totalTickets || 0,
-      status: event.status || "active",
-    });
-    setIsDialogOpen(true);
-  };
+      // Give the browser a moment to render the clone and load images
+      await new Promise((resolve) => setTimeout(resolve, 600));
 
-  const handleSave = async () => {
-    try {
-      const payload = {
-        ...formData,
-        availableTickets: formData.totalTickets,
-      };
-
-      if (editingEvent) {
-        await updateMutation.mutateAsync({
-          id: editingEvent.id,
-          data: payload,
+      try {
+        const dataUrl = await toPng(clonedNode, {
+          quality: 1,
+          pixelRatio: 2,
+          backgroundColor: "white",
+          skipFonts: false,
         });
-        toast({ title: "Событие успешно обновлено!" });
-      } else {
-        await createMutation.mutateAsync(payload as any);
-        toast({ title: "Новое событие создано!" });
+
+        const downloadLink = document.createElement("a");
+        const safeTitle = event.title
+          .replace(/[^а-яёA-Z0-9]/gi, "_")
+          .toLowerCase();
+        downloadLink.download = `Eventomir_QR_${safeTitle}.png`;
+        downloadLink.href = dataUrl;
+        downloadLink.click();
+      } finally {
+        // 3. Cleanup: Remove the temporary container
+        document.body.removeChild(tempContainer);
       }
-      setIsDialogOpen(false);
-    } catch (error: any) {
+      return "success";
+    };
+
+    promise(generateAction(), {
+      loading: "Создание постера...",
+      success: "Готово! Постер скачан ✅",
+      error: "Ошибка при создании изображения ❌",
+    });
+  };
+
+  // --- ФУНКЦИЯ ПОДЕЛИТЬСЯ ---
+  const handleShareLink = async (
+    eventId: string,
+    title: string,
+    description: string,
+  ) => {
+    const url = `${window.location.origin}/e/${eventId}`;
+    const shareData = {
+      title: title,
+      text: description
+        ? description.substring(0, 100) + "..."
+        : "Приглашаю вас на мероприятие!",
+      url: url,
+    };
+
+    if (navigator.share && navigator.canShare(shareData)) {
+      try {
+        await navigator.share(shareData);
+      } catch (error: any) {
+        if (error.name !== "AbortError") console.error("Error sharing:", error);
+      }
+    } else {
+      navigator.clipboard.writeText(url);
       toast({
-        variant: "destructive",
-        title: "Ошибка",
-        description: error.message || "Не удалось сохранить событие",
+        title: "Ссылка скопирована! 🔗",
+        description: "Теперь вы можете отправить её друзьям.",
       });
     }
   };
@@ -180,51 +158,47 @@ export default function ManageEventsPage() {
     const ticketsSold =
       (event.totalTickets || 0) -
       (event.availableTickets ?? event.totalTickets ?? 0);
-
     if (ticketsSold > 0) {
       toast({
         variant: "destructive",
-        title: "Удаление запрещено",
-        description:
-          "Вы не можете удалить событие, на которое уже проданы билеты.",
+        title: "Удаление невозможно",
+        description: "На это событие уже есть зарегистрированные гости.",
       });
       return;
     }
-
-    if (!confirm("Вы уверены? Это действие нельзя отменить.")) return;
+    if (!confirm("Вы уверены? Это действие нельзя будет отменить.")) return;
 
     try {
       await deleteMutation.mutateAsync(event.id);
-      toast({ title: "Событие удалено" });
+      toast({ title: "Событие удалено." });
     } catch (error: any) {
       toast({
         variant: "destructive",
         title: "Ошибка",
-        description: "Не удалось удалить событие",
+        description: "Не удалось удалить событие.",
       });
     }
   };
 
-  const isSaving = createMutation.isPending || updateMutation.isPending;
+  if (sessionStatus === "loading" || isLoading) {
+    return (
+      <div className="p-10 flex flex-col items-center justify-center min-h-screen">
+        <Loader2 className="w-10 h-10 animate-spin text-primary mb-4" />
+        <p className="text-muted-foreground font-medium">
+          Загрузка мероприятий...
+        </p>
+      </div>
+    );
+  }
 
-  if (sessionStatus === "loading" || isLoading)
-    return <div className="p-10 text-center">Загрузка...</div>;
-  if (!isPerformer) return null;
-
-  // --- Helpers for Event Rendering ---
   const getEventData = (event: Event) => {
     const ticketsSold =
       (event.totalTickets || 0) -
       (event.availableTickets ?? event.totalTickets ?? 0);
-    const revenue = ticketsSold * event.price;
-    const hasSales = ticketsSold > 0;
     const progressPercent =
       event.totalTickets > 0 ? (ticketsSold / event.totalTickets) * 100 : 0;
-
-    const isExpiredNatural = new Date() > new Date(event.date);
-    let displayStatus = event.status;
-    if (event.status !== "cancelled" && isExpiredNatural)
-      displayStatus = "completed";
+    const isSelfCheckIn =
+      event.type === "PUBLIC" && event.paymentType === "FREE";
 
     const badgeStyles: Record<
       string,
@@ -241,30 +215,28 @@ export default function ManageEventsPage() {
 
     return {
       ticketsSold,
-      revenue,
-      hasSales,
-      displayStatus,
       progressPercent,
-      currentBadge: badgeStyles[displayStatus] || {
-        label: displayStatus,
+      isSelfCheckIn,
+      currentBadge: badgeStyles[event.status] || {
+        label: event.status,
         variant: "secondary",
       },
     };
   };
 
   return (
-    <div className="container mx-auto py-8 px-4 sm:py-10 max-w-6xl animate-in fade-in bg-muted/10 min-h-screen">
+    <div className="container mx-auto py-8 px-4 sm:py-10 max-w-6xl animate-in fade-in bg-muted/5 min-h-screen">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 sm:mb-8 gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
             Управление событиями
           </h1>
           <p className="text-sm sm:text-base text-muted-foreground mt-1">
-            Создавайте и редактируйте ваши мероприятия.
+            Создавайте приглашения, управляйте гостями и билетами.
           </p>
         </div>
         <Button
-          onClick={openCreateDialog}
+          onClick={() => router.push("/manage-events/new")}
           size="lg"
           className="w-full sm:w-auto shadow-md rounded-xl font-bold"
         >
@@ -274,78 +246,93 @@ export default function ManageEventsPage() {
 
       {events.length === 0 ? (
         <Card className="border-dashed border-2 shadow-none bg-transparent">
-          <CardContent className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+          <CardContent className="flex flex-col items-center justify-center py-24 text-muted-foreground">
             <Calendar className="h-12 w-12 opacity-20 mb-4" />
-            <p className="text-lg font-medium text-foreground">
-              У вас пока нет событий
+            <p className="text-lg font-medium">
+              У вас пока нет созданных событий
             </p>
-            <p className="text-sm mt-1">
-              Нажмите "Создать событие", чтобы добавить первое.
-            </p>
+            <Button
+              variant="link"
+              onClick={() => router.push("/manage-events/new")}
+            >
+              Нажмите, чтобы создать первое
+            </Button>
           </CardContent>
         </Card>
       ) : (
         <>
-          {/* ========================================================= */}
-          {/* MOBILE VIEW (Cards) - Visible only on screens smaller than md */}
-          {/* ========================================================= */}
           <div className="md:hidden space-y-4 pb-20">
             {events.map((event) => {
               const {
                 ticketsSold,
-                revenue,
-                hasSales,
-                displayStatus,
                 progressPercent,
+                isSelfCheckIn,
                 currentBadge,
               } = getEventData(event);
-              const isInactive =
-                displayStatus === "completed" || displayStatus === "cancelled";
-
               return (
                 <Card
                   key={event.id}
-                  className={`rounded-3xl overflow-hidden shadow-sm border border-border/50 ${isInactive ? "opacity-75" : ""}`}
+                  className="rounded-[2rem] overflow-hidden shadow-sm border border-border/50"
                 >
-                  {/* Card Image Header */}
-                  <div className="h-32 w-full relative bg-muted">
+                  <div className="h-36 w-full relative bg-muted">
                     <img
-                      src={event.imageUrl}
-                      alt={event.title}
+                      src={event.imageUrl || "/images/default-event.jpg"}
+                      alt=""
                       className="w-full h-full object-cover"
                     />
-                    <div className="absolute top-3 right-3">
+                    <div className="absolute top-3 right-3 flex gap-2">
+                      <Badge
+                        variant="secondary"
+                        className="shadow-sm font-bold bg-white/90 text-black border-0"
+                      >
+                        {event.type === "PRIVATE" ? (
+                          <Lock className="w-3 h-3 mr-1 inline" />
+                        ) : (
+                          <Globe className="w-3 h-3 mr-1 inline" />
+                        )}
+                        {event.type === "PRIVATE" ? "Приватное" : "Публичное"}
+                      </Badge>
                       <Badge
                         variant={currentBadge.variant}
-                        className="shadow-sm font-bold px-2 py-0.5 text-[10px] uppercase tracking-wider backdrop-blur-md bg-opacity-90"
+                        className="shadow-sm font-bold"
                       >
                         {currentBadge.label}
                       </Badge>
                     </div>
                   </div>
-
                   <CardContent className="p-5">
                     <div className="flex justify-between items-start mb-2">
                       <h3 className="font-bold text-[17px] leading-tight line-clamp-2 pr-2">
                         {event.title}
                       </h3>
-
-                      {/* Mobile Actions Dropdown */}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 -mr-2 -mt-1 rounded-full text-muted-foreground"
+                            className="h-8 w-8 -mr-2"
                           >
                             <MoreVertical className="h-5 w-5" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent
                           align="end"
-                          className="w-48 rounded-xl"
+                          className="w-56 rounded-xl"
                         >
                           <DropdownMenuLabel>Действия</DropdownMenuLabel>
+                          <DropdownMenuItem
+                            onClick={() =>
+                              handleShareLink(
+                                event.id,
+                                event.title,
+                                event.description || "",
+                              )
+                            }
+                          >
+                            <Share2 className="mr-2 h-4 w-4 text-blue-600" />{" "}
+                            Поделиться
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
                           <DropdownMenuItem
                             onClick={() =>
                               router.push(
@@ -354,83 +341,80 @@ export default function ManageEventsPage() {
                             }
                           >
                             <Users className="mr-2 h-4 w-4 text-blue-600" />{" "}
-                            Гости
+                            Список гостей
                           </DropdownMenuItem>
-                          <DropdownMenuItem
-                            disabled={displayStatus === "cancelled"}
-                            onClick={() =>
-                              router.push(`/manage-events/${event.id}/scan`)
-                            }
-                          >
-                            <QrCode className="mr-2 h-4 w-4 text-green-600" />{" "}
-                            Сканировать
-                          </DropdownMenuItem>
+                          {isSelfCheckIn ? (
+                            <DropdownMenuItem
+                              onClick={() => handleDownloadBrandedQR(event)}
+                            >
+                              <Download className="mr-2 h-4 w-4 text-purple-600" />{" "}
+                              Скачать QR для входа
+                            </DropdownMenuItem>
+                          ) : (
+                            <DropdownMenuItem
+                              onClick={() =>
+                                router.push(`/manage-events/${event.id}/scan`)
+                              }
+                            >
+                              <QrCode className="mr-2 h-4 w-4 text-green-600" />{" "}
+                              Сканировать билеты
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
-                            onClick={() => openEditDialog(event)}
+                            onClick={() =>
+                              router.push(`/manage-events/update/${event.id}`)
+                            }
                           >
-                            <Pencil className="mr-2 h-4 w-4" /> Редактировать
+                            <Pencil className="mr-2 h-4 w-4" /> Изменить
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => handleDelete(event)}
-                            disabled={hasSales}
-                            className="text-destructive focus:bg-destructive focus:text-destructive-foreground"
+                            disabled={ticketsSold > 0}
+                            className="text-destructive"
                           >
                             <Trash2 className="mr-2 h-4 w-4" /> Удалить
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
-
-                    <div className="flex flex-col gap-1.5 text-[13px] text-muted-foreground font-medium mb-4">
+                    <div className="flex flex-col gap-1 text-[13px] text-muted-foreground font-medium mb-4">
                       <span className="flex items-center gap-1.5">
-                        <Calendar className="h-3.5 w-3.5" />
-                        {format(new Date(event.date), "dd MMM yyyy", {
+                        <Calendar className="h-3.5 w-3.5" />{" "}
+                        {format(new Date(event.date), "d MMM yyyy", {
                           locale: ru,
                         })}{" "}
                         {event.time}
                       </span>
-                      <span className="flex items-center gap-1.5 truncate">
-                        <MapPin className="h-3.5 w-3.5 shrink-0" /> {event.city}
-                      </span>
                       <span className="flex items-center gap-1.5">
-                        <Banknote className="h-3.5 w-3.5" /> {event.price} ₽
+                        <MapPin className="h-3.5 w-3.5" /> {event.city}
                       </span>
                     </div>
-
-                    {/* Sales Progress */}
                     <div className="bg-muted/40 rounded-xl p-3 border border-border/50">
                       <div className="flex justify-between items-end mb-1.5">
-                        <span className="text-xs font-bold text-foreground">
-                          Продажи
-                        </span>
-                        <span className="text-[10px] text-muted-foreground font-medium">
-                          {ticketsSold} / {event.totalTickets} шт.
+                        <span className="text-xs font-bold">Гости / Лимит</span>
+                        <span className="text-[10px] font-medium">
+                          {ticketsSold} / {event.totalTickets}
                         </span>
                       </div>
-                      <Progress value={progressPercent} className="h-2 mb-2" />
-                      <p className="text-xs text-primary font-bold text-right">
-                        +{revenue.toLocaleString()} ₽
-                      </p>
+                      <Progress value={progressPercent} className="h-2" />
                     </div>
+                    {isSelfCheckIn && renderHiddenBrandedPoster(event)}
                   </CardContent>
                 </Card>
               );
             })}
           </div>
 
-          {/* ========================================================= */}
-          {/* DESKTOP VIEW (Table) - Visible only on md and larger screens */}
-          {/* ========================================================= */}
-          <Card className="hidden md:block shadow-sm border-border/50 rounded-2xl overflow-hidden">
+          <Card className="hidden md:block shadow-sm border-border/50 rounded-[2rem] overflow-hidden">
             <CardContent className="p-0">
               <Table>
                 <TableHeader className="bg-muted/30">
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="pl-6 h-12">Событие</TableHead>
-                    <TableHead>Статус</TableHead>
+                    <TableHead className="pl-6 h-14">Событие</TableHead>
+                    <TableHead>Тип и Статус</TableHead>
                     <TableHead>Дата и Место</TableHead>
-                    <TableHead>Продажи</TableHead>
+                    <TableHead>Наполнение</TableHead>
                     <TableHead className="text-right pr-6">Действия</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -438,53 +422,60 @@ export default function ManageEventsPage() {
                   {events.map((event) => {
                     const {
                       ticketsSold,
-                      revenue,
-                      hasSales,
-                      displayStatus,
                       progressPercent,
+                      isSelfCheckIn,
                       currentBadge,
                     } = getEventData(event);
-                    const isInactive =
-                      displayStatus === "completed" ||
-                      displayStatus === "cancelled";
-
                     return (
-                      <TableRow
-                        key={event.id}
-                        className={isInactive ? "opacity-75" : ""}
-                      >
+                      <TableRow key={event.id} className="border-border/40">
                         <TableCell className="pl-6 py-4">
                           <div className="flex items-center gap-4">
                             <img
-                              src={event.imageUrl}
+                              src={
+                                event.imageUrl || "/images/default-event.jpg"
+                              }
                               alt=""
-                              className="h-12 w-12 rounded-lg object-cover border"
+                              className="h-12 w-12 rounded-lg object-cover border border-border/50"
                             />
                             <div>
                               <p className="font-bold text-[15px] line-clamp-1">
                                 {event.title}
                               </p>
-                              <p className="text-xs text-muted-foreground font-medium mt-0.5">
-                                {event.category} • {event.price} ₽
+                              <p className="text-xs text-muted-foreground">
+                                {event.category} •{" "}
+                                {event.paymentType === "FREE"
+                                  ? "Бесплатно"
+                                  : `${event.price} ₽`}
                               </p>
                             </div>
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge
-                            variant={currentBadge.variant}
-                            className="font-semibold text-[10px] uppercase tracking-wider"
-                          >
-                            {currentBadge.label}
-                          </Badge>
+                          <div className="flex flex-col gap-1.5">
+                            <Badge
+                              variant={currentBadge.variant}
+                              className="font-semibold text-[10px] uppercase w-fit"
+                            >
+                              {currentBadge.label}
+                            </Badge>
+                            <span className="text-[10px] font-bold text-muted-foreground flex items-center gap-1">
+                              {event.type === "PRIVATE" ? (
+                                <Lock className="w-3 h-3" />
+                              ) : (
+                                <Globe className="w-3 h-3" />
+                              )}
+                              {event.type === "PRIVATE"
+                                ? "ПРИВАТНОЕ"
+                                : "ПУБЛИЧНОЕ"}
+                            </span>
+                          </div>
                         </TableCell>
                         <TableCell>
-                          <div className="text-[13px] font-medium space-y-0.5">
-                            <p className="text-foreground">
-                              {format(new Date(event.date), "dd MMM yyyy", {
+                          <div className="text-[13px] font-medium">
+                            <p>
+                              {format(new Date(event.date), "d MMM yyyy", {
                                 locale: ru,
-                              })}{" "}
-                              {event.time}
+                              })}
                             </p>
                             <p className="text-muted-foreground flex items-center gap-1">
                               <MapPin className="h-3 w-3" /> {event.city}
@@ -496,9 +487,6 @@ export default function ManageEventsPage() {
                             <div className="flex justify-between text-xs font-bold">
                               <span className="text-primary">
                                 {ticketsSold} / {event.totalTickets}
-                              </span>
-                              <span className="text-muted-foreground">
-                                {revenue.toLocaleString()} ₽
                               </span>
                             </div>
                             <Progress
@@ -512,7 +500,22 @@ export default function ManageEventsPage() {
                             <Button
                               variant="secondary"
                               size="icon"
-                              className="h-8 w-8 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 shadow-none"
+                              className="h-9 w-9 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 shadow-none"
+                              title="Поделиться"
+                              onClick={() =>
+                                handleShareLink(
+                                  event.id,
+                                  event.title,
+                                  event.description || "",
+                                )
+                              }
+                            >
+                              <Share2 className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              size="icon"
+                              className="h-9 w-9 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 shadow-none"
                               title="Гости"
                               onClick={() =>
                                 router.push(
@@ -522,37 +525,48 @@ export default function ManageEventsPage() {
                             >
                               <Users className="h-4 w-4" />
                             </Button>
+                            {isSelfCheckIn ? (
+                              <>
+                                {renderHiddenBrandedPoster(event)}
+                                <Button
+                                  variant="secondary"
+                                  size="icon"
+                                  className="h-9 w-9 rounded-full bg-purple-50 text-purple-600 hover:bg-purple-100 shadow-none"
+                                  title="Скачать постер для входа"
+                                  onClick={() => handleDownloadBrandedQR(event)}
+                                >
+                                  <Download className="h-4 w-4" />
+                                </Button>
+                              </>
+                            ) : (
+                              <Button
+                                variant="secondary"
+                                size="icon"
+                                className="h-9 w-9 rounded-full bg-green-50 text-green-600 hover:bg-green-100 shadow-none"
+                                title="Сканировать билеты"
+                                onClick={() =>
+                                  router.push(`/manage-events/${event.id}/scan`)
+                                }
+                              >
+                                <QrCode className="h-4 w-4" />
+                              </Button>
+                            )}
                             <Button
                               variant="secondary"
                               size="icon"
-                              className="h-8 w-8 rounded-full bg-green-50 text-green-600 hover:bg-green-100 shadow-none"
-                              title="Сканировать"
-                              disabled={displayStatus === "cancelled"}
-                              onClick={() =>
-                                router.push(`/manage-events/${event.id}/scan`)
-                              }
-                            >
-                              <QrCode className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="secondary"
-                              size="icon"
-                              className="h-8 w-8 rounded-full bg-muted text-foreground hover:bg-muted/80 shadow-none"
+                              className="h-9 w-9 rounded-full bg-muted text-foreground hover:bg-muted/80 shadow-none"
                               title="Редактировать"
-                              onClick={() => openEditDialog(event)}
+                              onClick={() =>
+                                router.push(`/manage-events/update/${event.id}`)
+                              }
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
                             <Button
                               variant="secondary"
                               size="icon"
-                              className="h-8 w-8 rounded-full bg-red-50 text-red-600 hover:bg-red-100 shadow-none disabled:opacity-50"
-                              title={
-                                hasSales
-                                  ? "Нельзя удалить событие с продажами"
-                                  : "Удалить"
-                              }
-                              disabled={hasSales}
+                              className="h-9 w-9 rounded-full bg-red-50 text-red-600 hover:bg-red-100 shadow-none disabled:opacity-50"
+                              disabled={ticketsSold > 0}
                               onClick={() => handleDelete(event)}
                             >
                               <Trash2 className="h-4 w-4" />
@@ -568,251 +582,231 @@ export default function ManageEventsPage() {
           </Card>
         </>
       )}
-
-      {/* CREATE / EDIT DIALOG (Optimized for mobile viewing) */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto rounded-3xl p-4 sm:p-6 custom-scrollbar">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-bold">
-              {editingEvent ? "Редактировать событие" : "Создать новое событие"}
-            </DialogTitle>
-            {editingEventHasSales && (
-              <DialogDescription className="text-amber-600 font-bold pt-2 bg-amber-50 p-2.5 rounded-lg border border-amber-200">
-                Внимание: на это событие продано {editingEventTicketsSold}{" "}
-                билетов. Некоторые действия ограничены.
-              </DialogDescription>
-            )}
-          </DialogHeader>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-2">
-            <div className="sm:col-span-2 space-y-1.5">
-              <Label className="text-xs font-bold text-muted-foreground uppercase">
-                Название
-              </Label>
-              <Input
-                value={formData.title}
-                onChange={(e) =>
-                  setFormData({ ...formData, title: e.target.value })
-                }
-                placeholder="Выступление стендап комиков"
-                className="rounded-xl h-11 bg-muted/20 border border-border/60 focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary transition-all"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-muted-foreground uppercase">
-                Категория
-              </Label>
-              <Input
-                value={formData.category}
-                onChange={(e) =>
-                  setFormData({ ...formData, category: e.target.value })
-                }
-                placeholder="Мастер-класс"
-                className="rounded-xl h-11 bg-muted/20 border border-border/60 focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary transition-all"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-muted-foreground uppercase">
-                Статус
-              </Label>
-              <Select
-                value={formData.status}
-                onValueChange={(val) =>
-                  setFormData({ ...formData, status: val })
-                }
-              >
-                <SelectTrigger className="rounded-xl h-11 bg-muted/20 border border-border/60 focus:bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all font-semibold">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="rounded-xl">
-                  <SelectItem value="active" className="font-medium">
-                    Активно (в продаже)
-                  </SelectItem>
-                  <SelectItem value="draft" className="font-medium">
-                    Черновик (скрыто)
-                  </SelectItem>
-                  <SelectItem
-                    value="cancelled"
-                    disabled={editingEventHasSales}
-                    className="font-medium text-destructive focus:text-destructive"
-                  >
-                    Отменено {editingEventHasSales && "(Недоступно)"}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {editingEventHasSales && (
-              <div className="sm:col-span-2">
-                <Alert className="bg-blue-50 text-blue-800 border-blue-200 rounded-xl">
-                  <Info className="h-4 w-4 text-blue-600" />
-                  <AlertTitle className="font-bold">
-                    Нужно отменить мероприятие?
-                  </AlertTitle>
-                  <AlertDescription className="text-xs mt-1 font-medium">
-                    Так как билеты куплены, прямая отмена недоступна.
-                    Пожалуйста, обратитесь в{" "}
-                    <a
-                      href="/support"
-                      className="underline font-bold text-blue-700 hover:text-blue-900"
-                    >
-                      службу поддержки
-                    </a>{" "}
-                    для оформления возврата.
-                  </AlertDescription>
-                </Alert>
-              </div>
-            )}
-
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-muted-foreground uppercase">
-                Дата
-              </Label>
-              <Input
-                type="date"
-                value={formData.date.split("T")[0]}
-                onChange={(e) =>
-                  setFormData({ ...formData, date: e.target.value })
-                }
-                className="rounded-xl h-11 bg-muted/20 border border-border/60 focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary transition-all font-medium"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-muted-foreground uppercase">
-                Время
-              </Label>
-              <Input
-                type="time"
-                value={formData.time}
-                onChange={(e) =>
-                  setFormData({ ...formData, time: e.target.value })
-                }
-                className="rounded-xl h-11 bg-muted/20 border border-border/60 focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary transition-all font-medium"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-muted-foreground uppercase">
-                Город
-              </Label>
-              <Input
-                value={formData.city}
-                onChange={(e) =>
-                  setFormData({ ...formData, city: e.target.value })
-                }
-                placeholder="Москва"
-                className="rounded-xl h-11 bg-muted/20 border border-border/60 focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary transition-all"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-muted-foreground uppercase">
-                Адрес
-              </Label>
-              <Input
-                value={formData.address}
-                onChange={(e) =>
-                  setFormData({ ...formData, address: e.target.value })
-                }
-                placeholder="Красная площадь, 1"
-                className="rounded-xl h-11 bg-muted/20 border border-border/60 focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary transition-all"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-muted-foreground uppercase">
-                Билетов (шт.)
-              </Label>
-              <Input
-                type="number"
-                min={editingEventHasSales ? editingEventTicketsSold : "1"}
-                value={formData.totalTickets}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    totalTickets: parseInt(e.target.value) || 0,
-                  })
-                }
-                className="rounded-xl h-11 bg-muted/20 border border-border/60 focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary transition-all font-bold"
-              />
-              {editingEventHasSales && (
-                <p className="text-[10px] text-muted-foreground font-medium pl-1">
-                  Минимум: {editingEventTicketsSold}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-muted-foreground uppercase">
-                Цена (₽)
-              </Label>
-              <Input
-                type="number"
-                min="0"
-                value={formData.price}
-                disabled={editingEventHasSales}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    price: parseFloat(e.target.value) || 0,
-                  })
-                }
-                className="rounded-xl h-11 bg-muted/20 border border-border/60 focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary transition-all font-bold"
-              />
-            </div>
-
-            <div className="sm:col-span-2 space-y-1.5">
-              <Label className="text-xs font-bold text-muted-foreground uppercase">
-                Обложка (URL)
-              </Label>
-              <Input
-                value={formData.imageUrl}
-                onChange={(e) =>
-                  setFormData({ ...formData, imageUrl: e.target.value })
-                }
-                placeholder="https://..."
-                className="rounded-xl h-11 bg-muted/20 border border-border/60 focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary transition-all"
-              />
-            </div>
-
-            <div className="sm:col-span-2 space-y-1.5">
-              <Label className="text-xs font-bold text-muted-foreground uppercase">
-                Описание
-              </Label>
-              <Textarea
-                value={formData.description}
-                onChange={(e) =>
-                  setFormData({ ...formData, description: e.target.value })
-                }
-                rows={4}
-                placeholder="Опишите, что ждет гостей..."
-                className="rounded-xl bg-muted/20 border border-border/60 focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary transition-all resize-none"
-              />
-            </div>
-          </div>
-
-          <DialogFooter className="gap-2 sm:gap-0 mt-2">
-            <Button
-              variant="outline"
-              onClick={() => setIsDialogOpen(false)}
-              disabled={isSaving}
-              className="rounded-xl h-12 w-full sm:w-auto font-semibold border-border/60"
-            >
-              Отмена
-            </Button>
-            <Button
-              onClick={handleSave}
-              disabled={isSaving}
-              className="rounded-xl h-12 w-full sm:w-auto font-bold shadow-md"
-            >
-              {isSaving ? "Сохранение..." : "Сохранить"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
+
+const renderHiddenBrandedPoster = (event: Event) => {
+  const selfCheckInUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/e/${event.id}/checkin`;
+  const hostName = (event as any).host?.name || "Организатор";
+
+  return (
+    <div
+      id={`branded-qr-poster-${event.id}`}
+      style={{
+        position: "fixed",
+        top: 0,
+        left: "-9999px",
+        width: "600px",
+        height: "850px",
+        backgroundColor: "white",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        padding: "40px 40px 60px 40px", // Увеличен нижний отступ до 60px
+        boxSizing: "border-box", // Гарантирует, что padding не "раздует" картинку
+        zIndex: -1,
+      }}
+    >
+      {/* 1. Логотип */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+          marginBottom: "20px",
+          width: "100%",
+          justifyContent: "center",
+        }}
+      >
+        <div
+          style={{
+            backgroundColor: "#2563eb",
+            padding: "10px",
+            borderRadius: "12px",
+          }}
+        >
+          <Calendar style={{ color: "white", width: "32px", height: "32px" }} />
+        </div>
+        <p
+          style={{
+            fontSize: "36px",
+            fontWeight: "900",
+            margin: 0,
+            color: "black",
+          }}
+        >
+          Eventomir<span style={{ color: "#2563eb" }}>.ru</span>
+        </p>
+      </div>
+
+      {/* Основной контент */}
+      <div
+        style={{
+          width: "100%",
+          flex: 1, // Растягивается, чтобы занять место
+          borderRadius: "40px",
+          border: "8px dashed #f3f4f6",
+          padding: "30px",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          backgroundColor: "white",
+          boxSizing: "border-box",
+        }}
+      >
+        {/* 2. Блок события (СВЕРХУ) */}
+        <div
+          style={{
+            width: "100%",
+            backgroundColor: "#eff6ff",
+            padding: "20px",
+            borderRadius: "30px",
+            border: "1px solid #dbeafe",
+            marginBottom: "20px",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <div style={{ flex: 1 }}>
+              <p
+                style={{
+                  fontSize: "12px",
+                  fontWeight: "bold",
+                  color: "#2563eb",
+                  textTransform: "uppercase",
+                  margin: "0 0 4px 0",
+                }}
+              >
+                Мероприятие
+              </p>
+              <p
+                style={{
+                  fontSize: "22px",
+                  fontWeight: "900",
+                  margin: 0,
+                  color: "black",
+                  lineHeight: "1.2",
+                }}
+              >
+                {event.title}
+              </p>
+            </div>
+            {event.imageUrl && (
+              <img
+                src={event.imageUrl}
+                crossOrigin="anonymous"
+                style={{
+                  width: "60px",
+                  height: "60px",
+                  borderRadius: "15px",
+                  objectFit: "cover",
+                }}
+              />
+            )}
+          </div>
+          <div
+            style={{
+              marginTop: "15px",
+              paddingTop: "15px",
+              borderTop: "1px solid #dbeafe",
+              display: "flex",
+              gap: "10px",
+              fontSize: "14px",
+              fontWeight: "bold",
+              color: "#6b7280",
+            }}
+          >
+            <span>
+              {format(new Date(event.date), "d MMM yyyy", { locale: ru })}
+            </span>
+            <span>{event.time}</span>
+            <span style={{ marginLeft: "auto", color: "#111827" }}>
+              {hostName}
+            </span>
+          </div>
+        </div>
+
+        {/* 3. Инструкция и QR (СНИЗУ) */}
+        <div style={{ textAlign: "center", marginBottom: "15px" }}>
+          <h1
+            style={{
+              fontSize: "36px",
+              fontWeight: "900",
+              margin: "0 0 5px 0",
+              color: "black",
+            }}
+          >
+            Вход по QR-коду
+          </h1>
+          <p style={{ fontSize: "16px", color: "#6b7280", margin: 0 }}>
+            Наведите камеру телефона на код ниже
+          </p>
+        </div>
+
+        <div
+          style={{
+            backgroundColor: "#f9fafb",
+            padding: "20px",
+            borderRadius: "30px",
+            border: "2px solid #f3f4f6",
+            marginBottom: "20px",
+          }}
+        >
+          {/* Уменьшили размер QR на 20px, чтобы дать больше места отступам */}
+          <QRCodeSVG value={selfCheckInUrl} size={280} level="H" />
+        </div>
+
+        {/* Шаги */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr 1fr",
+            gap: "10px",
+            width: "100%",
+            marginTop: "auto",
+          }}
+        >
+          {["Камера", "На QR", "Готово"].map((s, i) => (
+            <div
+              key={i}
+              style={{
+                backgroundColor: "#f3f4f6",
+                padding: "10px",
+                borderRadius: "12px",
+                fontSize: "11px",
+                fontWeight: "bold",
+                textAlign: "center",
+                color: "#9ca3af",
+              }}
+            >
+              {i + 1}. {s}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 4. Технический подвал для отступа */}
+      <div
+        style={{
+          width: "100%",
+          height: "40px", // Создает гарантированную пустую зону внизу
+          display: "flex",
+          alignItems: "flex-end",
+          justifyContent: "center",
+        }}
+      >
+        <p
+          style={{
+            fontSize: "10px",
+            fontWeight: "bold",
+            color: "#e5e7eb",
+            textTransform: "uppercase",
+            letterSpacing: "2px",
+          }}
+        >
+          app.eventomir.ru — {format(new Date(), "yyyy")}
+        </p>
+      </div>
+    </div>
+  );
+};

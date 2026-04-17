@@ -12,22 +12,32 @@ export interface OrderEvent {
   time?: string | null;
   city: string;
   address?: string | null;
-  imageUrl: string;
+  imageUrl: string | null;
 }
 
-export interface OrderData {
+/**
+ * Unified Ticket Interface:
+ * Matches the structure expected by app/tickets/page.tsx
+ */
+export interface UnifiedTicket {
   id: string;
-  userId: string;
+  type: "ORDER" | "INVITATION"; // Identifies the source model
+  title: string;
+  date: string;
+  time: string | null;
+  city: string;
+  address: string | null;
+  imageUrl: string | null;
+  status: string; // "PAYMENT_SUCCESS", "ACCEPTED", "CANCELLED", etc.
+  isUsed: boolean;
   ticketCount: number;
-  totalPrice: number;
-  status: string; // e.g., "pending", "completed", "cancelled"
+  eventId: string;
+  totalPrice?: number; // Only for Paid Orders
   createdAt: string;
-  event: OrderEvent;
 }
 
 export interface PurchasePayload {
   eventId: string;
-  userId: string;
   ticketCount: number;
 }
 
@@ -36,23 +46,21 @@ export interface PurchasePayload {
 /**
  * Fetches all orders for the Admin Panel.
  */
-export const getAdminOrders = async (): Promise<OrderData[]> => {
-  const response = await apiRequest({
+export const getAdminOrders = async (): Promise<UnifiedTicket[]> => {
+  return await apiRequest({
     method: "get",
     url: "/api/orders",
   });
-  return response as OrderData[];
 };
 
 /**
- * Fetches personal ticket history for the logged-in user.
+ * Fetches unified ticket history (Paid + Free) for the logged-in user.
  */
-export const getMyOrders = async (): Promise<OrderData[]> => {
-  const response = await apiRequest({
+export const getMyOrders = async (): Promise<UnifiedTicket[]> => {
+  return await apiRequest({
     method: "get",
     url: "/api/orders/my",
   });
-  return response as OrderData[];
 };
 
 /**
@@ -61,27 +69,18 @@ export const getMyOrders = async (): Promise<OrderData[]> => {
  */
 export const purchaseTicketsAPI = async (
   payload: PurchasePayload,
-): Promise<string> => {
+): Promise<{ paymentUrl: string }> => {
   try {
-    // We cast to `any` because the response object contains the specific Tinkoff URL
-    const response: any = await apiRequest({
+    // Correct endpoint based on our backend routes
+    return await apiRequest({
       method: "post",
       url: `/api/events/${payload.eventId}/purchase`,
       data: {
-        userId: payload.userId,
         ticketCount: payload.ticketCount,
       },
     });
-
-    // Check if the backend successfully returned the Tinkoff payment URL
-    if (response && response.paymentUrl) {
-      return response.paymentUrl;
-    }
-
-    throw new Error("Не удалось получить ссылку на оплату от банка.");
   } catch (error: any) {
     console.error("Purchase API error:", error);
-    // Safely extract the error message whether it comes from Axios, Fetch, or a standard Error
     const errorMessage =
       error.response?.data?.message ||
       error.message ||
@@ -90,10 +89,29 @@ export const purchaseTicketsAPI = async (
   }
 };
 
+/**
+ * Submits a free RSVP invitation
+ */
+export const submitRSVPAPI = async (
+  eventId: string,
+  payload: {
+    guestName: string;
+    guestEmail: string;
+    guestPhone?: string;
+    status: "ACCEPTED" | "REJECTED";
+  },
+): Promise<{ ticketToken?: string; message: string }> => {
+  return await apiRequest({
+    method: "post",
+    url: `/api/events/${eventId}/rsvp`,
+    data: payload,
+  });
+};
+
 // --- React Query Hooks ---
 
 /**
- * Hook to fetch all orders for the Admin Panel.
+ * Hook to fetch all tickets/orders for the Admin Panel.
  */
 export function useAdminOrdersQuery() {
   return useQuery({
@@ -104,19 +122,18 @@ export function useAdminOrdersQuery() {
 
 /**
  * Hook to fetch tickets belonging to the currently authenticated user.
- * @param isAuthenticated - Prevents the query from running if the user is not logged in.
  */
 export function useMyOrdersQuery(isAuthenticated: boolean) {
   return useQuery({
     queryKey: ["orders", "my"],
     queryFn: getMyOrders,
-    enabled: isAuthenticated, // Only fetch if the user session is active
+    enabled: isAuthenticated,
+    staleTime: 1000 * 60 * 5, // Cache results for 5 minutes
   });
 }
 
 /**
  * Hook to initiate ticket purchase.
- * Automatically invalidates caches to refresh UI (e.g., showing the new "pending" order).
  */
 export function usePurchaseTicketsMutation() {
   const queryClient = useQueryClient();
@@ -124,11 +141,29 @@ export function usePurchaseTicketsMutation() {
   return useMutation({
     mutationFn: purchaseTicketsAPI,
     onSuccess: () => {
-      // Invalidate queries so that the user's "My Tickets" list and
-      // the event's available ticket count instantly update to reflect the pending reservation.
+      // Invalidate all relevant keys to refresh UI
       queryClient.invalidateQueries({ queryKey: ["orders", "my"] });
       queryClient.invalidateQueries({ queryKey: ["events"] });
       queryClient.invalidateQueries({ queryKey: ["orders", "admin"] });
+    },
+  });
+}
+
+/**
+ * Hook to handle free RSVPs
+ */
+export function useRSVPMutation(eventId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: Parameters<typeof submitRSVPAPI>[1]) =>
+      submitRSVPAPI(eventId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["orders", "my"] });
+      queryClient.invalidateQueries({ queryKey: ["events", eventId] });
+      queryClient.invalidateQueries({
+        queryKey: ["events", eventId, "attendees"],
+      });
     },
   });
 }

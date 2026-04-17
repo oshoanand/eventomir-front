@@ -15,8 +15,14 @@ export interface Event {
   id: string;
   title: string;
   category: string;
+
+  // New Privacy & Payment Fields
+  type: "PUBLIC" | "PRIVATE";
+  paymentType: "FREE" | "PAID";
   price: number;
-  date: string; // ISO string when fetched from the backend (e.g., "2026-03-10T19:00:00.000Z")
+  discountPrice?: number;
+
+  date: string; // ISO string when fetched from the backend
   time?: string | null;
   city: string;
   address?: string | null;
@@ -30,7 +36,7 @@ export interface Event {
   // State
   status: "active" | "draft" | "cancelled" | "completed" | string;
 
-  // Relational Data (Replaced the old performerId)
+  // Relational Data
   hostId?: string | null;
   host?: EventHost | null;
 
@@ -39,11 +45,33 @@ export interface Event {
   updatedAt?: string;
 }
 
-// Payload for creating/updating an event (excludes fields controlled by the backend)
+// Payload for creating/updating an event (excludes backend-controlled fields)
 export type EventPayload = Omit<
   Event,
   "id" | "host" | "createdAt" | "updatedAt" | "availableTickets"
->;
+> & { availableTickets?: number };
+
+// --- New Types for RSVP & Ticketing ---
+
+export interface Attendee {
+  id: string;
+  eventId: string;
+  guestName: string;
+  guestEmail: string;
+  guestPhone?: string;
+  status: "PENDING" | "ACCEPTED" | "REJECTED";
+  ticketToken: string;
+  isCheckedIn: boolean;
+  checkInTime?: string | null;
+  createdAt: string;
+}
+
+export interface RSVPPayload {
+  guestName: string;
+  guestEmail: string;
+  guestPhone?: string;
+  status: "ACCEPTED" | "REJECTED";
+}
 
 // --- Public API Fetchers ---
 
@@ -81,7 +109,7 @@ export const getEventById = async (
   }
 };
 
-// --- Performer (Private) API Fetchers ---
+// --- Host (Private) API Fetchers ---
 
 export const getMyHostedEvents = async (): Promise<Event[]> => {
   const response = await apiRequest({
@@ -122,6 +150,45 @@ export const deleteEventAPI = async (id: string): Promise<void> => {
   });
 };
 
+// --- RSVP & Ticketing API Fetchers ---
+
+export const getEventAttendeesAPI = async (
+  eventId: string,
+): Promise<Attendee[]> => {
+  const response = await apiRequest({
+    method: "get",
+    url: `/api/events/${eventId}/attendees`,
+  });
+  return response as Attendee[];
+};
+
+export const submitRSVPAPI = async ({
+  eventId,
+  data,
+}: {
+  eventId: string;
+  data: RSVPPayload;
+}): Promise<{ ticketToken?: string; message: string }> => {
+  const response = await apiRequest({
+    method: "post",
+    url: `/api/events/${eventId}/rsvp`,
+    data,
+  });
+  return response as { ticketToken?: string; message: string };
+};
+
+export const checkInGuestAPI = async (data: {
+  ticketToken: string;
+  eventId: string;
+}): Promise<{ success: boolean; message: string; guestName?: string }> => {
+  const response = await apiRequest({
+    method: "post",
+    url: `/api/events/checkin`,
+    data,
+  });
+  return response as { success: boolean; message: string; guestName?: string };
+};
+
 // --- React Query Hooks (Public) ---
 
 /**
@@ -140,7 +207,7 @@ export function useEventsQuery() {
 /**
  * Hook to fetch a single event by ID (e.g., for an Event Details page).
  */
-export function useEventQuery(id: string | number | undefined) {
+export function useEventQuery(id: string | undefined) {
   return useQuery({
     queryKey: ["events", id],
     queryFn: () => {
@@ -152,10 +219,25 @@ export function useEventQuery(id: string | number | undefined) {
   });
 }
 
-// --- React Query Hooks (Performer Management) ---
+/**
+ * Uploads an image to the server and returns the public URL.
+ */
+export const uploadEventImageAPI = async (
+  formData: FormData,
+): Promise<{ url: string; fileName?: string }> => {
+  const response = await apiRequest({
+    method: "post",
+    url: "/api/events/upload", // Make sure you create this route on your Node.js backend!
+    data: formData,
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return response as { url: string; fileName?: string };
+};
+
+// --- React Query Hooks (Host Management) ---
 
 /**
- * Hook to fetch events hosted by the current logged-in performer.
+ * Hook to fetch events hosted by the current logged-in user.
  */
 export function useMyHostedEventsQuery(
   isAuthenticated: boolean,
@@ -173,7 +255,6 @@ export function useCreateEventMutation() {
   return useMutation({
     mutationFn: createEventAPI,
     onSuccess: () => {
-      // Invalidate both the performer's list and the public list
       queryClient.invalidateQueries({ queryKey: ["events"] });
     },
   });
@@ -185,7 +266,6 @@ export function useUpdateEventMutation() {
     mutationFn: updateEventAPI,
     onSuccess: (updatedEvent) => {
       queryClient.invalidateQueries({ queryKey: ["events"] });
-      // Also optionally invalidate the specific event cache
       queryClient.invalidateQueries({ queryKey: ["events", updatedEvent.id] });
     },
   });
@@ -198,5 +278,59 @@ export function useDeleteEventMutation() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["events"] });
     },
+  });
+}
+
+// --- React Query Hooks (RSVP & Ticketing) ---
+
+/**
+ * Hook to fetch attendees for a specific event (Host only).
+ */
+export function useEventAttendeesQuery(eventId: string) {
+  return useQuery({
+    queryKey: ["events", eventId, "attendees"],
+    queryFn: () => getEventAttendeesAPI(eventId),
+    enabled: !!eventId,
+  });
+}
+
+/**
+ * Hook for a guest to submit an RSVP.
+ */
+export function useSubmitRSVPMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: submitRSVPAPI,
+    onSuccess: (_, variables) => {
+      // Invalidate the specific event to update available tickets
+      queryClient.invalidateQueries({
+        queryKey: ["events", variables.eventId],
+      });
+    },
+  });
+}
+
+/**
+ * Hook for the host to check-in a guest using their QR Code ticket token.
+ */
+export function useCheckInGuestMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: checkInGuestAPI,
+    onSuccess: (_, variables) => {
+      // Invalidate the attendees list so the UI reflects the checked-in status
+      queryClient.invalidateQueries({
+        queryKey: ["events", variables.eventId, "attendees"],
+      });
+    },
+  });
+}
+
+/**
+ * Hook to handle image uploading with loading states.
+ */
+export function useUploadImageMutation() {
+  return useMutation({
+    mutationFn: uploadEventImageAPI,
   });
 }
