@@ -130,7 +130,7 @@ export default function ManageEventsPage() {
     title: string,
     description: string,
   ) => {
-    const url = `${window.location.origin}/e/${eventId}`;
+    const url = `${window.location.origin}/manage-events/e/${eventId}`;
     const shareData = {
       title: title,
       text: description
