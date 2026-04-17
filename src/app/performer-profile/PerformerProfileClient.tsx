@@ -81,6 +81,7 @@ import ReviewsSection from "@/components/performer-profile/ReviewsSection";
 import BookingsSection from "@/components/performer-profile/BookingsSection";
 import CalendarSection from "@/components/performer-profile/CalendarSection";
 import FileUploadDialog from "@/components/performer-profile/FileUploadDialog";
+import AudioManager from "@/components/performer-profile/AudioManager";
 import { cn } from "@/utils/utils";
 
 const API_BASE =
@@ -145,7 +146,7 @@ export default function PerformerProfileClient() {
 
   // Check if the user is a DJ to conditionally render the audio upload section
   const isDJ = profile?.roles?.some(
-    (role) => role.toLowerCase() === "dj" || role.toLowerCase() === "диджей",
+    (role) => role.toLowerCase() === "dj" || role.toLowerCase() === "диджеи",
   );
 
   const [adminCategories, setAdminCategories] = useState<SiteCategory[]>([]);
@@ -718,7 +719,7 @@ export default function PerformerProfileClient() {
                 className="m-0 focus-visible:outline-none animate-in fade-in duration-300"
               >
                 {/* --- DJ AUDIO SECTION --- */}
-                {isDJ && (
+                {/* {isDJ && (
                   <div className="mb-8 bg-background rounded-3xl p-6 shadow-sm border border-border/50">
                     <div className="flex justify-between items-center mb-4">
                       <div className="flex items-center gap-2">
@@ -789,6 +790,21 @@ export default function PerformerProfileClient() {
                       )}
                     </div>
                   </div>
+                )} */}
+
+                {isDJ && (
+                  <AudioManager
+                    tracks={(profile as any).audioTracks || []}
+                    isOwnProfile={isOwnProfile}
+                    onAddClick={() => setIsAudioDialogOpen(true)}
+                    onDelete={(trackId) =>
+                      removeAudioMutation.mutate({
+                        performerId: profile.id,
+                        trackId: trackId,
+                      })
+                    }
+                    getImageUrl={getImageUrl}
+                  />
                 )}
 
                 <GalleryManager
@@ -804,9 +820,22 @@ export default function PerformerProfileClient() {
                 />
               </TabsContent>
 
-              <TabsContent
+              {/* <TabsContent
                 value="reviews"
                 className="m-0 focus-visible:outline-none animate-in fade-in duration-300"
+              >
+                <ReviewsSection
+                  profileId={profile.id}
+                  currentUserRole={sessionUser?.role as string | null}
+                  currentUserId={sessionUser?.id || null}
+                  currentUserName={sessionUser?.name || null}
+                  onReviewSubmit={() => refetchProfile()}
+                />
+              </TabsContent> */}
+
+              <TabsContent
+                value="reviews"
+                className="m-0 mt-6 focus-visible:outline-none animate-in fade-in duration-300"
               >
                 <ReviewsSection
                   profileId={profile.id}
@@ -852,7 +881,7 @@ export default function PerformerProfileClient() {
                     value="wallet"
                     className="m-0 focus-visible:outline-none animate-in fade-in duration-300"
                   >
-                    <div className="max-w-3xl space-y-6">
+                    {/* <div className="max-w-3xl space-y-6">
                       <div className="rounded-3xl bg-gradient-to-br from-primary to-primary/80 p-6 text-primary-foreground shadow-lg relative overflow-hidden">
                         <div className="absolute -right-6 -top-6 w-32 h-32 rounded-full bg-white/10 blur-2xl pointer-events-none" />
                         <div className="absolute -left-6 -bottom-6 w-24 h-24 rounded-full bg-black/10 blur-xl pointer-events-none" />
@@ -878,6 +907,47 @@ export default function PerformerProfileClient() {
                         </div>
                       </div>
                       <div className="border border-border/50 rounded-3xl p-6 flex flex-col justify-center bg-background shadow-sm">
+                        <CreditCard className="h-10 w-10 mb-4 text-primary/50" />
+                        <h4 className="font-bold text-lg text-foreground mb-1">
+                          Удобная оплата
+                        </h4>
+                        <p className="text-sm text-muted-foreground font-medium">
+                          Используйте средства кошелька для мгновенной оплаты
+                          подписок или продвижения профиля без комиссий.
+                        </p>
+                      </div>
+                    </div> */}
+
+                    <div className="max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Wallet Balance Card */}
+                      <div className="rounded-3xl bg-gradient-to-br from-primary to-primary/80 p-6 text-primary-foreground shadow-lg relative overflow-hidden h-full">
+                        <div className="absolute -right-6 -top-6 w-32 h-32 rounded-full bg-white/10 blur-2xl pointer-events-none" />
+                        <div className="absolute -left-6 -bottom-6 w-24 h-24 rounded-full bg-black/10 blur-xl pointer-events-none" />
+                        <Wallet className="absolute right-4 top-1/2 -translate-y-1/2 h-32 w-32 opacity-[0.07] pointer-events-none" />
+
+                        <div className="relative z-10 flex flex-col h-full justify-between gap-6">
+                          <div>
+                            <p className="text-primary-foreground/80 font-medium text-sm flex items-center gap-2">
+                              <Wallet className="h-4 w-4" /> Баланс кошелька
+                            </p>
+                            <div className="text-4xl font-black mt-1 tracking-tight">
+                              {walletBalance.toLocaleString("ru-RU")}{" "}
+                              <span className="text-2xl font-bold opacity-80">
+                                ₽
+                              </span>
+                            </div>
+                          </div>
+                          <Button
+                            onClick={() => setIsTopUpDialogOpen(true)}
+                            className="w-full shrink-0 bg-background/20 hover:bg-background/30 text-primary-foreground backdrop-blur-md border-0 rounded-2xl h-12 font-bold shadow-none active:scale-[0.98] transition-all"
+                          >
+                            <PlusCircle className="mr-2 h-5 w-5" /> Пополнить
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Convenient Payment Info Card */}
+                      <div className="border border-border/50 rounded-3xl p-6 flex flex-col justify-center bg-background shadow-sm h-full">
                         <CreditCard className="h-10 w-10 mb-4 text-primary/50" />
                         <h4 className="font-bold text-lg text-foreground mb-1">
                           Удобная оплата
