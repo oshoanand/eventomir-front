@@ -43,6 +43,26 @@ const DEFAULT_FREE_FEATURES = {
   profileSeo: false,
 };
 
+// Helper to normalize rich JSON features into simple key-value pairs for the session
+const normalizeFeatures = (rawFeatures: any) => {
+  const normalized: Record<string, any> = {};
+  if (typeof rawFeatures === "object" && rawFeatures !== null) {
+    for (const [key, data] of Object.entries(rawFeatures)) {
+      if (
+        data &&
+        typeof data === "object" &&
+        !Array.isArray(data) &&
+        (data as any).value !== undefined
+      ) {
+        normalized[key] = (data as any).value;
+      } else {
+        normalized[key] = data;
+      }
+    }
+  }
+  return normalized;
+};
+
 export const authOptions: NextAuthOptions = {
   adapter: CustomAdapter,
   session: {
@@ -114,11 +134,16 @@ export const authOptions: NextAuthOptions = {
           let activeFeatures = DEFAULT_FREE_FEATURES;
           let subEndDate = null;
 
-          if (sub && sub.isActive && (!sub.endDate || sub.endDate > now)) {
+          // 🚨 FIX: Changed sub.isActive to sub.status === "ACTIVE"
+          if (
+            sub &&
+            sub.status === "ACTIVE" &&
+            (!sub.endDate || sub.endDate > now)
+          ) {
             // Merge database JSON features over the defaults
             activeFeatures = {
               ...DEFAULT_FREE_FEATURES,
-              ...(sub.plan.features as any),
+              ...normalizeFeatures(sub.plan.features),
             };
             // Format the end date for the frontend JIT lock
             subEndDate = sub.endDate ? sub.endDate.toISOString() : null;
@@ -211,11 +236,15 @@ export const authOptions: NextAuthOptions = {
           let activeFeatures = DEFAULT_FREE_FEATURES;
           let subEndDate = null;
 
-          // 🚨 Check if subscription is valid and unexpired
-          if (sub && sub.isActive && (!sub.endDate || sub.endDate > now)) {
+          // 🚨 FIX: Changed sub.isActive to sub.status === "ACTIVE"
+          if (
+            sub &&
+            sub.status === "ACTIVE" &&
+            (!sub.endDate || sub.endDate > now)
+          ) {
             activeFeatures = {
               ...DEFAULT_FREE_FEATURES,
-              ...(sub.plan.features as any),
+              ...normalizeFeatures(sub.plan.features),
             };
             subEndDate = sub.endDate ? sub.endDate.toISOString() : null;
           }
