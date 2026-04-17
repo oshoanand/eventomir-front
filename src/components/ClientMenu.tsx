@@ -34,9 +34,11 @@ import {
   AlertCircle,
   LayoutGrid,
   Search,
+  MessageCircleMore,
 } from "lucide-react";
 
 import { useNotification } from "@/components/providers/NotificationProvider";
+import { useChatStore } from "@/store/useChatStore";
 
 interface ClientMenuProps {
   isLoggedIn: boolean;
@@ -57,6 +59,8 @@ const ClientMenu: React.FC<ClientMenuProps> = ({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isClient, setIsClient] = useState(false);
   const { unreadCount } = useNotification();
+  // Read unread count from Zustand store
+  const totalUnreadCount = useChatStore((state) => state.totalUnreadCount);
 
   useEffect(() => setIsClient(true), []);
 
@@ -98,20 +102,6 @@ const ClientMenu: React.FC<ClientMenuProps> = ({
   };
   const profileLink = getProfileLink();
 
-  // const NotificationBell = () => (
-  //   <Link
-  //     href="/notifications"
-  //     className="relative flex items-center justify-center h-10 w-10 rounded-full hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-all"
-  //   >
-  //     <Bell className="h-5 w-5" strokeWidth={2} />
-  //     {unreadCount > 0 && (
-  //       <span className="absolute top-[4px] right-[4px] flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-white ring-2 ring-background">
-  //         {unreadCount > 9 ? "9+" : unreadCount}
-  //       </span>
-  //     )}
-  //   </Link>
-  // );
-
   const NotificationBell = () => (
     <Link
       href="/notifications"
@@ -130,6 +120,26 @@ const ClientMenu: React.FC<ClientMenuProps> = ({
       )}
     </Link>
   );
+
+  const ChatLink = () => (
+    <Link
+      href="/chat"
+      aria-label="Чаты"
+      className="relative group flex items-center justify-center h-8 w-8 rounded-full bg-primary/10 hover:bg-primary/20 transition-all duration-300 hover:shadow-sm hover:-translate-y-0.5 active:translate-y-0 active:scale-95"
+    >
+      <MessageCircleMore
+        className="h-4 w-4 text-primary transition-transform duration-300 group-hover:scale-110"
+        strokeWidth={2}
+      />
+
+      {totalUnreadCount > 0 && (
+        <span className="absolute -top-1 -right-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground ring-2 ring-background animate-in zoom-in">
+          {totalUnreadCount > 99 ? "99+" : totalUnreadCount}
+        </span>
+      )}
+    </Link>
+  );
+
   // --- MOBILE MENU ---
   if (isMobile) {
     return (
@@ -402,6 +412,7 @@ const ClientMenu: React.FC<ClientMenuProps> = ({
       ) : (
         <div className="flex items-center gap-3">
           <NotificationBell />
+          <ChatLink />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button

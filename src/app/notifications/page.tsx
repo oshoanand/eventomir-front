@@ -175,7 +175,7 @@ const NotificationsPage = () => {
   return (
     <>
       <div className="container mx-auto py-10 max-w-3xl">
-        <Card className="shadow-lg">
+        <Card>
           <CardHeader className="flex flex-row justify-between items-center bg-muted/20 pb-4">
             <div className="space-y-1">
               <CardTitle className="flex items-center gap-2">

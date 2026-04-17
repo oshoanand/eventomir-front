@@ -28,7 +28,7 @@ export const useChatHistory = (userId: string, partnerId: string) => {
     queryKey: ["chatHistory", partnerId],
     queryFn: async ({ pageParam }) => {
       const response = await apiRequest<ChatMessage[]>({
-        url: "/api/chat/history",
+        url: "/api/chats/history",
         method: "GET",
         params: {
           userId1: userId,

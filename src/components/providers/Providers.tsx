@@ -18,7 +18,6 @@ import { SiteThemeProvider } from "@/components/providers/SiteThemeProvider";
 import ServiceWorkerRegister from "@/components/pwa/ServiceWorkerRegister";
 import InstallPwaDrawer from "@/components/pwa/InstallPwaDrawer";
 import FcmProvider from "@/components/providers/FcmProvider";
-import ClientNotificationUI from "@/components/providers/ClientNotificationProvider";
 
 export { SettingsContext } from "@/components/providers/SiteThemeProvider";
 
@@ -77,7 +76,7 @@ export function Providers({
 
               {/* 5. Global Floating UI Overlays (Siblings to layout, not wrappers!) */}
               {/* This prevents them from re-rendering the entire app on state changes */}
-              <ClientNotificationUI />
+
               <InstallPwaDrawer />
               <Toaster />
             </SiteThemeProvider>

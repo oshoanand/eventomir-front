@@ -4,10 +4,17 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { Home, Search, CalendarDays, User, MessageCircle } from "lucide-react";
+import {
+  Home,
+  Search,
+  CalendarDays,
+  User,
+  MessageCircle,
+  MessageCircleMore,
+} from "lucide-react";
 import { cn } from "@/utils/utils";
 import MobileProfileDrawer from "./MobileProfileDrawer";
-import { useChatStore } from "@/store/useChatStore"; // <-- Imported Chat Store
+import { useChatStore } from "@/store/useChatStore";
 
 export default function BottomNav() {
   const pathname = usePathname();
@@ -32,7 +39,7 @@ export default function BottomNav() {
 
   // If the user is logged in, insert the Chat tab
   if (session) {
-    navItems.push({ name: "Чаты", href: "/chat", icon: MessageCircle });
+    navItems.push({ name: "Чаты", href: "/chat", icon: MessageCircleMore });
   }
 
   // Profile tab is always the last item
