@@ -67,46 +67,86 @@ import {
   type SiteCategory,
 } from "@/services/settings";
 
-// Fallback categories in case settings are completely empty
+// Фолбэк-категории на случай, если настройки сайта еще не загрузились
 const FALLBACK_CATEGORIES: SiteCategory[] = [
-  { id: "1", name: "Фотограф", icon: "Camera", link: "", subCategories: [] },
-  { id: "2", name: "DJ", icon: "Music", link: "", subCategories: [] },
-  { id: "3", name: "Ведущие", icon: "Mic", link: "", subCategories: [] },
-  { id: "4", name: "Дизайнер", icon: "Palette", link: "", subCategories: [] },
-  { id: "5", name: "Видеограф", icon: "Film", link: "", subCategories: [] },
+  {
+    id: "1",
+    name: "Фотограф",
+    icon: "Camera",
+    link: "/search?category=photographer",
+    subCategories: [],
+  },
+  {
+    id: "2",
+    name: "DJ",
+    icon: "Music",
+    link: "/search?category=dj",
+    subCategories: [],
+  },
+  {
+    id: "3",
+    name: "Ведущие",
+    icon: "Mic",
+    link: "/search?category=hosts",
+    subCategories: [],
+  },
+  {
+    id: "4",
+    name: "Дизайнер",
+    icon: "Palette",
+    link: "/search?category=designer",
+    subCategories: [],
+  },
+  {
+    id: "5",
+    name: "Видеограф",
+    icon: "Film",
+    link: "/search?category=videographer",
+    subCategories: [],
+  },
 ];
 
 const PAGE_SIZE = 12;
 
-const SearchPage = () => {
+// ============================================================================
+// УТИЛИТЫ ПАРСИНГА URL (УМНЫЙ МАППИНГ КАТЕГОРИЙ ИЗ АДМИНКИ)
+// ============================================================================
+
+/**
+ * Безопасно извлекает параметр из строки ссылки
+ * (например, из "/search?category=photographer" вернет "photographer")
+ */
+const extractParamFromLink = (link: string | undefined, paramName: string) => {
+  if (!link) return null;
+  try {
+    const urlString = link.startsWith("http")
+      ? link
+      : `http://dummy.com${link.startsWith("/") ? link : "/" + link}`;
+    const url = new URL(urlString);
+    return url.searchParams.get(paramName);
+  } catch (e) {
+    return null;
+  }
+};
+
+export default function SearchPage() {
   const mounted = useMounted();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
   const { toast } = useToast();
 
+  // Загружаем категории сайта из админки
   const { data: settings, isLoading: isLoadingCategories } =
     useGeneralSettingsQuery();
+  const categories = settings?.siteCategories?.length
+    ? settings.siteCategories
+    : FALLBACK_CATEGORIES;
 
-  // Safely extract categories from fresh settings
-  const categories =
-    settings?.siteCategories && settings.siteCategories.length > 0
-      ? settings.siteCategories
-      : FALLBACK_CATEGORIES;
-
-  // --- FILTER STATES ---
+  // --- СОСТОЯНИЯ ФИЛЬТРОВ ---
   const [cityInput, setCityInput] = useState(searchParams.get("city") || "");
   const [minPrice, setMinPrice] = useState(searchParams.get("priceMin") || "");
   const [maxPrice, setMaxPrice] = useState(searchParams.get("priceMax") || "");
-  const [selectedService, setSelectedService] = useState<string | null>(
-    searchParams.get("category"),
-  );
-
-  const initialSubCats = searchParams.get("subCategories");
-  const [selectedSubCategories, setSelectedSubCategories] = useState<string[]>(
-    initialSubCats ? initialSubCats.split(",") : [],
-  );
-
   const [selectedAccountType, setSelectedAccountType] = useState(
     searchParams.get("accountType") || "all",
   );
@@ -115,7 +155,13 @@ const SearchPage = () => {
     searchParams.get("onlyVip") === "true",
   );
 
-  // --- RESULTS STATES ---
+  // 🚨 Храним РЕАЛЬНЫЕ названия категорий из БД (например "Фотографы"), а не английские слаги
+  const [selectedService, setSelectedService] = useState<string | null>(null);
+  const [selectedSubCategories, setSelectedSubCategories] = useState<string[]>(
+    [],
+  );
+
+  // --- СОСТОЯНИЯ РЕЗУЛЬТАТОВ ---
   const [currentPage, setCurrentPage] = useState(
     Number(searchParams.get("page")) || 1,
   );
@@ -124,42 +170,102 @@ const SearchPage = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
 
-  // Autocomplete
+  // Автокомплит городов
   const [regions, setRegions] = useState<
     { name: string; cities: { name: string }[] }[]
   >([]);
   const [autocompleteResults, setAutocompleteResults] = useState<string[]>([]);
 
+  // Определяем активную категорию и ее подкатегории
   const activeCategoryObj = categories.find((c) => c.name === selectedService);
   const availableSubCategories = activeCategoryObj?.subCategories || [];
 
-  // EFFECT: Clear invalid subcategories if the main category changes
+  // ============================================================================
+  // ЭФФЕКТ 1: СИНХРОНИЗАЦИЯ URL -> ВНУТРЕННЕЕ СОСТОЯНИЕ (РАЗРЕШЕНИЕ СЛАГОВ)
+  // ============================================================================
   useEffect(() => {
-    if (selectedService && activeCategoryObj) {
-      const validSubNames =
-        activeCategoryObj.subCategories?.map((s) => s.name) || [];
+    // Получаем сырые параметры из URL (могут быть английскими слагами)
+    const paramCategory = searchParams.get("category");
+    const paramSubCats = searchParams.get("subCategories");
 
-      setSelectedSubCategories((prev) => {
-        const filtered = prev.filter((sub) => validSubNames.includes(sub));
-        if (filtered.length !== prev.length) {
-          return filtered;
-        }
-        return prev;
+    // 1. Разрешаем основную категорию
+    let resolvedCategoryName: string | null = null;
+    if (paramCategory && paramCategory !== "_all_") {
+      const matchedCat = categories.find((c) => {
+        const linkCat = extractParamFromLink(c.link, "category");
+        return (
+          c.name.toLowerCase() === paramCategory.toLowerCase() ||
+          (linkCat && linkCat.toLowerCase() === paramCategory.toLowerCase())
+        );
       });
-    } else {
-      setSelectedSubCategories((prev) => (prev.length > 0 ? [] : prev));
+      resolvedCategoryName = matchedCat ? matchedCat.name : paramCategory;
     }
-  }, [selectedService, activeCategoryObj]);
+    setSelectedService(resolvedCategoryName);
 
+    // 2. Разрешаем подкатегории (если есть основная категория)
+    if (paramSubCats && resolvedCategoryName) {
+      const activeCat = categories.find((c) => c.name === resolvedCategoryName);
+      if (activeCat && activeCat.subCategories) {
+        const tokens = paramSubCats
+          .split(",")
+          .map((t) => t.trim().toLowerCase());
+        const resolvedSubs = tokens.map((token) => {
+          const matchedSub = activeCat.subCategories!.find((s) => {
+            const linkSub =
+              extractParamFromLink(s.link, "subCategories") ||
+              extractParamFromLink(s.link, "category");
+            return (
+              s.name.toLowerCase() === token ||
+              (linkSub && linkSub.toLowerCase() === token)
+            );
+          });
+          return matchedSub ? matchedSub.name : token;
+        });
+        setSelectedSubCategories([...new Set(resolvedSubs)]);
+      }
+    } else {
+      setSelectedSubCategories([]);
+    }
+  }, [searchParams, categories]);
+
+  // ============================================================================
+  // ОБРАТНОЕ ПРЕОБРАЗОВАНИЕ: ИМЯ БД -> URL СЛАГ ДЛЯ КРАСИВЫХ ССЫЛОК
+  // ============================================================================
   const updateURLParams = useCallback(
     (page: number) => {
       const params = new URLSearchParams();
-      if (cityInput) params.set("city", cityInput);
-      if (selectedService && selectedService !== "_all_")
-        params.set("category", selectedService);
 
-      if (selectedSubCategories.length > 0) {
-        params.set("subCategories", selectedSubCategories.join(","));
+      // Поиск по текстовому запросу, если он есть
+      const query = searchParams.get("q");
+      if (query) params.set("q", query);
+
+      if (cityInput) params.set("city", cityInput);
+
+      // 1. Преобразуем название основной категории в слаг
+      if (selectedService && selectedService !== "_all_") {
+        const catObj = categories.find((c) => c.name === selectedService);
+        const slug = catObj
+          ? extractParamFromLink(catObj.link, "category")
+          : null;
+        params.set("category", slug || selectedService);
+      }
+
+      // 2. Преобразуем названия подкатегорий в слаги
+      if (
+        selectedSubCategories.length > 0 &&
+        activeCategoryObj?.subCategories
+      ) {
+        const subSlugs = selectedSubCategories.map((subName) => {
+          const subObj = activeCategoryObj.subCategories!.find(
+            (s) => s.name === subName,
+          );
+          const slug = subObj
+            ? extractParamFromLink(subObj.link, "subCategories") ||
+              extractParamFromLink(subObj.link, "category")
+            : null;
+          return slug || subName;
+        });
+        params.set("subCategories", subSlugs.join(","));
       }
 
       if (minPrice) params.set("priceMin", minPrice);
@@ -181,13 +287,18 @@ const SearchPage = () => {
       onlyVip,
       pathname,
       router,
+      categories,
+      activeCategoryObj,
+      searchParams,
     ],
   );
 
+  // --- ФЕТЧИНГ РЕЗУЛЬТАТОВ ---
   const fetchResults = useCallback(
     async (page: number) => {
       setIsSearching(true);
       try {
+        // Отправляем на бэкенд ИМЕНА категорий на РУССКОМ, как они хранятся в БД
         const result = await getPerformersPaginated({
           page,
           pageSize: PAGE_SIZE,
@@ -202,6 +313,7 @@ const SearchPage = () => {
           onlyVip: onlyVip ? "true" : undefined,
           accountType:
             selectedAccountType === "all" ? undefined : selectedAccountType,
+          query: searchParams.get("q") || undefined, // Поиск по строке из хидера
         });
 
         setSearchResults(result.items);
@@ -211,7 +323,7 @@ const SearchPage = () => {
         toast({
           variant: "destructive",
           title: "Ошибка",
-          description: "Не удалось загрузить результаты.",
+          description: "Не удалось загрузить результаты поиска.",
         });
       } finally {
         setIsSearching(false);
@@ -226,6 +338,7 @@ const SearchPage = () => {
       onlyVip,
       selectedAccountType,
       updateURLParams,
+      searchParams,
       toast,
     ],
   );
@@ -237,7 +350,21 @@ const SearchPage = () => {
   useEffect(() => {
     if (mounted) fetchResults(currentPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mounted]);
+  }, [mounted, searchParams]); // Перезапускаем поиск, если изменились параметры URL
+
+  // --- ОБРАБОТЧИКИ СОБЫТИЙ UI ---
+  const handleCategoryChange = (val: string) => {
+    setSelectedService(val === "_all_" ? null : val);
+    setSelectedSubCategories([]); // Сброс подкатегорий при смене основной
+  };
+
+  const toggleSubCategory = (subName: string) => {
+    setSelectedSubCategories((prev) =>
+      prev.includes(subName)
+        ? prev.filter((name) => name !== subName)
+        : [...prev, subName],
+    );
+  };
 
   const handleSearchClick = () => {
     setCurrentPage(1);
@@ -267,25 +394,16 @@ const SearchPage = () => {
     }
   };
 
-  const toggleSubCategory = (subName: string) => {
-    setSelectedSubCategories((prev) =>
-      prev.includes(subName)
-        ? prev.filter((name) => name !== subName)
-        : [...prev, subName],
-    );
-  };
-
-  // --- SHARE FUNCTIONALITY ---
   const handleShare = async (performer: PerformerProfile) => {
-    const profileUrl = `${window.location.origin}/performer-profile?id=${performer.id}`;
-    const shareTitle = `Исполнитель ${performer.name} на Eventomir`;
-    const shareText = performer.description
-      ? `${performer.description.substring(0, 100)}...`
-      : `Забронируйте ${performer.name} для вашего мероприятия!`;
-
+    const profileUrl =
+      typeof window !== "undefined"
+        ? `${window.location.origin}/performer-profile?id=${performer.id}`
+        : "";
     const shareData = {
-      title: shareTitle,
-      text: shareText,
+      title: `Исполнитель ${performer.name} на Eventomir`,
+      text: performer.description
+        ? `${performer.description.substring(0, 100)}...`
+        : `Забронируйте ${performer.name}!`,
       url: profileUrl,
     };
 
@@ -295,10 +413,8 @@ const SearchPage = () => {
         navigator.canShare &&
         navigator.canShare(shareData)
       ) {
-        // Native mobile share sheet (WhatsApp, Telegram, Email, etc.)
         await navigator.share(shareData);
       } else {
-        // Fallback for desktop/unsupported browsers
         await navigator.clipboard.writeText(profileUrl);
         toast({
           title: "Ссылка скопирована",
@@ -306,10 +422,8 @@ const SearchPage = () => {
         });
       }
     } catch (error: any) {
-      // User aborted share (AbortError) doesn't need an alert
-      if (error.name !== "AbortError") {
+      if (error.name !== "AbortError")
         console.error("Ошибка при попытке поделиться:", error);
-      }
     }
   };
 
@@ -324,7 +438,7 @@ const SearchPage = () => {
   const totalPages = Math.ceil(totalResults / PAGE_SIZE);
 
   return (
-    <div className="container px-4 md:px-8 py-2 md:py-10">
+    <div className="container px-4 md:px-8 py-2 md:py-10 animate-in fade-in duration-500">
       <div className="grid gap-6">
         {/* --- FILTERS SECTION --- */}
         <Card className="border-primary/10 shadow-sm">
@@ -335,12 +449,10 @@ const SearchPage = () => {
                 <Label>Категория услуги</Label>
                 <Select
                   value={selectedService || "_all_"}
-                  onValueChange={(v) =>
-                    setSelectedService(v === "_all_" ? null : v)
-                  }
+                  onValueChange={handleCategoryChange}
                   disabled={isLoadingCategories}
                 >
-                  <SelectTrigger className="bg-muted/30">
+                  <SelectTrigger className="bg-muted/30 font-semibold">
                     <SelectValue
                       placeholder={
                         isLoadingCategories ? "Загрузка..." : "Все услуги"
@@ -348,7 +460,12 @@ const SearchPage = () => {
                     />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="_all_">Все услуги</SelectItem>
+                    <SelectItem
+                      value="_all_"
+                      className="font-semibold text-primary"
+                    >
+                      Все услуги
+                    </SelectItem>
                     {categories.map((c) => (
                       <SelectItem key={c.id} value={c.name}>
                         {c.name}
@@ -364,7 +481,7 @@ const SearchPage = () => {
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
-                      variant={"outline"}
+                      variant="outline"
                       className={cn(
                         "w-full justify-start text-left font-normal bg-muted/30",
                         !selectedDate && "text-muted-foreground",
@@ -466,7 +583,7 @@ const SearchPage = () => {
                           "rounded-full shadow-sm transition-all",
                           isSelected
                             ? "bg-primary text-primary-foreground"
-                            : "bg-background",
+                            : "bg-background hover:bg-muted",
                         )}
                         onClick={() => toggleSubCategory(sub.name)}
                       >
@@ -620,8 +737,6 @@ const SearchPage = () => {
                             )}
                           </div>
                         </Link>
-
-                        {/* Share and Compare Buttons */}
                         <div className="flex items-center gap-1 shrink-0">
                           <Button
                             variant="ghost"
@@ -681,7 +796,6 @@ const SearchPage = () => {
                 ))}
               </div>
 
-              {/* Pagination Controls */}
               {totalPages > 1 && (
                 <div className="flex justify-center items-center gap-4 mt-12 bg-card border rounded-full w-fit mx-auto p-2 shadow-sm">
                   <Button
@@ -713,8 +827,7 @@ const SearchPage = () => {
               <Search className="h-16 w-16 mx-auto text-muted-foreground opacity-20 mb-4" />
               <h3 className="text-2xl font-bold mb-2">Ничего не найдено</h3>
               <p className="text-muted-foreground max-w-sm mx-auto">
-                Попробуйте изменить параметры поиска, убрать фильтры или выбрать
-                другой город.
+                Попробуйте изменить параметры поиска или выбрать другой город.
               </p>
               <Button
                 variant="outline"
@@ -737,6 +850,4 @@ const SearchPage = () => {
       </div>
     </div>
   );
-};
-
-export default SearchPage;
+}
