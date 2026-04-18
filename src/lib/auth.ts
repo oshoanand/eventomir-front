@@ -11,21 +11,17 @@ import jwt from "jsonwebtoken";
 
 // =================================================================
 // CUSTOM PRISMA ADAPTER
-// Intercepts DB events to reliably save auth_provider and profile_picture
 // =================================================================
 const CustomAdapter = PrismaAdapter(prisma) as Adapter;
 
-// 1. Intercept User Creation
 const originalCreateUser = CustomAdapter.createUser;
 CustomAdapter.createUser = async (data: any) => {
   return originalCreateUser!({
     ...data,
-    // Automatically copy NextAuth's 'image' to your custom 'profile_picture' column
     profile_picture: data.image || null,
   });
 };
 
-// 2. Intercept Account Linking
 const originalLinkAccount = CustomAdapter.linkAccount;
 CustomAdapter.linkAccount = async (account: any) => {
   await prisma.user.update({
@@ -35,7 +31,7 @@ CustomAdapter.linkAccount = async (account: any) => {
   return originalLinkAccount!(account);
 };
 
-// 🚨 Define a basic fallback in case the user has no subscription yet
+// 🚨 Фолбэк-функции для бесплатного тарифа
 const DEFAULT_FREE_FEATURES = {
   maxPhotoUpload: 3,
   emailSupport: true,
@@ -43,7 +39,7 @@ const DEFAULT_FREE_FEATURES = {
   profileSeo: false,
 };
 
-// Helper to normalize rich JSON features into simple key-value pairs for the session
+// Нормализация JSON-фичей из БД
 const normalizeFeatures = (rawFeatures: any) => {
   const normalized: Record<string, any> = {};
   if (typeof rawFeatures === "object" && rawFeatures !== null) {
@@ -100,7 +96,6 @@ export const authOptions: NextAuthOptions = {
             );
           }
 
-          // Fetch the user AND their active subscription plan features
           const user = await prisma.user.findUnique({
             where: { email: credentials.email },
             include: {
@@ -123,30 +118,34 @@ export const authOptions: NextAuthOptions = {
             throw new Error("Неверный адрес электронной почты или пароль!");
           }
 
-          const secret = process.env.NEXTAUTH_SECRET;
+          const secret = process.env.NEXTAUTH_SECRET || process.env.JWT_SECRET;
           if (!secret) {
-            throw new Error("Server configuration error");
+            throw new Error(
+              "КРИТИЧЕСКАЯ ОШИБКА: NEXTAUTH_SECRET не задан в .env файле сервера!",
+            );
           }
 
-          // 🚨 Evaluate Subscription State & Expiration Date
+          // 🚨 Надежная проверка подписки (устойчива к изменениям Prisma Schema)
           const now = new Date();
-          const sub = user.subscription;
+          const sub = user.subscription as any; // Cast to any to bypass strict TS schema mismatches
           let activeFeatures = DEFAULT_FREE_FEATURES;
           let subEndDate = null;
 
-          // 🚨 FIX: Changed sub.isActive to sub.status === "ACTIVE"
-          if (
-            sub &&
-            sub.status === "ACTIVE" &&
-            (!sub.endDate || sub.endDate > now)
-          ) {
-            // Merge database JSON features over the defaults
-            activeFeatures = {
-              ...DEFAULT_FREE_FEATURES,
-              ...normalizeFeatures(sub.plan.features),
-            };
-            // Format the end date for the frontend JIT lock
-            subEndDate = sub.endDate ? sub.endDate.toISOString() : null;
+          if (sub) {
+            // Поддержка как старого булева значения, так и нового строкового статуса
+            const isSubActive =
+              sub.status === "ACTIVE" || sub.isActive === true;
+            const isNotExpired = !sub.endDate || new Date(sub.endDate) > now;
+
+            if (isSubActive && isNotExpired) {
+              activeFeatures = {
+                ...DEFAULT_FREE_FEATURES,
+                ...normalizeFeatures(sub.plan?.features),
+              };
+              subEndDate = sub.endDate
+                ? new Date(sub.endDate).toISOString()
+                : null;
+            }
           }
 
           const token = jwt.sign(
@@ -179,22 +178,28 @@ export const authOptions: NextAuthOptions = {
             role: user.role || "customer",
             accessToken: token,
             features: activeFeatures,
-            subscriptionEndDate: subEndDate, // 🚨 Pass expiration date forward
+            subscriptionEndDate: subEndDate,
           } as any;
         } catch (error: any) {
-          console.error("Authorize Error:", error.message);
+          console.error("🚨 Authorize Error:", error);
 
           if (error.message && error.message.includes("PARTNER_REDIRECT")) {
             throw error;
           }
 
-          const isCustomError =
+          // Если это наша кастомная ошибка валидации, передаем ее клиенту
+          if (
             error.message ===
               "Требуется указать адрес электронной почты и пароль" ||
-            error.message === "Неверный адрес электронной почты или пароль!";
+            error.message === "Неверный адрес электронной почты или пароль!" ||
+            error.message.includes("КРИТИЧЕСКАЯ ОШИБКА")
+          ) {
+            throw error;
+          }
 
-          if (isCustomError) throw error;
-          throw new Error("Проверьте свой адрес электронной почты еще раз!");
+          // Если произошел системный сбой (например, Prisma упала), показываем реальную ошибку
+          // throw new Error(`Системная ошибка сервера: ${error.message}`);
+          throw new Error(`Системная ошибка сервера`);
         }
       },
     }),
@@ -211,8 +216,6 @@ export const authOptions: NextAuthOptions = {
         token.role = session.role;
       }
 
-      // If user logs in via OAuth (Google/Yandex/VK), we don't have their features yet.
-      // We must fetch them from the database here.
       if (user) {
         token.id = user.id;
         token.image = user.image ? user.image.toString() : null;
@@ -225,34 +228,36 @@ export const authOptions: NextAuthOptions = {
         );
 
         if (isOAuth) {
-          // Fetch features and expiration date from DB for OAuth logins
           const dbUser = await prisma.user.findUnique({
             where: { id: user.id },
             include: { subscription: { include: { plan: true } } },
           });
 
           const now = new Date();
-          const sub = dbUser?.subscription;
+          const sub = dbUser?.subscription as any;
           let activeFeatures = DEFAULT_FREE_FEATURES;
           let subEndDate = null;
 
-          // 🚨 FIX: Changed sub.isActive to sub.status === "ACTIVE"
-          if (
-            sub &&
-            sub.status === "ACTIVE" &&
-            (!sub.endDate || sub.endDate > now)
-          ) {
-            activeFeatures = {
-              ...DEFAULT_FREE_FEATURES,
-              ...normalizeFeatures(sub.plan.features),
-            };
-            subEndDate = sub.endDate ? sub.endDate.toISOString() : null;
+          if (sub) {
+            const isSubActive =
+              sub.status === "ACTIVE" || sub.isActive === true;
+            const isNotExpired = !sub.endDate || new Date(sub.endDate) > now;
+
+            if (isSubActive && isNotExpired) {
+              activeFeatures = {
+                ...DEFAULT_FREE_FEATURES,
+                ...normalizeFeatures(sub.plan?.features),
+              };
+              subEndDate = sub.endDate
+                ? new Date(sub.endDate).toISOString()
+                : null;
+            }
           }
 
           token.features = activeFeatures;
-          token.subscriptionEndDate = subEndDate; // 🚨 Inject to token
+          token.subscriptionEndDate = subEndDate;
 
-          const secret = process.env.NEXTAUTH_SECRET;
+          const secret = process.env.NEXTAUTH_SECRET || process.env.JWT_SECRET;
           if (secret) {
             token.accessToken = jwt.sign(
               {
@@ -268,10 +273,9 @@ export const authOptions: NextAuthOptions = {
             );
           }
         } else {
-          // It's a Credentials login, features/dates were already fetched in authorize()
           token.accessToken = (user as any).accessToken;
           token.features = (user as any).features;
-          token.subscriptionEndDate = (user as any).subscriptionEndDate; // 🚨 Inject to token
+          token.subscriptionEndDate = (user as any).subscriptionEndDate;
         }
       }
       return token;

@@ -331,22 +331,40 @@ export default function PerformerProfileClient() {
     }
   };
 
-  const handleCategoryToggle = (category: SiteCategory, isChecked: boolean) => {
+  // const handleCategoryToggle = (category: SiteCategory, isChecked: boolean) => {
+  //   if (isChecked) {
+  //     setTempSelectedRoles((prev) => [...prev, category.name]);
+  //   } else {
+  //     const subNames = category.subCategories?.map((s) => s.name) || [];
+  //     setTempSelectedRoles((prev) =>
+  //       prev.filter((r) => r !== category.name && !subNames.includes(r)),
+  //     );
+  //   }
+  // };
+
+  // const toggleTempRole = (roleName: string) => {
+  //   setTempSelectedRoles((prev) =>
+  //     prev.includes(roleName)
+  //       ? prev.filter((r) => r !== roleName)
+  //       : [...prev, roleName],
+  //   );
+  // };
+
+  const handleCategoryToggle = (category: any, isChecked: boolean) => {
     if (isChecked) {
-      setTempSelectedRoles((prev) => [...prev, category.name]);
+      // 🚨 Clear everything and only select the new main category
+      setTempSelectedRoles([category.name]);
     } else {
-      const subNames = category.subCategories?.map((s) => s.name) || [];
-      setTempSelectedRoles((prev) =>
-        prev.filter((r) => r !== category.name && !subNames.includes(r)),
-      );
+      // If they uncheck the current main category, clear everything
+      setTempSelectedRoles([]);
     }
   };
 
-  const toggleTempRole = (roleName: string) => {
+  const toggleTempRole = (subRoleName: string) => {
     setTempSelectedRoles((prev) =>
-      prev.includes(roleName)
-        ? prev.filter((r) => r !== roleName)
-        : [...prev, roleName],
+      prev.includes(subRoleName)
+        ? prev.filter((r) => r !== subRoleName)
+        : [...prev, subRoleName],
     );
   };
 
@@ -1032,7 +1050,7 @@ export default function PerformerProfileClient() {
           </Button>
         </DialogContent>
       </Dialog>
-
+      {/* 
       <Dialog
         open={isCategoryDialogOpen}
         onOpenChange={setIsCategoryDialogOpen}
@@ -1125,6 +1143,136 @@ export default function PerformerProfileClient() {
               onClick={handleSaveCategories}
               disabled={isSavingCategories}
               className="rounded-xl h-11 font-bold"
+            >
+              {isSavingCategories && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}{" "}
+              Сохранить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog> */}
+
+      <Dialog
+        open={isCategoryDialogOpen}
+        onOpenChange={setIsCategoryDialogOpen}
+      >
+        <DialogContent className="sm:max-w-xl rounded-3xl p-6">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold">
+              Специализации
+            </DialogTitle>
+            <DialogDescription>
+              Выберите одну основную категорию и уточните услуги (подкатегории).
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
+            {adminCategories.length > 0 ? (
+              adminCategories.map((category) => {
+                const isCategorySelected = tempSelectedRoles.includes(
+                  category.name,
+                );
+
+                // Check if ANOTHER main category is currently selected
+                const isAnotherMainSelected = tempSelectedRoles.some((role) =>
+                  adminCategories.some(
+                    (c) => c.name === role && c.name !== category.name,
+                  ),
+                );
+
+                return (
+                  <div
+                    key={category.id}
+                    className={`flex flex-col border rounded-2xl p-4 transition-all duration-300 ${
+                      isCategorySelected
+                        ? "bg-primary/5 border-primary/40 shadow-sm ring-1 ring-primary/20"
+                        : isAnotherMainSelected
+                          ? "opacity-50 grayscale-[0.5] hover:opacity-100 hover:grayscale-0 border-border/50"
+                          : "hover:bg-muted/50 border-border/50"
+                    }`}
+                  >
+                    <div
+                      className="flex items-start space-x-3 cursor-pointer group"
+                      onClick={() =>
+                        handleCategoryToggle(category, !isCategorySelected)
+                      }
+                    >
+                      {/* Main Category Selection */}
+                      <div
+                        className={`mt-0.5 w-5 h-5 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
+                          isCategorySelected
+                            ? "border-primary bg-primary"
+                            : "border-primary/50 group-hover:border-primary"
+                        }`}
+                      >
+                        {isCategorySelected && (
+                          <div className="w-2 h-2 bg-white rounded-full" />
+                        )}
+                      </div>
+
+                      <Label className="text-[15px] font-bold leading-tight cursor-pointer w-full flex justify-between items-center pointer-events-none">
+                        {category.name}
+                        {category.subCategories &&
+                          category.subCategories.length > 0 &&
+                          (isCategorySelected ? (
+                            <ChevronDown className="h-4 w-4 text-primary" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                          ))}
+                      </Label>
+                    </div>
+
+                    {/* Subcategories (Only visible if Main Category is selected) */}
+                    {isCategorySelected &&
+                      category.subCategories &&
+                      category.subCategories.length > 0 && (
+                        <div className="ml-8 flex flex-col space-y-3 mt-4 pt-3 border-t border-dashed border-primary/20 animate-in slide-in-from-top-2 fade-in duration-200">
+                          {category.subCategories.map((sub: any) => (
+                            <div
+                              key={sub.id}
+                              className="flex items-center space-x-3"
+                            >
+                              <Checkbox
+                                id={`sub-${sub.id}`}
+                                checked={tempSelectedRoles.includes(sub.name)}
+                                onCheckedChange={() => toggleTempRole(sub.name)}
+                                className="rounded-sm border-primary/50 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                              />
+                              <Label
+                                htmlFor={`sub-${sub.id}`}
+                                className="text-sm font-medium leading-none cursor-pointer text-foreground/80 hover:text-foreground transition-colors"
+                              >
+                                {sub.name}
+                              </Label>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                  </div>
+                );
+              })
+            ) : (
+              <div className="col-span-full text-center py-8 text-muted-foreground font-medium">
+                <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2 text-primary" />{" "}
+                Загрузка категорий...
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="mt-2 gap-2 sm:gap-0">
+            <DialogClose asChild>
+              <Button
+                variant="outline"
+                className="rounded-xl h-11 w-full sm:w-auto"
+              >
+                Отмена
+              </Button>
+            </DialogClose>
+            <Button
+              onClick={handleSaveCategories}
+              disabled={isSavingCategories || tempSelectedRoles.length === 0}
+              className="rounded-xl h-11 font-bold w-full sm:w-auto"
             >
               {isSavingCategories && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
