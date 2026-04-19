@@ -587,7 +587,7 @@ export default function ManageEventsPage() {
 }
 
 const renderHiddenBrandedPoster = (event: Event) => {
-  const selfCheckInUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/e/${event.id}/checkin`;
+  const selfCheckInUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/manage-events/e/${event.id}/checkin`;
   const hostName = (event as any).host?.name || "Организатор";
 
   return (

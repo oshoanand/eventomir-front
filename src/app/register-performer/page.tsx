@@ -15,7 +15,7 @@ const RegisterPerformerPage = () => {
       {/* Premium responsive card wrapper */}
       <Card className="w-full max-w-[420px] md:max-w-[440px] shadow-none md:shadow-xl border-none md:border-border/50 rounded-[2rem] md:rounded-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-500">
         <CardHeader className="space-y-2 md:space-y-1.5 pt-8 md:pt-8 pb-6 md:pb-4 text-center">
-          <CardTitle className="text-3xl md:text-2xl font-extrabold tracking-tight">
+          <CardTitle className="text-2xl font-extrabold tracking-tight">
             Аккаунт исполнителя
           </CardTitle>
           <CardDescription className="text-base md:text-sm font-medium">

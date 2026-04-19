@@ -314,13 +314,13 @@ export default function MobileProfileDrawer({
                       />
                       <MenuItem
                         icon={<UserPlus className="text-emerald-500" />}
-                        title="Стать заказчиком"
+                        title="Я заказчик"
                         subtitle="Регистрация для поиска профи"
-                        onClick={() => handleNavigation("/register")}
+                        onClick={() => handleNavigation("/register-customer")}
                       />
                       <MenuItem
                         icon={<Briefcase className="text-purple-500" />}
-                        title="Стать исполнителем"
+                        title="Я исполнитель"
                         subtitle="Регистрация для специалистов"
                         onClick={() => handleNavigation("/register-performer")}
                       />

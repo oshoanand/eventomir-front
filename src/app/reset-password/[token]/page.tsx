@@ -24,7 +24,7 @@ export default function ResetPasswordPage() {
   const token = params.token;
 
   // --- STATE ---
-  const [isExpired, setIsExpired] = useState(false); // State to track expiration
+  const [isExpired, setIsExpired] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -41,7 +41,6 @@ export default function ResetPasswordPage() {
   useEffect(() => {
     if (token) {
       try {
-        // Decode JWT payload (Part 2 of the token)
         const base64Url = token.split(".")[1];
         const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
         const jsonPayload = decodeURIComponent(
@@ -57,26 +56,21 @@ export default function ResetPasswordPage() {
         const payload = JSON.parse(jsonPayload);
         const now = Date.now() / 1000;
 
-        // If current time > expiration time, set expired state immediately
         if (payload.exp && now > payload.exp) {
           setIsExpired(true);
         }
       } catch (e) {
-        // If token is malformed, treat as expired/invalid
         setIsExpired(true);
       }
     }
   }, [token]);
 
   // --- HANDLERS ---
-
-  // Handler for Resending Link (When Expired)
   const handleResendLink = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
 
-    // Validate Email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!email || !emailRegex.test(email)) {
       setError("Введите корректный Email адрес");
@@ -96,25 +90,22 @@ export default function ResetPasswordPage() {
 
       if (res.status === 200) {
         toast.success("Новая ссылка отправлена на вашу почту");
-        // Optional: Redirect to login or show success message static
         router.push("/login");
       } else {
-        setError("Не удалось отправить ссылку");
+        setError("Не удалось отправить ссылку. Попробуйте позже.");
       }
     } catch (err) {
-      setError("Ошибка соединения");
+      setError("Ошибка соединения с сервером");
     } finally {
       setLoading(false);
     }
   };
 
-  // Handler for Resetting Password (Normal Flow)
   const handleResetSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
 
-    // Validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!email || !emailRegex.test(email)) {
       setError("Введите корректный Email адрес");
@@ -138,17 +129,13 @@ export default function ResetPasswordPage() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: email,
-            password: password,
-          }),
+          body: JSON.stringify({ email, password }),
         },
       );
 
       const data = await res.json();
 
       if (!res.ok) {
-        // If backend says invalid/expired, switch UI to expired view
         if (res.status === 400 || data.message?.includes("expired")) {
           setIsExpired(true);
           throw new Error("Ссылка устарела. Пожалуйста, запросите новую.");
@@ -165,28 +152,28 @@ export default function ResetPasswordPage() {
     }
   };
 
-  // --- RENDER: EXPIRED VIEW ---
-  if (isExpired) {
-    return (
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6 py-8">
-        <div className="w-full max-w-sm flex flex-col items-center text-center">
-          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-6">
-            <Clock className="h-8 w-8 text-red-600" />
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/5 via-background to-background selection:bg-primary/20">
+      {isExpired ? (
+        /* --- RENDER: EXPIRED VIEW --- */
+        <div className="w-full max-w-md bg-card p-8 sm:p-10 rounded-[2.5rem] shadow-2xl shadow-black/5 border border-border/50 animate-in zoom-in-95 fade-in duration-500 flex flex-col items-center text-center">
+          <div className="w-20 h-20 bg-destructive/10 rounded-full flex items-center justify-center mb-6">
+            <Clock className="h-10 w-10 text-destructive" />
           </div>
 
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+          <h2 className="text-3xl font-black text-foreground mb-3 tracking-tight">
             Ссылка устарела
           </h2>
-          <p className="text-gray-500 text-sm mb-8">
-            Срок действия ссылки истек (2 часа). Введите ваш Email, чтобы мы
-            отправили новую.
+          <p className="text-muted-foreground font-medium text-sm mb-8 leading-relaxed max-w-sm">
+            Срок действия ссылки истек (2 часа). Введите ваш Email адрес, чтобы
+            мы отправили новую.
           </p>
 
-          <form onSubmit={handleResendLink} className="w-full space-y-5">
-            <div className="space-y-1">
+          <form onSubmit={handleResendLink} className="w-full space-y-6">
+            <div className="space-y-1.5 text-left">
               <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Mail className="h-5 w-5 text-gray-400" />
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <Mail className="h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
                 </div>
                 <input
                   type="email"
@@ -195,18 +182,18 @@ export default function ResetPasswordPage() {
                     setEmail(e.target.value);
                     setError("");
                   }}
-                  placeholder="Email адрес"
+                  placeholder="Ваш Email адрес"
                   className={clsx(
-                    "block w-full pl-10 pr-3 py-3.5 border rounded-xl text-gray-900 outline-none transition-all",
+                    "block w-full pl-12 pr-4 py-4 border rounded-2xl text-foreground font-medium transition-all bg-muted/20 outline-none placeholder:text-muted-foreground/60",
                     error
-                      ? "border-red-500 bg-red-50"
-                      : "border-gray-200 focus:border-green-500 focus:ring-4 focus:ring-green-100",
+                      ? "border-destructive/50 bg-destructive/5 focus:ring-4 focus:ring-destructive/10"
+                      : "border-border/60 hover:border-primary/30 focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-background",
                   )}
                 />
               </div>
               {error && (
-                <div className="flex items-center text-red-500 text-xs mt-1">
-                  <AlertCircle className="w-3 h-3 mr-1" />
+                <div className="flex items-center text-destructive text-xs mt-1.5 font-medium animate-in fade-in">
+                  <AlertCircle className="w-3.5 h-3.5 mr-1" />
                   <span>{error}</span>
                 </div>
               )}
@@ -215,174 +202,170 @@ export default function ResetPasswordPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3.5 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 flex items-center justify-center gap-2"
+              className="w-full py-4 bg-primary text-primary-foreground font-bold text-base rounded-2xl hover:bg-primary/90 disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-lg shadow-primary/20"
             >
               {loading ? (
                 <Loader2 className="animate-spin w-5 h-5" />
               ) : (
-                <RefreshCw className="w-4 h-4" />
+                <RefreshCw className="w-5 h-5" />
               )}
               Отправить новую ссылку
             </button>
-
-            <div className="text-center mt-4">
-              <Link
-                href="/login"
-                className="text-sm font-medium text-gray-500 hover:text-green-600 inline-flex items-center"
-              >
-                <ArrowLeft className="w-4 h-4 mr-1" /> Вернуться ко входу
-              </Link>
-            </div>
           </form>
-        </div>
-      </div>
-    );
-  }
 
-  // --- RENDER: NORMAL RESET VIEW ---
-  return (
-    <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6 py-8">
-      {/* LOGO */}
-      <div className="w-full h-[130px] flex items-center justify-center mb-6">
-        <div className="relative w-[120px] h-[120px]">
-          <Image
-            src="/images/logo.svg"
-            alt="Logo"
-            fill
-            className="object-contain"
-            priority={true}
-          />
-        </div>
-      </div>
-
-      <div className="w-full max-w-sm flex flex-col items-center">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Новый пароль</h2>
-        <p className="text-gray-500 text-sm text-center mb-8">
-          Подтвердите ваш Email и придумайте новый надежный пароль
-        </p>
-
-        <form onSubmit={handleResetSubmit} className="w-full space-y-5">
-          {/* EMAIL CONFIRMATION */}
-          <div className="space-y-1">
-            <div className="relative group">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Mail className="h-5 w-5 text-gray-400 group-focus-within:text-green-600 transition-colors" />
-              </div>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => {
-                  setEmail(e.target.value);
-                  if (error) setError("");
-                }}
-                placeholder="Подтвердите ваш Email"
-                className={clsx(
-                  "block w-full pl-10 pr-10 py-3.5 border rounded-xl text-gray-900 outline-none transition-all",
-                  error && !email.includes("@")
-                    ? "border-red-500 bg-red-50"
-                    : "border-gray-200 focus:border-green-500 focus:ring-4 focus:ring-green-100",
-                )}
-              />
-            </div>
-          </div>
-
-          {/* NEW PASSWORD */}
-          <div className="space-y-1">
-            <div className="relative group">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Lock className="h-5 w-5 text-gray-400 group-focus-within:text-green-600 transition-colors" />
-              </div>
-              <input
-                type={showPassword ? "text" : "password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Новый пароль (мин. 8 символов)"
-                className={clsx(
-                  "block w-full pl-10 pr-10 py-3.5 border rounded-xl text-gray-900 outline-none transition-all",
-                  error && password.length < 8
-                    ? "border-red-500 bg-red-50"
-                    : "border-gray-200 focus:border-green-500 focus:ring-4 focus:ring-green-100",
-                )}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute inset-y-0 right-0 pr-3 flex items-center hover:text-green-600 transition-colors"
-              >
-                {showPassword ? (
-                  <EyeOff className="h-5 w-5 text-gray-400" />
-                ) : (
-                  <Eye className="h-5 w-5 text-gray-400" />
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* CONFIRM PASSWORD */}
-          <div className="space-y-1">
-            <div className="relative group">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Lock className="h-5 w-5 text-gray-400 group-focus-within:text-green-600 transition-colors" />
-              </div>
-              <input
-                type={showConfirmPassword ? "text" : "password"}
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Подтвердите пароль"
-                className={clsx(
-                  "block w-full pl-10 pr-10 py-3.5 border rounded-xl text-gray-900 outline-none transition-all",
-                  error && password !== confirmPassword
-                    ? "border-red-500 bg-red-50"
-                    : "border-gray-200 focus:border-green-500 focus:ring-4 focus:ring-green-100",
-                )}
-              />
-              <button
-                type="button"
-                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                className="absolute inset-y-0 right-0 pr-3 flex items-center hover:text-green-600 transition-colors"
-              >
-                {showConfirmPassword ? (
-                  <EyeOff className="h-5 w-5 text-gray-400" />
-                ) : (
-                  <Eye className="h-5 w-5 text-gray-400" />
-                )}
-              </button>
-            </div>
-
-            <div className="flex justify-between items-start pt-1 px-1 min-h-[24px]">
-              {error ? (
-                <div className="flex items-center text-red-500 text-xs mt-0.5 animate-in slide-in-from-left-2">
-                  <AlertCircle className="w-3 h-3 mr-1" />
-                  <span>{error}</span>
-                </div>
-              ) : (
-                <div />
-              )}
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full flex items-center justify-center py-3.5 px-4 border border-transparent rounded-xl shadow-sm text-base font-bold text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-70 transition-all active:scale-[0.98]"
-          >
-            {loading ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
-            ) : (
-              "Сохранить пароль"
-            )}
-          </button>
-
-          <div className="text-center mt-4">
+          <div className="mt-8">
             <Link
               href="/login"
-              className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-green-600 transition-colors"
+              className="inline-flex items-center text-sm font-semibold text-muted-foreground hover:text-primary transition-colors group"
             >
-              <ArrowLeft className="w-4 h-4 mr-1" /> Вернуться ко входу
+              <ArrowLeft className="w-4 h-4 mr-1.5 group-hover:-translate-x-1 transition-transform" />{" "}
+              Вернуться ко входу
             </Link>
           </div>
-        </form>
-      </div>
+        </div>
+      ) : (
+        /* --- RENDER: NORMAL RESET VIEW --- */
+        <div className="w-full max-w-md bg-card p-8 sm:p-10 rounded-[2.5rem] shadow-2xl shadow-black/5 border border-border/50 animate-in slide-in-from-bottom-4 fade-in duration-500">
+          <Link
+            href="/login"
+            className="inline-flex items-center text-sm font-semibold text-muted-foreground hover:text-primary mb-8 transition-colors group"
+          >
+            <ArrowLeft className="w-4 h-4 mr-1.5 group-hover:-translate-x-1 transition-transform" />
+            Назад ко входу
+          </Link>
+
+          <h2 className="text-3xl font-black text-foreground mb-2 tracking-tight">
+            Новый пароль
+          </h2>
+          <p className="text-sm font-medium text-muted-foreground mb-8 leading-relaxed">
+            Подтвердите ваш Email и придумайте новый надежный пароль для вашего
+            аккаунта.
+          </p>
+
+          <form onSubmit={handleResetSubmit} className="w-full space-y-5">
+            {/* EMAIL CONFIRMATION */}
+            <div className="space-y-1.5">
+              <div className="relative group">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <Mail className="h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                </div>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (error) setError("");
+                  }}
+                  placeholder="Подтвердите ваш Email"
+                  className={clsx(
+                    "block w-full pl-12 pr-4 py-4 border rounded-2xl text-foreground font-medium transition-all bg-muted/20 outline-none placeholder:text-muted-foreground/60",
+                    error && !email.includes("@")
+                      ? "border-destructive/50 bg-destructive/5 focus:ring-4 focus:ring-destructive/10"
+                      : "border-border/60 hover:border-primary/30 focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-background",
+                  )}
+                />
+              </div>
+            </div>
+
+            {/* NEW PASSWORD */}
+            <div className="space-y-1.5">
+              <div className="relative group">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <Lock className="h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                </div>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (error) setError("");
+                  }}
+                  placeholder="Новый пароль (мин. 8 символов)"
+                  className={clsx(
+                    "block w-full pl-12 pr-12 py-4 border rounded-2xl text-foreground font-medium transition-all bg-muted/20 outline-none placeholder:text-muted-foreground/60",
+                    error && password.length > 0 && password.length < 8
+                      ? "border-destructive/50 bg-destructive/5 focus:ring-4 focus:ring-destructive/10"
+                      : "border-border/60 hover:border-primary/30 focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-background",
+                  )}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-muted-foreground hover:text-primary transition-colors"
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-5 w-5" />
+                  ) : (
+                    <Eye className="h-5 w-5" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* CONFIRM PASSWORD */}
+            <div className="space-y-1.5">
+              <div className="relative group">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <Lock className="h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                </div>
+                <input
+                  type={showConfirmPassword ? "text" : "password"}
+                  value={confirmPassword}
+                  onChange={(e) => {
+                    setConfirmPassword(e.target.value);
+                    if (error) setError("");
+                  }}
+                  placeholder="Подтвердите пароль"
+                  className={clsx(
+                    "block w-full pl-12 pr-12 py-4 border rounded-2xl text-foreground font-medium transition-all bg-muted/20 outline-none placeholder:text-muted-foreground/60",
+                    error &&
+                      confirmPassword.length > 0 &&
+                      password !== confirmPassword
+                      ? "border-destructive/50 bg-destructive/5 focus:ring-4 focus:ring-destructive/10"
+                      : "border-border/60 hover:border-primary/30 focus:border-primary focus:ring-4 focus:ring-primary/10 focus:bg-background",
+                  )}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-muted-foreground hover:text-primary transition-colors"
+                >
+                  {showConfirmPassword ? (
+                    <EyeOff className="h-5 w-5" />
+                  ) : (
+                    <Eye className="h-5 w-5" />
+                  )}
+                </button>
+              </div>
+
+              {/* GLOBAL ERROR DISPLAY */}
+              <div className="flex justify-between items-start pt-1 min-h-[24px]">
+                {error && (
+                  <div className="flex items-center text-destructive text-xs font-medium animate-in slide-in-from-left-2">
+                    <AlertCircle className="w-3.5 h-3.5 mr-1" />
+                    <span>{error}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-4 mt-2 bg-primary text-primary-foreground font-bold text-base rounded-2xl hover:bg-primary/90 disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center transition-all active:scale-[0.98] shadow-lg shadow-primary/20"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="animate-spin w-5 h-5 mr-2" />
+                  Сохранение...
+                </>
+              ) : (
+                "Сохранить пароль"
+              )}
+            </button>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

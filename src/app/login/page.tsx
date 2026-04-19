@@ -207,7 +207,7 @@ const LoginPage = () => {
     return (
       <div className="min-h-[calc(100vh-80px)]  flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-500">
         {/* Added md:max-w-[380px] for compact desktop card */}
-        <Card className="w-full max-w-md md:max-w-[380px] text-center shadow-none md:shadow-xl border-none md:border-border/50 rounded-3xl md:rounded-2xl overflow-hidden">
+        <Card className="w-full max-w-md md:max-w-[380px] text-center shadow-none  border-none md:border-border/50 rounded-3xl md:rounded-2xl overflow-hidden">
           {/* Tighter desktop padding */}
           <CardHeader className="pb-4 pt-8 md:pt-8">
             <div className="mx-auto bg-amber-100/80 text-amber-600 h-20 w-20 md:h-16 md:w-16 flex items-center justify-center rounded-full mb-6 ring-8 ring-amber-50">

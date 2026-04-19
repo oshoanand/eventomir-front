@@ -23,23 +23,11 @@ import {
   ExternalLink,
 } from "lucide-react";
 
-import { useMyOrdersQuery } from "@/services/order";
-
-// --- TYPES ---
-interface UnifiedTicket {
-  id: string;
-  type: "ORDER" | "INVITATION";
-  title: string;
-  date: string;
-  time: string | null;
-  city: string;
-  address: string | null;
-  imageUrl: string | null;
-  status: string;
-  isUsed: boolean;
-  ticketCount: number;
-  eventId: string;
-}
+import {
+  useMyOrdersQuery,
+  processTicketPDF,
+  UnifiedTicket,
+} from "@/services/order";
 
 // --- UTILS ---
 const getTicketStatus = (ticket: UnifiedTicket) => {
@@ -242,7 +230,8 @@ const TicketCard = ({
 
 // --- MAIN PAGE COMPONENT ---
 export default function MyTicketsPage() {
-  const { status: sessionStatus } = useSession();
+  const { data: session, status: sessionStatus } = useSession();
+
   const router = useRouter();
   const { toast } = useToast();
   const [processingId, setProcessingId] = useState<string | null>(null);
@@ -258,42 +247,64 @@ export default function MyTicketsPage() {
     }
   }, [sessionStatus, router]);
 
+  // const handleAction = async (
+  //   ticket: UnifiedTicket,
+  //   action: "download" | "print",
+  // ) => {
+  //   setProcessingId(ticket.id);
+  //   try {
+  //     const endpoint =
+  //       ticket.type === "ORDER"
+  //         ? `/api/orders/${ticket.id}/pdf`
+  //         : `/api/invitations/${ticket.id}/pdf`;
+
+  //     const response = await fetch(
+  //       `${process.env.NEXT_PUBLIC_API_BASE_URL}${endpoint}`,
+  //     );
+  //     if (!response.ok) throw new Error("Failed to fetch PDF");
+
+  //     const blob = await response.blob();
+  //     const url = window.URL.createObjectURL(blob);
+
+  //     if (action === "print") {
+  //       const printWindow = window.open(url, "_blank");
+  //       if (printWindow) printWindow.onload = () => printWindow.print();
+  //     } else {
+  //       const link = document.createElement("a");
+  //       link.href = url;
+  //       link.setAttribute(
+  //         "download",
+  //         `Ticket_${ticket.title.replace(/\s+/g, "_")}.pdf`,
+  //       );
+  //       document.body.appendChild(link);
+  //       link.click();
+  //       link.remove();
+  //     }
+
+  //     // Cleanup URL object after action
+  //     setTimeout(() => window.URL.revokeObjectURL(url), 100);
+  //   } catch (error) {
+  //     console.error("PDF generation error:", error);
+  //     toast({
+  //       variant: "destructive",
+  //       title: "Ошибка",
+  //       description: "Не удалось подготовить файл билета.",
+  //     });
+  //   } finally {
+  //     setProcessingId(null);
+  //   }
+  // };
+
   const handleAction = async (
     ticket: UnifiedTicket,
     action: "download" | "print",
   ) => {
     setProcessingId(ticket.id);
     try {
-      const endpoint =
-        ticket.type === "ORDER"
-          ? `/api/orders/${ticket.id}/pdf`
-          : `/api/invitations/${ticket.id}/pdf`;
+      // Access the user's token from the session if your backend requires JWT verification for PDF downloads
+      const token = (session?.user as any)?.accessToken;
 
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}${endpoint}`,
-      );
-      if (!response.ok) throw new Error("Failed to fetch PDF");
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-
-      if (action === "print") {
-        const printWindow = window.open(url, "_blank");
-        if (printWindow) printWindow.onload = () => printWindow.print();
-      } else {
-        const link = document.createElement("a");
-        link.href = url;
-        link.setAttribute(
-          "download",
-          `Ticket_${ticket.title.replace(/\s+/g, "_")}.pdf`,
-        );
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-      }
-
-      // Cleanup URL object after action
-      setTimeout(() => window.URL.revokeObjectURL(url), 100);
+      await processTicketPDF(ticket, action, token);
     } catch (error) {
       console.error("PDF generation error:", error);
       toast({

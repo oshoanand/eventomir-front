@@ -108,6 +108,57 @@ export const submitRSVPAPI = async (
   });
 };
 
+/**
+ * NEW: Processes, downloads, or prints a ticket PDF
+ */
+export const processTicketPDF = async (
+  ticket: UnifiedTicket,
+  action: "download" | "print",
+  accessToken?: string, // Pass the session accessToken if your backend requires Bearer auth for fetches
+): Promise<void> => {
+  const endpoint =
+    ticket.type === "ORDER"
+      ? `/api/orders/${ticket.id}/pdf`
+      : `/api/invitations/${ticket.id}/pdf`;
+
+  const headers: HeadersInit = {};
+  if (accessToken) {
+    headers["Authorization"] = `Bearer ${accessToken}`;
+  }
+
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_API_BASE_URL || ""}${endpoint}`,
+    { headers },
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch PDF");
+  }
+
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+
+  if (action === "print") {
+    const printWindow = window.open(url, "_blank");
+    if (printWindow) {
+      printWindow.onload = () => printWindow.print();
+    }
+  } else {
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute(
+      "download",
+      `Ticket_${ticket.title.replace(/\s+/g, "_")}.pdf`,
+    );
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
+
+  // Cleanup URL object after action
+  setTimeout(() => window.URL.revokeObjectURL(url), 100);
+};
+
 // --- React Query Hooks ---
 
 /**
