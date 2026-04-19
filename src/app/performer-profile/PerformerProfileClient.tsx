@@ -81,6 +81,7 @@ import ReviewsSection from "@/components/performer-profile/ReviewsSection";
 import BookingsSection from "@/components/performer-profile/BookingsSection";
 import CalendarSection from "@/components/performer-profile/CalendarSection";
 import FileUploadDialog from "@/components/performer-profile/FileUploadDialog";
+import AudioUploadDialog from "@/components/performer-profile/AudioUploadDialog";
 import AudioManager from "@/components/performer-profile/AudioManager";
 import { cn } from "@/utils/utils";
 
@@ -1309,20 +1310,20 @@ export default function PerformerProfileClient() {
               handleAddGalleryItem(file, "Новая работа", desc)
             }
           />
-          {/* NEW: Audio File Upload Dialog */}
-          <FileUploadDialog
+
+          <AudioUploadDialog
             isOpen={isAudioDialogOpen}
             onClose={() => setIsAudioDialogOpen(false)}
             title="Загрузить аудио трек"
             description="Файл формата MP3 или WAV"
-            accept="audio/*"
+            accept="audio/mpeg, audio/wav"
             onFileUpload={async (file, title) => {
               if (!profile) return false;
               try {
                 await addAudioMutation.mutateAsync({
                   performerId: profile.id,
                   file,
-                  title,
+                  title, // Теперь компонент передает правильное значение title
                 });
                 toast({ variant: "default", title: "Трек успешно загружен" });
                 return true;
