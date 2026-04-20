@@ -12,24 +12,15 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Check, Loader2, Sparkles, Wallet, CreditCard, X } from "lucide-react";
+import { Check, Loader2, Sparkles, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/utils/utils";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 
 import {
   getSubscriptionPlans,
   getCurrentSubscription,
-  initiateCheckout,
   SubscriptionPlan,
   BillingInterval,
   UserSubscription,
@@ -78,18 +69,12 @@ const PricingContent = () => {
 
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [currentSub, setCurrentSub] = useState<UserSubscription | null>(null);
-  const [walletBalance, setWalletBalance] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
   const [billingInterval, setBillingInterval] =
-    useState<BillingInterval>("month"); // Renamed to avoid shadowing window.setInterval
-
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(
-    null,
-  );
-  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+    useState<BillingInterval>("month");
 
   const paymentStatus = searchParams.get("subscription");
+  const b2bPaymentStatus = searchParams.get("b2b_payment"); // NEW: For B2B callback tracking
 
   // Handle Payment Feedback
   useEffect(() => {
@@ -97,10 +82,10 @@ const PricingContent = () => {
       toast({
         title: "Оплата прошла успешно!",
         description: "Ваша подписка была успешно обновлена.",
-        variant: "default", // Changed from "success" to "default" as standard shadcn uses default/destructive
+        variant: "default",
       });
       router.replace("/pricing");
-    } else if (paymentStatus === "error") {
+    } else if (paymentStatus === "error" || paymentStatus === "failed") {
       toast({
         variant: "destructive",
         title: "Ошибка оплаты",
@@ -108,8 +93,34 @@ const PricingContent = () => {
           "Произошла ошибка при обработке платежа. Попробуйте снова.",
       });
       router.replace("/pricing");
+    } else if (paymentStatus === "success_b2b") {
+      // Custom toast for Invoice generation
+      toast({
+        title: "Счет успешно сформирован!",
+        description:
+          "Мы отправили счет на вашу электронную почту. Подписка будет активирована после поступления средств.",
+        variant: "default",
+      });
+      router.replace("/pricing");
     }
-  }, [paymentStatus, router, toast]);
+
+    // Handle standard B2B Tinkoff callbacks if they use the b2b_payment parameter
+    if (b2bPaymentStatus === "success") {
+      toast({
+        title: "Счет успешно сформирован!",
+        description: "Инструкции по оплате отправлены на ваш Email.",
+        variant: "default",
+      });
+      router.replace("/pricing");
+    } else if (b2bPaymentStatus === "failed") {
+      toast({
+        variant: "destructive",
+        title: "Ошибка",
+        description: "Не удалось сформировать счет на оплату.",
+      });
+      router.replace("/pricing");
+    }
+  }, [paymentStatus, b2bPaymentStatus, router, toast]);
 
   // Fetch Data
   useEffect(() => {
@@ -120,22 +131,14 @@ const PricingContent = () => {
 
         if (status === "authenticated") {
           promises.push(getCurrentSubscription());
-          promises.push(
-            apiRequest({ method: "get", url: "/api/users/me" }).catch(() => ({
-              walletBalance: 0,
-            })),
-          );
         } else {
           promises.push(Promise.resolve(null));
-          promises.push(Promise.resolve({ walletBalance: 0 }));
         }
 
-        const [fetchedPlans, fetchedSub, userData] =
-          await Promise.all(promises);
+        const [fetchedPlans, fetchedSub] = await Promise.all(promises);
 
         setPlans(fetchedPlans);
         setCurrentSub(fetchedSub);
-        setWalletBalance(userData?.walletBalance || 0);
       } catch (error) {
         console.error("Failed to load pricing data:", error);
         toast({
@@ -205,47 +208,11 @@ const PricingContent = () => {
       return;
     }
 
-    setSelectedPlan(plan);
-    setIsPaymentModalOpen(true);
+    // 🚨 ROBUST FIX: Redirect directly to the dedicated checkout page
+    router.push(
+      `/subscription/checkout?planId=${plan.id}&interval=${billingInterval}`,
+    );
   };
-
-  const executePayment = async (method: "card" | "wallet") => {
-    if (!selectedPlan) return;
-    setIsProcessingPayment(true);
-
-    try {
-      const response = await initiateCheckout(
-        selectedPlan.id,
-        billingInterval,
-        method as any,
-      );
-
-      if (method === "wallet") {
-        setIsPaymentModalOpen(false);
-        toast({
-          title: "Успешно!",
-          description: "Подписка оплачена с баланса кошелька.",
-          variant: "default",
-        });
-        window.location.reload();
-      } else {
-        window.location.href = response.checkoutUrl;
-      }
-    } catch (error: any) {
-      console.error(error);
-      toast({
-        variant: "destructive",
-        title: "Ошибка оплаты",
-        description:
-          error.response?.data?.message || "Не удалось перейти к оплате.",
-      });
-    } finally {
-      setIsProcessingPayment(false);
-    }
-  };
-
-  const selectedPrice = selectedPlan ? getPriceDetails(selectedPlan).price : 0;
-  const isWalletSufficient = walletBalance >= selectedPrice;
 
   return (
     <div className="container mx-auto py-16 px-4 animate-in fade-in duration-700">
@@ -262,51 +229,13 @@ const PricingContent = () => {
 
       {/* BILLING CYCLE TOGGLE */}
       <div className="flex justify-center mb-4 md:mb-16">
-        {/* <div className="inline-flex items-center p-1.5 bg-muted/50 rounded-full border shadow-sm">
-          <button
-            onClick={() => setBillingInterval("month")}
-            className={cn(
-              "px-6 py-2.5 rounded-full text-sm font-semibold transition-all duration-300",
-              billingInterval === "month"
-                ? "bg-background shadow-md text-foreground"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            Ежемесячно
-          </button>
-          <button
-            onClick={() => setBillingInterval("half_year")}
-            className={cn(
-              "px-6 py-2.5 rounded-full text-sm font-semibold transition-all duration-300",
-              billingInterval === "half_year"
-                ? "bg-background shadow-md text-foreground"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            6Месяцев
-          </button>
-          <button
-            onClick={() => setBillingInterval("year")}
-            className={cn(
-              "px-6 py-2.5 rounded-full text-sm font-semibold transition-all duration-300 relative",
-              billingInterval === "year"
-                ? "bg-background shadow-md text-foreground"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            Годовой
-            <span className="absolute -top-3 -right-3 bg-gradient-to-r from-emerald-500 to-green-600 text-[10px] font-bold text-white px-2 py-0.5 rounded-full shadow-sm animate-pulse">
-              Выгодно
-            </span>
-          </button>
-        </div> */}
-        <div className="flex sm:inline-flex  w-full md:max-w-[360px]  mx-auto items-center p-1 sm:p-1.5 bg-muted/50 rounded-full border shadow-sm">
+        <div className="flex sm:inline-flex w-full md:max-w-[360px] mx-auto items-center p-1 sm:p-1.5 bg-muted/50 rounded-full border shadow-sm">
           <button
             onClick={() => setBillingInterval("month")}
             className={cn(
               "flex-1 sm:flex-none px-1 sm:px-6 py-2 sm:py-2.5 rounded-full text-[11px] sm:text-sm font-semibold transition-all duration-300 whitespace-nowrap",
               billingInterval === "month"
-                ? "bg-primary shadow-md text-foreground"
+                ? "bg-primary shadow-md text-primary-foreground"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
@@ -319,7 +248,7 @@ const PricingContent = () => {
             className={cn(
               "flex-1 sm:flex-none px-1 sm:px-6 py-2 sm:py-2.5 rounded-full text-[11px] sm:text-sm font-semibold transition-all duration-300 whitespace-nowrap",
               billingInterval === "half_year"
-                ? "bg-primary shadow-md text-foreground"
+                ? "bg-primary shadow-md text-primary-foreground"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
@@ -332,7 +261,7 @@ const PricingContent = () => {
             className={cn(
               "flex-1 sm:flex-none px-1 sm:px-6 py-2 sm:py-2.5 rounded-full text-[11px] sm:text-sm font-semibold transition-all duration-300 relative whitespace-nowrap",
               billingInterval === "year"
-                ? "bg-primary shadow-md text-foreground"
+                ? "bg-primary shadow-md text-primary-foreground"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
@@ -372,13 +301,11 @@ const PricingContent = () => {
               // 🚨 ROBUST FIX: Parse Rich Feature Objects AND Fallback to Flat
               const displayFeatures = Object.entries(plan.features || {})
                 .map(([key, rawValue]) => {
-                  // Determine if the value from the DB is our new Rich Object or a legacy flat primitive
                   const isRichObject =
                     rawValue &&
                     typeof rawValue === "object" &&
                     !Array.isArray(rawValue);
 
-                  // Extract the actual value and custom label
                   const actualValue = isRichObject
                     ? (rawValue as any).value
                     : rawValue;
@@ -393,7 +320,6 @@ const PricingContent = () => {
                   if (typeof actualValue === "boolean") {
                     included = actualValue;
                   } else if (typeof actualValue === "number") {
-                    // Treat 0 as excluded for limits
                     included = actualValue > 0;
                     displayLabel = `${actualLabel}: ${actualValue > 0 ? actualValue : "Нет"}`;
                   } else {
@@ -403,7 +329,6 @@ const PricingContent = () => {
 
                   return { label: displayLabel, included };
                 })
-                // Sort: Included items (true) bubble to the top
                 .sort((a, b) => Number(b.included) - Number(a.included));
 
               return (
@@ -520,7 +445,7 @@ const PricingContent = () => {
                         isCurrentPlan
                           ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 cursor-default"
                           : isPremium
-                            ? "bg-primary hover:bg-primary/90 hover:shadow-md hover:-translate-y-0.5"
+                            ? "bg-primary text-primary-foreground hover:bg-primary/90 hover:shadow-md hover:-translate-y-0.5"
                             : "bg-secondary text-secondary-foreground hover:bg-secondary/80 hover:shadow-md hover:-translate-y-0.5",
                       )}
                       onClick={() => handleSubscribeClick(plan)}
@@ -545,92 +470,6 @@ const PricingContent = () => {
             })
         )}
       </div>
-
-      {/* PAYMENT METHOD DIALOG */}
-      <Dialog open={isPaymentModalOpen} onOpenChange={setIsPaymentModalOpen}>
-        <DialogContent className="sm:max-w-md rounded-2xl">
-          <DialogHeader className="pb-4 border-b">
-            <DialogTitle className="text-xl font-bold">
-              Выберите способ оплаты
-            </DialogTitle>
-            <DialogDescription className="pt-2 text-base text-foreground/80">
-              Тариф:{" "}
-              <span className="font-bold text-foreground">
-                {selectedPlan?.name}
-              </span>{" "}
-              <br />К оплате:{" "}
-              <span className="font-bold text-foreground text-lg">
-                {selectedPrice.toLocaleString("ru-RU")} ₽
-              </span>
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="grid grid-cols-1 gap-3 py-2">
-            <Button
-              variant="outline"
-              className={cn(
-                "h-auto py-4 px-5 flex justify-start items-center gap-4 text-left rounded-xl transition-all",
-                isWalletSufficient
-                  ? "hover:border-primary hover:bg-primary/5 cursor-pointer shadow-sm"
-                  : "opacity-60 cursor-not-allowed bg-muted/30",
-              )}
-              onClick={() => executePayment("wallet")}
-              disabled={isProcessingPayment || !isWalletSufficient}
-            >
-              {isProcessingPayment && isWalletSufficient ? (
-                <Loader2 className="h-7 w-7 animate-spin text-primary shrink-0" />
-              ) : (
-                <div
-                  className={cn(
-                    "p-2.5 rounded-full shrink-0",
-                    isWalletSufficient
-                      ? "bg-blue-100 text-blue-600"
-                      : "bg-muted text-muted-foreground",
-                  )}
-                >
-                  <Wallet className="h-6 w-6" />
-                </div>
-              )}
-              <div className="flex flex-col items-start overflow-hidden">
-                <span
-                  className={cn(
-                    "font-bold text-base",
-                    !isWalletSufficient && "text-muted-foreground",
-                  )}
-                >
-                  Внутренний кошелек
-                </span>
-                <span className="text-sm text-muted-foreground font-medium truncate mt-0.5">
-                  {isWalletSufficient
-                    ? `Доступно: ${walletBalance.toLocaleString("ru-RU")} ₽`
-                    : `Недостаточно: ${walletBalance.toLocaleString("ru-RU")} ₽`}
-                </span>
-              </div>
-            </Button>
-
-            <Button
-              variant="outline"
-              className="h-auto py-4 px-5 flex justify-start items-center gap-4 text-left rounded-xl transition-all hover:border-primary hover:bg-primary/5 shadow-sm"
-              onClick={() => executePayment("card")}
-              disabled={isProcessingPayment}
-            >
-              {isProcessingPayment && !isWalletSufficient ? (
-                <Loader2 className="h-7 w-7 animate-spin text-primary shrink-0" />
-              ) : (
-                <div className="bg-emerald-100 p-2.5 rounded-full text-emerald-600 shrink-0">
-                  <CreditCard className="h-6 w-6" />
-                </div>
-              )}
-              <div className="flex flex-col items-start overflow-hidden">
-                <span className="font-bold text-base">Банковская карта</span>
-                <span className="text-sm text-muted-foreground font-medium truncate mt-0.5">
-                  Tinkoff, Сбербанк, МИР, Visa
-                </span>
-              </div>
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };
