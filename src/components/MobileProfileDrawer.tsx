@@ -54,6 +54,7 @@ export default function MobileProfileDrawer({
   const [supportType, setSupportType] = useState("BUG");
   const [problemDescription, setProblemDescription] = useState("");
   const [problemImage, setProblemImage] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const supportFileRef = useRef<HTMLInputElement>(null);
 
   // Prevent background scrolling when either drawer/sheet is open
@@ -68,17 +69,30 @@ export default function MobileProfileDrawer({
     };
   }, [isOpen, showSupportSheet]);
 
-  // --- MUTATION ---
+  useEffect(() => {
+    if (!problemImage) {
+      setPreviewUrl(null);
+      return;
+    }
+    const objectUrl = URL.createObjectURL(problemImage);
+    setPreviewUrl(objectUrl);
+
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [problemImage]);
+
   const { mutate: submitTicket, isPending: isSubmittingTicket } =
     useCreateSupportTicket(
       () => {
+        // Очистка формы при успехе
         setShowSupportSheet(false);
         setProblemDescription("");
         setProblemImage(null);
+        setSupportType("BUG");
+
         toast({
+          variant: "success",
           title: "Отправлено",
           description: "Ваше сообщение успешно отправлено в службу поддержки.",
-          variant: "success" as any,
         });
       },
       (error: any) => {
@@ -90,18 +104,7 @@ export default function MobileProfileDrawer({
       },
     );
 
-  const handleNavigation = (path: string) => {
-    onClose();
-    setTimeout(() => {
-      router.push(path);
-    }, 200); // slight delay to allow the drawer to close visually first
-  };
-
-  const handleLogout = async () => {
-    onClose();
-    await signOut({ callbackUrl: "/login" });
-  };
-
+  // --- ОБРАБОТЧИКИ ---
   const handleSubmitSupport = () => {
     if (!problemDescription.trim()) {
       toast({
@@ -112,13 +115,14 @@ export default function MobileProfileDrawer({
       return;
     }
 
-    const rawMobile = (session?.user as any)?.mobile;
-    if (!rawMobile) {
+    const rawMobile =
+      (session?.user as any)?.mobile || (session?.user as any)?.phone;
+    if (!rawMobile && !session?.user) {
       toast({
+        variant: "success",
         title: "Внимание",
         description:
           "Укажите контактные данные в тексте сообщения, так как вы не авторизованы.",
-        variant: "default",
       });
     }
 
@@ -128,6 +132,26 @@ export default function MobileProfileDrawer({
       description: problemDescription,
       proof: problemImage,
     });
+  };
+
+  const handleRemoveImage = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setProblemImage(null);
+    if (supportFileRef.current) {
+      supportFileRef.current.value = "";
+    }
+  };
+
+  const handleNavigation = (path: string) => {
+    onClose();
+    setTimeout(() => {
+      router.push(path);
+    }, 200); // slight delay to allow the drawer to close visually first
+  };
+
+  const handleLogout = async () => {
+    onClose();
+    await signOut({ callbackUrl: "/login" });
   };
 
   const user = session?.user as any;
@@ -402,7 +426,7 @@ export default function MobileProfileDrawer({
         )}
       </AnimatePresence>
 
-      {/* 2. SUPPORT SHEET (BOTTOM TO TOP) */}
+      {/* SUPPORT SHEET (BOTTOM TO TOP) */}
       <AnimatePresence>
         {showSupportSheet && (
           <>
@@ -411,7 +435,7 @@ export default function MobileProfileDrawer({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 bg-black/60 z-[70] backdrop-blur-sm touch-none"
-              onClick={() => setShowSupportSheet(false)}
+              onClick={() => !isSubmittingTicket && setShowSupportSheet(false)}
             />
 
             <motion.div
@@ -420,7 +444,7 @@ export default function MobileProfileDrawer({
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 25, stiffness: 300 }}
               className="fixed bottom-0 left-0 right-0 bg-background z-[80] rounded-t-3xl p-6 max-h-[90vh] overflow-y-auto pb-[calc(1.5rem+env(safe-area-inset-bottom))]"
-              drag="y"
+              drag={!isSubmittingTicket ? "y" : false}
               dragConstraints={{ top: 0, bottom: 0 }}
               dragElastic={0.2}
               onDragEnd={(e, { offset, velocity }) => {
@@ -435,6 +459,7 @@ export default function MobileProfileDrawer({
                 <Button
                   variant="ghost"
                   size="icon"
+                  disabled={isSubmittingTicket}
                   onClick={() => setShowSupportSheet(false)}
                   className="rounded-full bg-muted/50 h-8 w-8"
                 >
@@ -465,44 +490,65 @@ export default function MobileProfileDrawer({
 
               {/* Textarea */}
               <div className="mb-4">
-                <label className="block text-xs font-bold text-muted-foreground mb-2">
+                <label className="block text-xs font-bold text-muted-foreground mb-2 tracking-wider">
                   ОПИСАНИЕ ПРОБЛЕМЫ
                 </label>
                 <textarea
                   value={problemDescription}
                   onChange={(e) => setProblemDescription(e.target.value)}
                   placeholder="Подробно опишите, что случилось..."
-                  className="w-full p-4 rounded-xl border border-border bg-muted/20 min-h-[120px] outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors"
+                  className="w-full p-4 rounded-xl border border-border bg-muted/20 min-h-[120px] outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors resize-none text-[15px]"
                 />
               </div>
 
-              {/* Upload */}
+              {/* Upload & Preview */}
               <div className="mb-6">
-                <label className="block text-xs font-bold text-muted-foreground mb-2">
+                <label className="block text-xs font-bold text-muted-foreground mb-2 tracking-wider">
                   СКРИНШОТ (НЕОБЯЗАТЕЛЬНО)
                 </label>
-                <div
-                  onClick={() => supportFileRef.current?.click()}
-                  className="border-2 border-dashed border-border rounded-xl p-4 flex items-center justify-center cursor-pointer hover:bg-muted/30 transition-colors"
-                >
-                  {problemImage ? (
-                    <div className="flex items-center text-primary font-medium">
-                      <Check className="w-5 h-5 mr-2" />
-                      {problemImage.name}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center text-muted-foreground">
-                      <Upload className="w-6 h-6 mb-1" />
-                      <span className="text-xs">Нажмите, чтобы загрузить</span>
-                    </div>
-                  )}
-                </div>
+
+                {problemImage && previewUrl ? (
+                  // --- БЛОК С ПРЕВЬЮ И КНОПКОЙ УДАЛЕНИЯ ---
+                  <div className="relative border border-border rounded-xl overflow-hidden h-40 bg-muted/30 group">
+                    <img
+                      src={previewUrl}
+                      alt="Превью"
+                      className="w-full h-full object-contain bg-black/5"
+                    />
+                    <button
+                      type="button"
+                      disabled={isSubmittingTicket}
+                      onClick={handleRemoveImage}
+                      className="absolute top-2 right-2 bg-black/60 hover:bg-black/80 text-white p-2 rounded-full transition-colors backdrop-blur-md"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  // --- ПУСТОЙ БЛОК ДЛЯ ЗАГРУЗКИ ---
+                  <div
+                    onClick={() => supportFileRef.current?.click()}
+                    className="border-2 border-dashed border-border rounded-xl h-40 flex flex-col items-center justify-center cursor-pointer hover:bg-muted/30 transition-colors"
+                  >
+                    <Upload className="w-8 h-8 mb-2 text-muted-foreground opacity-70" />
+                    <span className="text-sm font-medium text-foreground">
+                      Нажмите, чтобы загрузить
+                    </span>
+                    <span className="text-xs text-muted-foreground mt-1">
+                      JPEG, PNG или WEBP
+                    </span>
+                  </div>
+                )}
+
                 <input
                   type="file"
+                  accept="image/jpeg,image/png,image/webp"
                   ref={supportFileRef}
                   className="hidden"
                   onChange={(e) => {
-                    if (e.target.files) setProblemImage(e.target.files[0]);
+                    if (e.target.files && e.target.files.length > 0) {
+                      setProblemImage(e.target.files[0]);
+                    }
                   }}
                 />
               </div>
@@ -510,10 +556,13 @@ export default function MobileProfileDrawer({
               <Button
                 onClick={handleSubmitSupport}
                 disabled={isSubmittingTicket}
-                className="w-full py-6 font-bold rounded-xl text-base"
+                className="w-full py-6 font-bold rounded-xl text-base shadow-md active:scale-[0.98] transition-transform"
               >
                 {isSubmittingTicket ? (
-                  <Loader2 className="animate-spin h-5 w-5" />
+                  <>
+                    <Loader2 className="animate-spin h-5 w-5 mr-2" />
+                    Отправка...
+                  </>
                 ) : (
                   "Отправить запрос"
                 )}

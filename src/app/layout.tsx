@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Providers } from "@/components/providers/Providers";
 import { getSiteSettings } from "@/services/settings";
+import { AnalyticsTracker } from "@/components/AnalyticsTracker";
 
 // --- VIEWPORT CONFIGURATION (Next.js 14+ Standard) ---
 // This strict configuration is what prevents the app from zooming
@@ -157,7 +158,10 @@ export default async function RootLayout({ children }: RootLayoutProps) {
       </head>
       {/* NATIVE UX: Added select-none to base body, overridden inside specific components */}
       <body className="antialiased flex flex-col min-h-screen font-sans">
-        <Providers initialSettings={settings}>{children}</Providers>
+        <Providers initialSettings={settings}>
+          <AnalyticsTracker />
+          {children}
+        </Providers>
       </body>
     </html>
   );

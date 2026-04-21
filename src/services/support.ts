@@ -19,6 +19,7 @@ const createSupportTicket = async ({
   formData.append("support_type", support_type);
   formData.append("description", description);
 
+  // Важно: бэкенд ожидает upload.single("proof")
   if (proof) {
     formData.append("proof", proof);
   }
