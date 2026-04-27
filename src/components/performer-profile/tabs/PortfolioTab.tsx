@@ -363,10 +363,14 @@ export default function PortfolioTab({ profile, isOwnProfile }: any) {
 
   // Role Checks
   const isAudioHeavy = profile.roles?.some((r: string) =>
-    ["dj", "вокал", "певец"].some((v) => r.toLowerCase().includes(v)),
+    ["dj", "вокал", "певец", "Диджеи", "Dj", "диджей"].some((v) =>
+      r.toLowerCase().includes(v),
+    ),
   );
   const isChef = profile.roles?.some((r: string) =>
-    ["повар", "кейтеринг"].some((v) => r.toLowerCase().includes(v)),
+    ["повар", "chef", "Chef", "Повар", "catering", "кейтеринг"].some((v) =>
+      r.toLowerCase().includes(v),
+    ),
   );
 
   return (
