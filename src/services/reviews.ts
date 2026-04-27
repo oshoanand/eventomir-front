@@ -8,6 +8,8 @@ import { apiRequest } from "@/utils/api-client";
 export interface ReviewAuthor {
   id: string;
   name: string;
+  image?: string; // Standard NextAuth/Prisma field
+  profilePicture?: string;
   profile_picture?: string;
   role: string;
 }
@@ -17,13 +19,28 @@ export interface Review {
   rating: number;
   comment: string;
   reply?: string;
+
+  // Flexible mappings to support both camelCase and snake_case based on your backend ORM
+  replyCreatedAt?: string;
   reply_created_at?: string;
-  created_at: string;
+  replyUpdatedAt?: string;
+  reply_updated_at?: string;
+
+  createdAt?: string;
+  created_at?: string;
+  updatedAt?: string;
   updated_at?: string;
-  author_id: string;
-  target_id: string;
+
+  authorId?: string;
+  author_id?: string;
+  targetId?: string;
+  target_id?: string;
+
   author?: ReviewAuthor;
+  user?: ReviewAuthor; // Fallback in case backend populates relation as 'user'
 }
+
+// --- Payload Interfaces ---
 
 export interface CreateReviewPayload {
   targetId: string;
@@ -47,13 +64,29 @@ export interface DeleteReplyPayload {
   targetId: string; // Needed for cache invalidation
 }
 
+export interface EditReviewPayload {
+  reviewId: string;
+  rating: number;
+  comment: string;
+  targetId: string; // Needed for cache invalidation
+}
+
 // --- API Functions (Internal) ---
 
 const fetchReviewsForTargetFn = async (userId: string): Promise<Review[]> => {
-  return await apiRequest<Review[]>({
+  const response = await apiRequest<any>({
     method: "get",
     url: `/api/reviews/target/${userId}`,
   });
+
+  // 🚨 CRITICAL FIX: Ensure an array is ALWAYS returned.
+  // This prevents UI crashes if the backend wraps the response in { data: [...] } or { reviews: [...] }
+  if (Array.isArray(response)) return response;
+  if (response?.reviews && Array.isArray(response.reviews))
+    return response.reviews;
+  if (response?.data && Array.isArray(response.data)) return response.data;
+
+  return [];
 };
 
 const createReviewFn = async (data: CreateReviewPayload): Promise<Review> => {
@@ -93,6 +126,18 @@ const deleteReplyFn = async ({
   });
 };
 
+const editReviewFn = async ({
+  reviewId,
+  rating,
+  comment,
+}: EditReviewPayload): Promise<Review> => {
+  return await apiRequest<Review>({
+    method: "patch",
+    url: `/api/reviews/${reviewId}`,
+    data: { rating, comment },
+  });
+};
+
 // --- React Query Hooks (Exported) ---
 
 /**
@@ -102,7 +147,7 @@ export const useReviews = (targetId: string | null) => {
   return useQuery({
     queryKey: ["reviews", "target", targetId],
     queryFn: () => fetchReviewsForTargetFn(targetId!),
-    enabled: !!targetId, // Only run if a targetId is provided
+    enabled: !!targetId, // Only run if a valid targetId is provided
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
   });
 };
@@ -116,7 +161,7 @@ export const useSubmitReview = () => {
   return useMutation({
     mutationFn: createReviewFn,
     onSuccess: (_, variables) => {
-      // Instantly invalidate the reviews cache for this specific target
+      // Instantly invalidate the reviews cache to refresh the UI
       queryClient.invalidateQueries({
         queryKey: ["reviews", "target", variables.targetId],
       });
@@ -133,7 +178,6 @@ export const useReplyToReview = () => {
   return useMutation({
     mutationFn: replyToReviewFn,
     onSuccess: (_, variables) => {
-      // Instantly invalidate the reviews cache for this specific target
       queryClient.invalidateQueries({
         queryKey: ["reviews", "target", variables.targetId],
       });
@@ -150,7 +194,6 @@ export const useDeleteReview = () => {
   return useMutation({
     mutationFn: deleteReviewFn,
     onSuccess: (_, variables) => {
-      // Instantly invalidate the reviews cache for this specific target
       queryClient.invalidateQueries({
         queryKey: ["reviews", "target", variables.targetId],
       });
@@ -158,28 +201,6 @@ export const useDeleteReview = () => {
   });
 };
 
-// Add this interface to your existing interfaces
-export interface EditReviewPayload {
-  reviewId: string;
-  rating: number;
-  comment: string;
-  targetId: string; // Needed for cache invalidation
-}
-
-// Add this API function
-const editReviewFn = async ({
-  reviewId,
-  rating,
-  comment,
-}: EditReviewPayload): Promise<Review> => {
-  return await apiRequest<Review>({
-    method: "patch",
-    url: `/api/reviews/${reviewId}`,
-    data: { rating, comment },
-  });
-};
-
-// Add this React Query Hook at the bottom
 /**
  * Edit an existing review (Only for the author of the review).
  */
@@ -189,7 +210,6 @@ export const useEditReview = () => {
   return useMutation({
     mutationFn: editReviewFn,
     onSuccess: (_, variables) => {
-      // Instantly invalidate the reviews cache so the UI updates
       queryClient.invalidateQueries({
         queryKey: ["reviews", "target", variables.targetId],
       });
@@ -206,7 +226,6 @@ export const useDeleteReplyToReview = () => {
   return useMutation({
     mutationFn: deleteReplyFn,
     onSuccess: (_, variables) => {
-      // Instantly invalidate the reviews cache
       queryClient.invalidateQueries({
         queryKey: ["reviews", "target", variables.targetId],
       });

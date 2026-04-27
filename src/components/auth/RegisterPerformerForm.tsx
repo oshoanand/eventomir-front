@@ -35,41 +35,6 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
-// const formSchema = z
-//   .object({
-//     accountType: z.enum(
-//       ["selfEmployed", "individualEntrepreneur", "legalEntity", "agency"],
-//       { required_error: "Выберите тип аккаунта." },
-//     ),
-//     email: z.string().email("Введите корректный email."),
-//     password: z.string().min(8, "Минимум 8 символов."),
-//     name: z.string().min(2, "Минимум 2 символа."),
-//     companyName: z.string().optional(),
-//     phone: z
-//       .string()
-//       .regex(
-//         /^\+7 \d{3} \d{3} \d{2}-\d{2}$/,
-//         "Введите полный номер телефона (10 цифр).",
-//       ),
-//     inn: z.string().optional(),
-//     city: z.string().min(2, "Выберите город."),
-//     agreement: z.boolean().refine((val) => val === true, {
-//       message: "Необходимо согласиться с условиями.",
-//     }),
-//   })
-//   .refine(
-//     (data) => {
-//       if (["legalEntity", "agency"].includes(data.accountType)) {
-//         return !!data.inn && /^\d{10}$|^\d{12}$/.test(data.inn);
-//       }
-//       return true;
-//     },
-//     {
-//       message: "Для юр. лица или агентства ИНН является обязательным.",
-//       path: ["inn"],
-//     },
-//   );
-
 const formSchema = z
   .object({
     accountType: z.enum(

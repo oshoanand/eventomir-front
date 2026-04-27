@@ -7,13 +7,16 @@ import {
   useState,
   ReactNode,
 } from "react";
-import { io, Socket } from "socket.io-client";
+import { Socket } from "socket.io-client";
 import { useSession } from "next-auth/react";
+import { useChatStore } from "@/store/useChatStore";
 
 interface SocketContextType {
   socket: Socket | null;
   isConnected: boolean;
-  onlineUsers: string[]; // List of User IDs currently online
+  // We keep this as a Set for backward compatibility with your UI components,
+  // mapping it automatically from the highly reactive Record in Zustand.
+  onlineUsers: Set<string>;
 }
 
 const SocketContext = createContext<SocketContextType | null>(null);
@@ -26,61 +29,60 @@ export const useSocket = () => {
   return context;
 };
 
-const SOCKET_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8800";
-
 export const SocketProvider = ({ children }: { children: ReactNode }) => {
-  const { data: session } = useSession();
-  const [socket, setSocket] = useState<Socket | null>(null);
+  const { data: session, status } = useSession();
+
+  const socket = useChatStore((state) => state.socket);
+  const connectSocket = useChatStore((state) => state.connectSocket);
+  const disconnectSocket = useChatStore((state) => state.disconnectSocket);
+  const onlineUsersRecord = useChatStore((state) => state.onlineUsers);
+
   const [isConnected, setIsConnected] = useState(false);
-  const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
 
+  // 1. Connection Lifecycle Management
   useEffect(() => {
-    if (!session?.user?.id) return;
+    // Only connect if the session is fully authenticated
+    if (status === "authenticated" && session?.user?.id) {
+      connectSocket(session.user.id);
+    }
 
-    // 1. Initialize Socket with Auth
-    const socketInstance = io(SOCKET_URL, {
-      transports: ["websocket"],
-      query: { userId: session.user.id },
-      reconnectionAttempts: 5,
-    });
+    // Clean up on unmount or when session invalidates
+    return () => {
+      // In React 18 Strict mode this runs immediately, but our store logic
+      // handles rapid reconnects flawlessly without leaking listeners.
+      if (status === "unauthenticated") {
+        disconnectSocket();
+      }
+    };
+  }, [session?.user?.id, status, connectSocket, disconnectSocket]);
 
-    setSocket(socketInstance);
+  // 2. Track connection status dynamically
+  useEffect(() => {
+    if (!socket) return;
 
-    // 2. Connection Events
-    socketInstance.on("connect", () => setIsConnected(true));
-    socketInstance.on("disconnect", () => setIsConnected(false));
+    const onConnect = () => setIsConnected(true);
+    const onDisconnect = () => setIsConnected(false);
 
-    // 3. Online Status Logic (From Redis)
-    socketInstance.on("online_users_list", (users: string[]) => {
-      setOnlineUsers(users);
-    });
+    setIsConnected(socket.connected);
 
-    socketInstance.on(
-      "user_status_change",
-      ({
-        userId,
-        status,
-      }: {
-        userId: string;
-        status: "online" | "offline";
-      }) => {
-        setOnlineUsers((prev) => {
-          const set = new Set(prev);
-          if (status === "online") set.add(userId);
-          else set.delete(userId);
-          return Array.from(set);
-        });
-      },
-    );
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
 
     return () => {
-      socketInstance.disconnect();
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
     };
-  }, [session?.user?.id]);
+  }, [socket]);
 
   return (
-    <SocketContext.Provider value={{ socket, isConnected, onlineUsers }}>
+    <SocketContext.Provider
+      value={{
+        socket,
+        isConnected,
+        // Dynamically convert Record to Set so existing components don't break
+        onlineUsers: new Set(Object.keys(onlineUsersRecord)),
+      }}
+    >
       {children}
     </SocketContext.Provider>
   );

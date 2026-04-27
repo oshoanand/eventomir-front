@@ -79,7 +79,7 @@ const CompareButton: React.FC<CompareButtonProps> = ({
       variant={isInCompare ? "secondary" : "outline"} // Change variant based on state // Изменяем вариант в зависимости от состояния
       size="icon" // Icon button size // Размер иконки кнопки
       onClick={handleToggleCompare}
-      className={cn("h-8 w-8", className)} // Reduce button size, apply custom class // Уменьшаем размер кнопки, применяем кастомный класс
+      className={cn("h-6 w-6", className)} // Reduce button size, apply custom class // Уменьшаем размер кнопки, применяем кастомный класс
       title={isInCompare ? "Удалить из сравнения" : "Добавить к сравнению"} // Tooltip text // Текст всплывающей подсказки
     >
       <GitCompare

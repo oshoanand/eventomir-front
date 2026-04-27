@@ -87,7 +87,7 @@ export const getEvents = async (): Promise<Event[]> => {
     return response as Event[];
   } catch (error) {
     console.error("Error fetching events:", error);
-    return []; // Return an empty array as a safe fallback
+    return [];
   }
 };
 

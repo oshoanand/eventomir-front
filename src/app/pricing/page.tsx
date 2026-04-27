@@ -25,7 +25,6 @@ import {
   BillingInterval,
   UserSubscription,
 } from "@/services/payment";
-import { apiRequest } from "@/utils/api-client";
 
 // --- 1. Skeletons ---
 const PlanSkeleton = () => (
@@ -99,7 +98,7 @@ const PricingContent = () => {
         title: "Счет успешно сформирован!",
         description:
           "Мы отправили счет на вашу электронную почту. Подписка будет активирована после поступления средств.",
-        variant: "default",
+        variant: "success",
       });
       router.replace("/pricing");
     }
@@ -109,7 +108,7 @@ const PricingContent = () => {
       toast({
         title: "Счет успешно сформирован!",
         description: "Инструкции по оплате отправлены на ваш Email.",
-        variant: "default",
+        variant: "success",
       });
       router.replace("/pricing");
     } else if (b2bPaymentStatus === "failed") {

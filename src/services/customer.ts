@@ -27,7 +27,9 @@ export interface CustomerProfile {
   email: string;
   phone: string;
   city: string;
+  address?: string;
   profilePicture: string;
+  backgroundPicture?: string;
   role: string;
   walletBalance: number;
   subscription?: UserSubscription | null;
@@ -48,10 +50,16 @@ export interface OrderHistoryItem {
 export type UpdateProfileParams = Partial<
   Omit<
     CustomerProfile,
-    "id" | "email" | "role" | "walletBalance" | "subscription"
+    | "id"
+    | "email"
+    | "role"
+    | "walletBalance"
+    | "subscription"
+    | "unreadNotifications"
   >
 > & {
   profilePictureFile?: File | null;
+  backgroundPictureFile?: File | null; // 🚨 NEW: Support for cover image upload
 };
 
 // ==========================================
@@ -71,14 +79,18 @@ const updateProfile = async (
   const formData = new FormData();
 
   // 🚨 FIX: Safely append text fields by checking for undefined.
-  // This allows users to successfully send empty strings to clear out optional fields like 'city' or 'phone'.
+  // This allows users to successfully send empty strings to clear out optional fields.
   if (data.name !== undefined) formData.append("name", data.name);
   if (data.phone !== undefined) formData.append("phone", data.phone);
   if (data.city !== undefined) formData.append("city", data.city);
+  if (data.address !== undefined) formData.append("address", data.address);
 
-  // Safely append file
+  // 🚨 FIX: Match the exact field names defined in your backend multer config
   if (data.profilePictureFile) {
-    formData.append("profile_image", data.profilePictureFile);
+    formData.append("profilePictureFile", data.profilePictureFile);
+  }
+  if (data.backgroundPictureFile) {
+    formData.append("backgroundPictureFile", data.backgroundPictureFile);
   }
 
   return await apiRequest<CustomerProfile>({

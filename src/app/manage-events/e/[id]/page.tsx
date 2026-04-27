@@ -1,5 +1,4 @@
 import { Metadata, ResolvingMetadata } from "next";
-import { prisma } from "@/utils/prisma";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { notFound } from "next/navigation";
@@ -11,18 +10,34 @@ type Props = {
   params: Promise<{ id: string }>;
 };
 
+// --- SERVER-SIDE DATA FETCHER ---
+// We use native fetch here instead of apiRequest so it works perfectly
+// inside Next.js Server Components and utilizes Next.js caching.
+async function fetchEvent(id: string) {
+  const baseUrl =
+    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8800";
+  try {
+    const res = await fetch(`${baseUrl}/api/events/${id}`, {
+      // Revalidate cache every 60 seconds
+      next: { revalidate: 60 },
+    });
+
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (error) {
+    console.error("Failed to fetch event data:", error);
+    return null;
+  }
+}
 // --- DYNAMIC OPEN GRAPH METADATA ---
 export async function generateMetadata(
   { params }: Props,
   parent: ResolvingMetadata,
 ): Promise<Metadata> {
-  // Await the params
   const { id: eventId } = await params;
 
-  const event = await prisma.event.findUnique({
-    where: { id: eventId },
-    include: { host: { select: { name: true } } },
-  });
+  // Replaced Prisma call with backend API fetch
+  const event = await fetchEvent(eventId);
 
   if (!event) {
     return { title: "Событие не найдено | Eventomir" };
@@ -72,13 +87,10 @@ export async function generateMetadata(
 
 // --- MAIN PAGE COMPONENT ---
 export default async function PublicEventPage({ params }: Props) {
-  // Await the params
   const { id } = await params;
 
-  const event = await prisma.event.findUnique({
-    where: { id: id },
-    include: { host: { select: { name: true, profile_picture: true } } },
-  });
+  // Replaced Prisma call with backend API fetch
+  const event = await fetchEvent(id);
 
   if (!event || event.status === "draft") {
     notFound();

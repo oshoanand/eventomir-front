@@ -1,11 +1,12 @@
 import { create } from "zustand";
 import { io, Socket } from "socket.io-client";
-import { apiRequest } from "@/utils/api-client"; // <-- Imported your custom API client
+import { apiRequest } from "@/utils/api-client";
 
 interface ChatState {
   socket: Socket | null;
   totalUnreadCount: number;
-  onlineUsers: Set<string>;
+  // Use Record for O(1) fast lookups and perfect React reactivity
+  onlineUsers: Record<string, boolean>;
   lastSeenMap: Record<string, string>;
   activeChatId: string | null;
   refreshTrigger: number;
@@ -38,29 +39,31 @@ const playNotificationSound = () => {
 export const useChatStore = create<ChatState>((set, get) => ({
   socket: null,
   totalUnreadCount: 0,
-  onlineUsers: new Set(),
+  onlineUsers: {}, // Initialized as empty Record
   lastSeenMap: {},
   activeChatId: null,
   refreshTrigger: 0,
   typingUser: null,
 
   connectSocket: (userId: string) => {
-    const currentSocket = get().socket;
-    if (currentSocket?.connected) return;
+    const existingSocket = get().socket;
 
-    if (currentSocket && !currentSocket.connected) {
-      currentSocket.connect();
-      return;
+    // If a socket already exists, ensure we don't create duplicates
+    if (existingSocket) {
+      if (existingSocket.connected) return;
+      existingSocket.disconnect(); // Clean up before recreating to avoid ghost listeners
     }
 
     const API_URL =
       process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8800";
 
-    // Initialize socket with authentication
+    // Initialize socket
     const socket = io(API_URL, {
       transports: ["websocket"],
       reconnection: true,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: Infinity, // Robust auto-reconnect
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
       auth: { userId }, // Send userId securely during handshake
     });
 
@@ -73,7 +76,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     // Receive the initial list of online users directly upon connection
     socket.on("online_users_list", (onlineArray: string[]) => {
-      set({ onlineUsers: new Set(onlineArray) });
+      const onlineMap: Record<string, boolean> = {};
+      onlineArray.forEach((id) => {
+        onlineMap[id] = true;
+      });
+      set({ onlineUsers: onlineMap });
     });
 
     socket.on("receive_message", (newMessage) => {
@@ -86,18 +93,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
       set((state) => ({ refreshTrigger: state.refreshTrigger + 1 }));
     });
 
-    // Triggered when the partner reads the messages you sent
     socket.on("messages_read_by_recipient", () => {
       set((state) => ({ refreshTrigger: state.refreshTrigger + 1 }));
     });
 
-    // Triggered to sync read status across multiple devices of the SAME user
     socket.on("read_status_synced", () => {
       get().syncUnreadCount();
       set((state) => ({ refreshTrigger: state.refreshTrigger + 1 }));
     });
 
-    // Triggered when a message is deleted
     socket.on("message_deleted", () => {
       set((state) => ({ refreshTrigger: state.refreshTrigger + 1 }));
     });
@@ -107,20 +111,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
       "user_status_changed",
       ({ userId: changedUserId, isOnline, lastSeen }) => {
         set((state) => {
-          const newSet = new Set(state.onlineUsers);
+          const newOnlineUsers = { ...state.onlineUsers };
           const newLastSeenMap = { ...state.lastSeenMap };
 
           if (isOnline) {
-            newSet.add(changedUserId);
-            // Optional: remove them from lastSeenMap if they are online
+            newOnlineUsers[changedUserId] = true;
             delete newLastSeenMap[changedUserId];
           } else {
-            newSet.delete(changedUserId);
+            delete newOnlineUsers[changedUserId];
             if (lastSeen) {
               newLastSeenMap[changedUserId] = lastSeen;
             }
           }
-          return { onlineUsers: newSet, lastSeenMap: newLastSeenMap };
+
+          return { onlineUsers: newOnlineUsers, lastSeenMap: newLastSeenMap };
         });
       },
     );
@@ -140,37 +144,42 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   disconnectSocket: () => {
     const { socket } = get();
-    if (socket) socket.disconnect();
+    if (socket) {
+      socket.removeAllListeners(); // Prevent memory leaks
+      socket.disconnect();
+    }
+
     set({
       socket: null,
       totalUnreadCount: 0,
-      onlineUsers: new Set(),
+      onlineUsers: {},
       lastSeenMap: {},
       typingUser: null,
       activeChatId: null,
     });
   },
 
-  // Bulk sync from REST API calls (e.g., when loading the chat list page)
   setOnlineStatusBulk: (
     onlineIds: string[],
     lastSeenData: Record<string, string>,
   ) => {
+    const onlineMap: Record<string, boolean> = {};
+    onlineIds.forEach((id) => {
+      onlineMap[id] = true;
+    });
+
     set({
-      onlineUsers: new Set(onlineIds),
+      onlineUsers: onlineMap,
       lastSeenMap: lastSeenData,
     });
   },
 
   syncUnreadCount: async () => {
     try {
-      // Replaced raw axios call with your custom apiRequest
-      // The apiClient automatically prepends the baseURL and handles the Bearer token
       const data = await apiRequest<{ totalUnread?: number; count?: number }>({
         method: "GET",
         url: "/api/chats/unread-count",
       });
-
       set({ totalUnreadCount: data.totalUnread || data.count || 0 });
     } catch (error) {
       console.error("❌ Error syncing unread count:", error);

@@ -2,13 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useSession } from "next-auth/react";
-import {
-  Loader2,
-  MessageSquare,
-  UserCircle,
-  Search,
-  ChevronLeft,
-} from "lucide-react";
+import { Loader2, MessageSquare, UserCircle, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useChatStore } from "@/store/useChatStore";
 import { formatDistanceToNow } from "date-fns";
@@ -137,16 +131,6 @@ export default function VisitorChatListScreen({
     <div className="flex flex-col w-full h-[100dvh] sm:h-[calc(100vh-12rem)] max-w-3xl mx-auto bg-background sm:border sm:border-border/50 sm:rounded-2xl sm:shadow-lg sm:my-8 overflow-hidden relative">
       {/* HEADER: shrink-0 keeps it from collapsing while the list scrolls */}
       <div className="p-4 border-b bg-background/95 backdrop-blur-md z-10 shrink-0 flex flex-col gap-4">
-        {/* <div className="flex items-center gap-3">
-          <button
-            onClick={() => router.back()}
-            className="md:hidden p-2 -ml-2 rounded-full hover:bg-muted active:bg-muted/80 transition-colors"
-          >
-            <ChevronLeft className="h-6 w-6" />
-          </button>
-          <h1 className="text-2xl font-bold text-foreground">Чаты</h1>
-        </div> */}
-
         <div className="relative group">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
           <input
@@ -172,7 +156,8 @@ export default function VisitorChatListScreen({
               <ChatListItem
                 key={chat.partnerId}
                 chat={chat}
-                isOnline={onlineUsers.has(chat.partnerId)}
+                // 🚨 FIX: Convert object key lookup to strict boolean
+                isOnline={!!onlineUsers[chat.partnerId]}
                 realTimeLastSeen={lastSeenMap[chat.partnerId]}
                 onClick={() => {
                   decreaseUnreadCount(chat.unreadCount);

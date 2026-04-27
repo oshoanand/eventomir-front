@@ -1,395 +1,236 @@
 "use client";
 
-import { useState } from "react";
-import { useSession } from "next-auth/react";
-import { useNotification } from "@/components/providers/NotificationProvider";
-// Import ChatDialog components to open chat from here
-import ChatDialog from "@/components/chat/ChatDialog";
-import { acceptBookingRequest, rejectBookingRequest } from "@/services/booking";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { useToast } from "@/hooks/use-toast";
-import Link from "next/link";
-import { cn } from "@/utils/utils";
-import { formatDistanceToNow } from "date-fns";
+import React from "react";
+import { format } from "date-fns";
 import { ru } from "date-fns/locale";
+import { useRouter } from "next/navigation";
+import { useNotification } from "@/components/providers/NotificationProvider";
+import { apiRequest } from "@/utils/api-client";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/utils/utils";
+import { NotificationItem } from "@/types/notification";
 import {
   Bell,
-  CheckCheck,
-  Briefcase,
-  Star,
-  UserCheck,
+  CheckCircle2,
   XCircle,
-  CalendarCheck,
-  DollarSign,
+  Clock,
+  CalendarDays,
+  CheckCheckIcon,
   Info,
-  Check,
-  X,
-  Loader2,
-  MessageCircle, // Import icon
+  MessageCircle,
 } from "lucide-react";
 
-// --- Helper: Get Icon by Notification Type ---
-const getNotificationIcon = (type?: string) => {
-  const safeType = type?.toLowerCase() || "info";
-
-  if (safeType.includes("booking"))
-    return <CalendarCheck className="h-5 w-5 text-blue-500" />;
-  if (safeType.includes("chat") || safeType.includes("message"))
-    return <MessageCircle className="h-5 w-5 text-emerald-500" />; // New Icon
-  // ... existing icons ...
-  if (safeType.includes("request"))
-    return <Briefcase className="h-5 w-5 text-purple-500" />;
-  if (safeType.includes("review"))
-    return <Star className="h-5 w-5 text-yellow-500" />;
-  if (safeType.includes("profile"))
-    return <UserCheck className="h-5 w-5 text-orange-500" />;
-  if (safeType.includes("payment"))
-    return <DollarSign className="h-5 w-5 text-green-500" />;
-  if (safeType.includes("error") || safeType.includes("reject"))
-    return <XCircle className="h-5 w-5 text-red-500" />;
-  if (safeType.includes("success") || safeType.includes("accept"))
-    return <CheckCheck className="h-5 w-5 text-green-500" />;
-
-  return <Bell className="h-5 w-5 text-gray-400" />;
+// Helper to determine the icon and color based on notification type
+const getNotificationVisuals = (type: string) => {
+  if (type === "CHAT_MESSAGE") {
+    return {
+      icon: MessageCircle,
+      color: "text-blue-500",
+      bg: "bg-blue-500/10",
+    };
+  }
+  if (type.includes("ACCEPTED") || type.includes("SUCCESS")) {
+    return {
+      icon: CheckCircle2,
+      color: "text-emerald-500",
+      bg: "bg-emerald-500/10",
+    };
+  }
+  if (
+    type.includes("REJECTED") ||
+    type.includes("CANCELLED") ||
+    type.includes("FAILED")
+  ) {
+    return {
+      icon: XCircle,
+      color: "text-destructive",
+      bg: "bg-destructive/10",
+    };
+  }
+  if (type.includes("NEW_BOOKING") || type.includes("PENDING")) {
+    return { icon: Clock, color: "text-amber-500", bg: "bg-amber-500/10" };
+  }
+  return { icon: Info, color: "text-primary", bg: "bg-primary/10" };
 };
 
-const NotificationsPage = () => {
-  const { data: session } = useSession();
-  const { notifications, markAsRead, markAllAsRead, unreadCount } =
+export default function NotificationsPage() {
+  const { notifications, unreadCount, markAsRead, markAllAsRead } =
     useNotification();
-  const { toast } = useToast();
+  const router = useRouter();
 
-  // --- Local State for Actions ---
-  const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
-  const [actionedIds, setActionedIds] = useState<Set<string>>(new Set());
+  // Handle clicking a specific notification
+  const handleNotificationClick = async (notif: NotificationItem) => {
+    // 1. Optimistically mark as read in UI (instant feedback)
+    if (!notif.isRead) {
+      markAsRead(notif.id.toString());
 
-  // --- New: Chat Dialog State ---
-  const [chatState, setChatState] = useState({
-    isOpen: false,
-    chatId: "",
-    partnerName: "",
-  });
-  const handleBookingAction = async (
-    notificationId: string,
-    bookingId: string,
-    action: "accept" | "reject",
-  ) => {
-    // 1. Security Check: Ensure user is logged in
-    if (!session?.user?.id) return;
-
-    // 2. Set Loading State (Shows spinner on the specific button)
-    setProcessingIds((prev) => new Set(prev).add(bookingId));
-
-    try {
-      // 3. Call the API based on action type
-      if (action === "accept") {
-        await acceptBookingRequest(bookingId, session.user.id);
-        toast({
-          title: "Заказ принят ✅",
-          description: "Клиент получил уведомление о подтверждении.",
-          className: "bg-green-50 border-green-200 text-green-900",
+      // 2. Tell backend to permanently mark as read
+      try {
+        await apiRequest({
+          method: "PATCH",
+          url: `/api/notifications/${notif.id}/read`,
         });
-      } else {
-        await rejectBookingRequest(bookingId, session.user.id);
-        toast({
-          title: "Заказ отклонен",
-          description: "Клиент уведомлен об отказе.",
-        });
+      } catch (err) {
+        console.error("Failed to mark as read in DB", err);
       }
+    }
 
-      // 4. Mark the notification as read automatically
-      // We do this because acting on the request essentially "reads" it.
-      await markAsRead(notificationId);
-
-      // 5. Update Local State to hide buttons
-      // This adds the ID to a set that hides the buttons and shows "Status updated" text
-      setActionedIds((prev) => new Set(prev).add(bookingId));
-    } catch (error) {
-      console.error("Booking action failed", error);
-      toast({
-        variant: "destructive",
-        title: "Ошибка",
-        description:
-          "Не удалось обновить статус бронирования. Попробуйте позже.",
-      });
-    } finally {
-      // 6. Cleanup: Remove the loading state regardless of success/error
-      setProcessingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(bookingId);
-        return next;
-      });
+    // 3. Route the user if a URL was provided in the notification payload (Deep Linking)
+    if (notif.data?.url) {
+      router.push(notif.data.url);
     }
   };
 
-  const handleMarkAsRead = async (notificationId: string) => {
-    await markAsRead(notificationId);
-  };
-
-  const handleMarkAllAsRead = async () => {
+  // Handle clicking "Read All"
+  const handleMarkAllRead = async () => {
+    markAllAsRead(); // Optimistic UI update
     try {
-      // 1. Call Context Method
-      // This updates the global state (sets unreadCount to 0 and marks all items as read)
-      await markAllAsRead();
-
-      // 2. Show Success Feedback
-      toast({
-        title: "Все прочитано ✅",
-        description: "Все уведомления отмечены как прочитанные.",
-        // Optional: Custom styling for a cleaner look
-        className: "bg-background border-border",
+      await apiRequest({
+        method: "PATCH",
+        url: `/api/notifications/read-all`,
       });
-    } catch (error) {
-      console.error("Failed to mark all as read:", error);
-
-      // 3. Error Handling
-      toast({
-        variant: "destructive",
-        title: "Ошибка",
-        description: "Не удалось обновить статус уведомлений.",
-      });
+    } catch (err) {
+      console.error("Failed to mark all as read", err);
     }
   };
-
-  const handleOpenChat = (notification: any) => {
-    if (notification.data?.chatId) {
-      setChatState({
-        isOpen: true,
-        chatId: notification.data.chatId,
-        partnerName: notification.data.senderName || "User",
-      });
-      handleMarkAsRead(notification.id); // Mark as read when opening
-    }
-  };
-
-  // --- Render ---
 
   return (
-    <>
-      <div className="container mx-auto py-10 max-w-3xl">
-        <Card>
-          <CardHeader className="flex flex-row justify-between items-center bg-muted/20 pb-4">
-            <div className="space-y-1">
-              <CardTitle className="flex items-center gap-2">
-                <Bell className="h-5 w-5" /> Уведомления
-                {unreadCount > 0 && (
-                  <span className="bg-destructive text-destructive-foreground text-xs px-2 py-0.5 rounded-full">
-                    {unreadCount}
-                  </span>
-                )}
-              </CardTitle>
-              <CardDescription>История событий и сообщения.</CardDescription>
+    <div className="min-h-screen bg-muted/10 pt-8 pb-20">
+      <div className="container max-w-3xl mx-auto px-4">
+        {/* --- Header Section --- */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
+          <div className="flex items-center gap-4">
+            <div className="h-14 w-14 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+              <Bell className="h-7 w-7 text-primary" />
             </div>
+            <div>
+              <h1 className="text-2xl md:text-3xl font-black tracking-tight text-foreground leading-tight">
+                Уведомления
+              </h1>
+              <p className="text-sm md:text-base text-muted-foreground font-medium mt-0.5">
+                {unreadCount > 0
+                  ? `У вас ${unreadCount} непрочитанных сообщений`
+                  : "Все уведомления прочитаны"}
+              </p>
+            </div>
+          </div>
 
-            {unreadCount > 0 && (
-              <Button variant="outline" size="sm" onClick={handleMarkAllAsRead}>
-                <CheckCheck className="mr-2 h-4 w-4" />
-                Прочитать все
-              </Button>
-            )}
-          </CardHeader>
+          {unreadCount > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleMarkAllRead}
+              className="rounded-xl shadow-sm hover:bg-muted font-bold text-xs h-10 px-4 transition-all shrink-0"
+            >
+              <CheckCheckIcon className="mr-2 h-4 w-4" /> Прочитать все
+            </Button>
+          )}
+        </div>
 
-          <CardContent className="p-0">
-            <ScrollArea className="h-[70vh]">
-              {notifications.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-                  <Info className="h-12 w-12 mb-4 opacity-20" />
-                  <p>У вас пока нет уведомлений.</p>
-                </div>
-              ) : (
-                <div className="divide-y divide-border">
-                  {notifications.map((notification) => {
-                    // --- Logic for Actions ---
-                    const bookingId = notification.data?.bookingId;
-                    const isBookingRequest =
-                      notification.type === "BOOKING_REQUEST" && !!bookingId;
-                    const isChatMessage = notification.type === "CHAT_MESSAGE"; // New Check
+        {/* --- Notifications List --- */}
+        <div className="bg-card rounded-[2rem] shadow-sm border border-border/50 p-4 md:p-6 min-h-[400px]">
+          {notifications.length === 0 ? (
+            // Empty State
+            <div className="flex flex-col items-center justify-center py-20 text-center h-full">
+              <div className="h-20 w-20 bg-muted/50 rounded-full flex items-center justify-center mb-6">
+                <Bell className="h-10 w-10 text-muted-foreground/40" />
+              </div>
+              <p className="text-xl font-bold text-foreground mb-2">
+                Уведомлений пока нет
+              </p>
+              <p className="text-muted-foreground max-w-sm">
+                Здесь будет отображаться история ваших заказов, системные
+                сообщения и обновления статусов.
+              </p>
+            </div>
+          ) : (
+            // Populated List
+            <div className="space-y-3">
+              {notifications.map((notif) => {
+                const {
+                  icon: Icon,
+                  color,
+                  bg,
+                } = getNotificationVisuals(notif.type);
 
-                    // ... (Keep existing loading/actioned logic) ...
-                    const isProcessing =
-                      !!bookingId && processingIds.has(bookingId);
-                    const isActioned =
-                      !!bookingId && actionedIds.has(bookingId);
-                    const isAlreadyProcessedDB =
-                      notification.data?.status &&
-                      notification.data.status !== "PENDING";
-                    const showActions =
-                      isBookingRequest && !isActioned && !isAlreadyProcessedDB;
+                // Extract title securely now that our types officially support it
+                const title =
+                  notif.title || notif.data?.title || "Системное уведомление";
 
-                    return (
+                return (
+                  <div
+                    key={notif.id}
+                    onClick={() => handleNotificationClick(notif)}
+                    className={cn(
+                      "relative flex items-start gap-4 p-4 rounded-2xl border transition-all duration-200 group",
+                      notif.data?.url ? "cursor-pointer" : "cursor-default",
+                      !notif.isRead
+                        ? "bg-background border-primary/20 shadow-sm"
+                        : "bg-muted/30 border-transparent hover:bg-muted/60",
+                    )}
+                  >
+                    {/* Unread Dot Indicator */}
+                    {!notif.isRead && (
+                      <span className="absolute top-5 right-5 h-2.5 w-2.5 rounded-full bg-primary ring-4 ring-primary/10 animate-pulse" />
+                    )}
+
+                    {/* Left Icon */}
+                    <div
+                      className={cn(
+                        "h-12 w-12 rounded-full flex items-center justify-center shrink-0",
+                        bg,
+                      )}
+                    >
+                      <Icon className={cn("h-6 w-6", color)} />
+                    </div>
+
+                    {/* Content Body */}
+                    <div className="flex flex-col gap-1.5 pr-6 flex-1">
                       <div
-                        key={notification.id}
                         className={cn(
-                          "flex items-start space-x-4 p-4 transition-all duration-200 hover:bg-muted/40",
-                          !notification.isRead
-                            ? "bg-blue-50/50 dark:bg-blue-900/10 border-l-4 border-l-blue-500"
-                            : "opacity-80",
+                          "text-[15px] leading-snug",
+                          !notif.isRead
+                            ? "text-foreground"
+                            : "text-foreground/80",
                         )}
-                        onClick={() =>
-                          !notification.isRead &&
-                          handleMarkAsRead(notification.id.toString())
-                        }
                       >
-                        {/* Icon */}
-                        <div className="mt-1 flex-shrink-0">
-                          {getNotificationIcon(notification.type)}
-                        </div>
-
-                        {/* Content */}
-                        <div className="flex-1 space-y-2">
-                          <div className="flex justify-between items-start">
-                            <div className="flex flex-col">
-                              <p
-                                className={cn(
-                                  "text-sm",
-                                  !notification.isRead
-                                    ? "font-semibold text-foreground"
-                                    : "text-muted-foreground",
-                                )}
-                              >
-                                {notification.message}
-                              </p>
-                              {/* Show preview for chats */}
-                              {isChatMessage && notification.data?.preview && (
-                                <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1 italic">
-                                  "{notification.data.preview}"
-                                </p>
-                              )}
-                            </div>
-
-                            <span className="text-xs text-muted-foreground whitespace-nowrap ml-2">
-                              {formatDistanceToNow(
-                                new Date(notification.createdAt),
-                                { addSuffix: true, locale: ru },
-                              )}
-                            </span>
-                          </div>
-
-                          {/* --- CHAT ACTION --- */}
-                          {isChatMessage && (
-                            <div className="pt-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-8 text-xs gap-2"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleOpenChat(notification);
-                                }}
-                              >
-                                <MessageCircle className="h-3 w-3" />
-                                Ответить
-                              </Button>
-                            </div>
+                        <span
+                          className={cn(
+                            "block mb-1",
+                            !notif.isRead
+                              ? "font-bold text-base"
+                              : "font-semibold",
                           )}
-
-                          {/* --- BOOKING ACTIONS (Keep existing) --- */}
-                          {showActions && (
-                            <div
-                              className="flex gap-3 pt-2"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <Button
-                                size="sm"
-                                className="bg-green-600 hover:bg-green-700 h-8 text-xs px-3"
-                                onClick={() =>
-                                  handleBookingAction(
-                                    notification.id.toString(),
-                                    bookingId,
-                                    "accept",
-                                  )
-                                }
-                                disabled={isProcessing}
-                              >
-                                {isProcessing ? (
-                                  <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                                ) : (
-                                  <Check className="h-3 w-3 mr-1" />
-                                )}
-                                Принять
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                className="h-8 text-xs px-3"
-                                onClick={() =>
-                                  handleBookingAction(
-                                    notification.id.toString(),
-                                    bookingId,
-                                    "reject",
-                                  )
-                                }
-                                disabled={isProcessing}
-                              >
-                                <X className="h-3 w-3 mr-1" />
-                                Отклонить
-                              </Button>
-                              <Link
-                                href={`/performer-profile?tab=bookings`}
-                                className="ml-auto"
-                              >
-                                <Button
-                                  variant="link"
-                                  size="sm"
-                                  className="h-8 text-xs text-muted-foreground"
-                                >
-                                  Подробнее &rarr;
-                                </Button>
-                              </Link>
-                            </div>
+                        >
+                          {title}
+                        </span>
+                        <span
+                          className={cn(
+                            "block",
+                            !notif.isRead
+                              ? "font-medium"
+                              : "font-normal text-muted-foreground",
                           )}
-
-                          {/* Status Feedback */}
-                          {(isActioned || isAlreadyProcessedDB) &&
-                            isBookingRequest && (
-                              <p className="text-xs text-muted-foreground font-medium italic pt-1 flex items-center gap-1">
-                                <CheckCheck className="h-3 w-3" /> Статус
-                                обновлен
-                              </p>
-                            )}
-
-                          {/* New Indicator */}
-                          {!notification.isRead &&
-                            !showActions &&
-                            !isChatMessage && (
-                              <div className="flex items-center gap-2 pt-1">
-                                <span className="inline-block h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
-                                <span className="text-xs text-blue-500 font-medium">
-                                  Новое
-                                </span>
-                              </div>
-                            )}
-                        </div>
+                        >
+                          {notif.message}
+                        </span>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </ScrollArea>
-          </CardContent>
-        </Card>
+
+                      {/* Meta/Time footer */}
+                      <div className="flex items-center gap-2 mt-1.5 text-[11px] font-bold text-muted-foreground uppercase tracking-wider opacity-80">
+                        <CalendarDays className="h-3.5 w-3.5" />
+                        {format(new Date(notif.createdAt), "d MMMM, HH:mm", {
+                          locale: ru,
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
-
-      {/* Render Chat Dialog locally for this page */}
-      {chatState.isOpen && session?.user?.id && (
-        <ChatDialog
-          isOpen={chatState.isOpen}
-          onClose={() => setChatState((prev) => ({ ...prev, isOpen: false }))}
-          chatId={chatState.chatId}
-          performerName={chatState.partnerName}
-          currentUserId={session.user.id}
-        />
-      )}
-    </>
+    </div>
   );
-};
-
-export default NotificationsPage;
+}

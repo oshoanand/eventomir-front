@@ -40,6 +40,7 @@ const nextConfig: NextConfig = {
         port: "9000",
         pathname: "/**",
       },
+
       // 4. Google Avatars
       {
         protocol: "https",
@@ -49,6 +50,12 @@ const nextConfig: NextConfig = {
       {
         protocol: "https",
         hostname: "avatars.yandex.net",
+      },
+      {
+        protocol: "http",
+        hostname: "localhost",
+        port: "8800",
+        pathname: "/**",
       },
     ],
   },

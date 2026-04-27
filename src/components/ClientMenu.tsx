@@ -35,6 +35,8 @@ import {
   LayoutGrid,
   Search,
   MessageCircleMore,
+  LayoutDashboardIcon,
+  CircleDollarSignIcon,
 } from "lucide-react";
 
 import { useNotification } from "@/components/providers/NotificationProvider";
@@ -480,6 +482,30 @@ const ClientMenu: React.FC<ClientMenuProps> = ({
                 >
                   <Link href="/tickets">
                     <Ticket className="mr-2 h-4 w-4 text-primary" /> Мои билеты
+                  </Link>
+                </DropdownMenuItem>
+              )}
+
+              {userRole && (
+                <DropdownMenuItem
+                  asChild
+                  className="cursor-pointer py-2.5 rounded-lg focus:bg-muted"
+                >
+                  <Link href="/finance">
+                    <CircleDollarSignIcon className="mr-2 h-4 w-4 text-primary" />
+                    Финансы
+                  </Link>
+                </DropdownMenuItem>
+              )}
+
+              {userRole && (
+                <DropdownMenuItem
+                  asChild
+                  className="cursor-pointer py-2.5 rounded-lg focus:bg-muted"
+                >
+                  <Link href="/bookings">
+                    <LayoutDashboardIcon className="mr-2 h-4 w-4 text-primary" />
+                    Мои бронирования
                   </Link>
                 </DropdownMenuItem>
               )}

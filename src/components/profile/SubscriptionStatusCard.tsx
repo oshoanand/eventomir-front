@@ -51,7 +51,8 @@ export default function SubscriptionStatusCard() {
   // 1. STATE: User has no active paid plan (Basic Tier)
   if (isFreeOrNone && !isExpired) {
     return (
-      <Card className="border-dashed bg-muted/10">
+      <Card className="relative overflow-hidden border shadow-sm rounded-2xl">
+        <CardHeader className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-muted/20 border-b pb-4 pt-5 gap-4"></CardHeader>
         <CardContent className="flex flex-col items-center justify-center py-8 text-center space-y-4">
           <div className="p-3 bg-muted rounded-full">
             <Gem className="h-6 w-6 text-muted-foreground" />

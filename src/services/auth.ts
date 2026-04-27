@@ -1,17 +1,18 @@
 "use client";
+
 import { getSession } from "next-auth/react";
 import { apiRequest } from "@/utils/api-client";
 
-// --- Interfaces ---
+// ==========================================
+// 1. TYPES & INTERFACES
+// ==========================================
 
-// Определяем форму результата для действий аутентификации
 export interface AuthActionResult {
   success: boolean;
   message: string;
 }
 
-// Определяем структуру данных для регистрации исполнителя
-interface PerformerRegistrationData {
+export interface PerformerRegistrationData {
   accountType: string;
   email: string;
   name: string;
@@ -21,8 +22,7 @@ interface PerformerRegistrationData {
   city: string;
 }
 
-// Define the data structure for customer registration
-interface CustomerRegistrationData {
+export interface CustomerRegistrationData {
   accountType: string;
   email: string;
   name: string;
@@ -32,30 +32,30 @@ interface CustomerRegistrationData {
   city: string;
 }
 
-// Define the data structure for completing OAuth registration
 export interface CompleteRegistrationData {
   role: string; // "customer" | "performer" | "partner"
   phone?: string;
   city?: string;
-  accountType?: string; // Added field
-  companyName?: string; // Added field
+  accountType?: string;
+  companyName?: string;
   inn?: string;
 }
 
-// Defines the structure of the user object we expect from the session.
+// 🚨 UPDATED: Matches the new decoupled NextAuth session structure
 export interface CurrentUser {
   id: string;
   name?: string | null;
   email?: string | null;
   role: string;
+  image?: string | null;
+  accessToken?: string;
+  features?: Record<string, any>;
+  subscriptionEndDate?: string | null;
 }
 
-// --- Constants ---
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8800";
-
-// --- Registration Functions (Public) ---
+// ==========================================
+// 2. REGISTRATION FUNCTIONS (Public)
+// ==========================================
 
 export const registerPerformerWithVerification = async (
   performerData: PerformerRegistrationData,
@@ -63,37 +63,29 @@ export const registerPerformerWithVerification = async (
   referralId: string | null,
 ): Promise<AuthActionResult> => {
   try {
-    const response = await fetch(
-      `${API_BASE_URL}/api/auth/register-performer`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          performerData,
-          password,
-          referralId,
-        }),
+    // 🚨 REFACTORED: Using apiRequest for consistent Base URL and Error Handling
+    const result = await apiRequest<{ message?: string }>({
+      method: "POST",
+      url: "/api/auth/register-performer",
+      data: {
+        performerData,
+        password,
+        referralId,
       },
-    );
+    });
 
-    const result = await response.json();
-
-    if (!response.ok) {
-      return {
-        success: false,
-        message: result.message || "Произошла ошибка при регистрации.",
-      };
-    }
-
-    return result as AuthActionResult;
-  } catch (error) {
-    console.error("Network or unexpected error during registration:", error);
+    return {
+      success: true,
+      message: result?.message || "Регистрация прошла успешно!",
+    };
+  } catch (error: any) {
+    console.error("Performer registration error:", error);
     return {
       success: false,
       message:
-        "Не удалось связаться с сервером. Проверьте ваше интернет-соединение.",
+        error.response?.data?.message ||
+        error.message ||
+        "Произошла ошибка при регистрации.",
     };
   }
 };
@@ -103,79 +95,61 @@ export const registerCustomerWithVerification = async (
   password: string,
 ): Promise<AuthActionResult> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/auth/register-customer`, {
+    // 🚨 REFACTORED: Using apiRequest
+    const result = await apiRequest<{ message?: string }>({
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+      url: "/api/auth/register-customer",
+      data: {
         customerData,
         password,
-      }),
+      },
     });
 
-    const result = await response.json();
-
-    if (!response.ok) {
-      return {
-        success: false,
-        message: result.message || "An error occurred during registration.",
-      };
-    }
-
-    return result as AuthActionResult;
-  } catch (error) {
-    console.error(
-      "Network or unexpected error during customer registration:",
-      error,
-    );
+    return {
+      success: true,
+      message: result?.message || "Регистрация прошла успешно!",
+    };
+  } catch (error: any) {
+    console.error("Customer registration error:", error);
     return {
       success: false,
       message:
-        "Could not connect to the server. Please check your internet connection.",
+        error.response?.data?.message ||
+        error.message ||
+        "Произошла ошибка при регистрации.",
     };
   }
 };
 
-/**
- * Completes registration for OAuth users by assigning them a role.
- * Uses apiRequest to automatically handle the active session context.
- */
 export const completeOAuthRegistration = async (
   data: CompleteRegistrationData,
 ): Promise<AuthActionResult> => {
   try {
-    interface CompleteRegResponse {
-      message?: string;
-      user?: any;
-    }
-
-    const result = (await apiRequest({
-      method: "patch",
+    const result = await apiRequest<{ message?: string; user?: any }>({
+      method: "PATCH",
       url: "/api/auth/complete-registration",
       data,
-    })) as CompleteRegResponse;
+    });
 
     return {
       success: true,
-      message: result.message || "Регистрация успешно завершена",
+      message: result?.message || "Регистрация успешно завершена",
     };
   } catch (error: any) {
     console.error("Complete registration error:", error);
-
-    const msg =
-      error.response?.data?.message ||
-      error.message ||
-      "Не удалось завершить регистрацию.";
-
     return {
       success: false,
-      message: typeof msg === "string" ? msg : "Произошла неизвестная ошибка",
+      message:
+        error.response?.data?.message ||
+        error.message ||
+        "Не удалось завершить регистрацию.",
     };
   }
 };
 
-// --- Session Functions ---
+// ==========================================
+// 3. SESSION FUNCTIONS
+// ==========================================
 
 /**
  * Retrieves the current user's session from the client-side using NextAuth.
@@ -194,6 +168,10 @@ export const getCurrentUser = async (): Promise<CurrentUser | null> => {
       name: session.user.name,
       email: session.user.email,
       role: session.user.role as string,
+      image: session.user.image,
+      accessToken: (session.user as any).accessToken,
+      features: (session.user as any).features,
+      subscriptionEndDate: (session.user as any).subscriptionEndDate,
     };
   } catch (error) {
     console.error("Error fetching current user session:", error);
@@ -201,81 +179,63 @@ export const getCurrentUser = async (): Promise<CurrentUser | null> => {
   }
 };
 
-// --- Account Management Functions (Authenticated) ---
+// ==========================================
+// 4. ACCOUNT MANAGEMENT FUNCTIONS
+// ==========================================
 
-/**
- * Changes the user's password.
- * Uses apiRequest to automatically handle the Authorization header.
- */
 export const changePassword = async (
   userId: string,
   currentPassword: string,
   newPassword: string,
 ): Promise<AuthActionResult> => {
   try {
-    // 1. Define what the backend response looks like
-    interface ChangePasswordResponse {
-      message?: string;
-    }
-
-    // 2. Cast the result to that interface
-    const result = (await apiRequest({
-      method: "post",
+    const result = await apiRequest<{ message?: string }>({
+      method: "POST",
       url: "/api/auth/change-password",
       data: {
         userId,
         currentPassword,
         newPassword,
       },
-    })) as ChangePasswordResponse;
+    });
 
     return {
       success: true,
-      message: result.message || "Пароль успешно изменен.",
+      message: result?.message || "Пароль успешно изменен.",
     };
   } catch (error: any) {
     console.error("Change password error:", error);
-    const msg =
-      error.response?.data?.message ||
-      error.message ||
-      "Не удалось сменить пароль.";
-
     return {
       success: false,
-      message: typeof msg === "string" ? msg : "Произошла неизвестная ошибка",
+      message:
+        error.response?.data?.message ||
+        error.message ||
+        "Не удалось сменить пароль.",
     };
   }
 };
 
-/**
- * Deletes the user's account.
- * Uses apiRequest to automatically handle the Authorization header.
- */
 export const deleteUserAccount = async (
   userId: string,
 ): Promise<AuthActionResult> => {
-  interface DeleteResponse {
-    message?: string;
-  }
   try {
-    const result = (await apiRequest({
-      method: "delete",
+    const result = await apiRequest<{ message?: string }>({
+      method: "DELETE",
       url: `/api/auth/account/${userId}`,
-    })) as DeleteResponse;
+    });
 
     return {
       success: true,
-      message: result.message || "Аккаунт успешно удален.",
+      message: result?.message || "Аккаунт успешно удален.",
     };
   } catch (error: any) {
     console.error("Delete account error:", error);
-    const msg =
-      error.response?.data?.message ||
-      error.message ||
-      "Не удалось удалить аккаунт.";
     return {
       success: false,
-      message: msg,
+      message:
+        error.response?.data?.message ||
+        error.message ||
+        "Не удалось удалить аккаунт.",
     };
   }
 };

@@ -130,9 +130,7 @@ const LoginPage = () => {
             ? "заказчик"
             : userRole === "performer"
               ? "исполнитель"
-              : userRole === "support"
-                ? "менеджер поддержки"
-                : "пользователь";
+              : "пользователь";
 
         toast({
           variant: "success",
@@ -140,9 +138,10 @@ const LoginPage = () => {
           description: `Вы успешно вошли как ${roleDescription}.`,
         });
 
+        console.log(userRole);
+
         if (userRole === "customer") router.push("/customer-profile");
         else if (userRole === "performer") router.push("/performer-profile");
-        else if (userRole === "support") router.push("/support");
         else router.push("/");
       }
     } catch (error) {
@@ -302,14 +301,14 @@ const LoginPage = () => {
   return (
     <div className="min-h-[calc(100vh-80px)] flex items-center justify-center p-4 md:p-4 bg-muted/10 md:bg-transparent">
       {/* 1. COMPACT WIDTH: max-w-[420px] on mobile -> max-w-[380px] on desktop */}
-      <Card className="w-full max-w-[420px] md:max-w-[380px] shadow-none md:shadow-xl border-none md:border-border/50 rounded-[2rem] md:rounded-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-500">
+      <Card className="w-full max-w-[420px] md:max-w-[380px] shadow-none  border-none md:border-border/50 rounded-[2rem] md:rounded-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-500">
         {/* 2. COMPACT PADDING: pt-8/pb-4 on desktop instead of pt-10/pb-6 */}
         <CardHeader className="space-y-2 md:space-y-1.5 pt-8 md:pt-8 pb-6 md:pb-4 text-center">
           {/* Tighter text sizing on desktop */}
-          <CardTitle className="text-3xl md:text-2xl font-extrabold tracking-tight">
+          {/* <CardTitle className="text-3xl md:text-2xl font-extrabold tracking-tight">
             С возвращением
-          </CardTitle>
-          <CardDescription className="text-base md:text-sm font-medium">
+          </CardTitle> */}
+          <CardDescription className="text-base md:text-sm font-semibold">
             Войдите в свой аккаунт Eventomir
           </CardDescription>
         </CardHeader>
@@ -436,7 +435,7 @@ const LoginPage = () => {
               {loadingProvider === "yandex" ? (
                 <Loader2 className="w-5 h-5 md:w-4 md:h-4 animate-spin absolute left-4 text-muted-foreground" />
               ) : (
-                <YandexIcon className="w-5 h-5 md:w-4 md:h-4 absolute left-4" />
+                <YandexIcon className="w-6 h-6 md:w-6 md:h-6 absolute left-4" />
               )}
               <span className="font-semibold text-base md:text-sm">
                 Продолжить с Яндекс

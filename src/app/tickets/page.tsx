@@ -326,12 +326,12 @@ export default function MyTicketsPage() {
 
   return (
     <div className="container mx-auto py-10 max-w-4xl px-4 animate-in fade-in">
-      <div className="flex items-center justify-between mb-8">
+      {/* <div className="flex items-center justify-between mb-8">
         <div className="flex items-center gap-3">
           <Ticket className="h-8 w-8 text-primary" />
           <h1 className="text-3xl font-black tracking-tight">Мои билеты</h1>
         </div>
-      </div>
+      </div> */}
 
       {tickets.length === 0 ? (
         <EmptyState />

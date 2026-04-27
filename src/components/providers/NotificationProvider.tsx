@@ -11,6 +11,7 @@ import React, {
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { useSocket } from "@/components/providers/SocketProvider";
+import { apiRequest } from "@/utils/api-client";
 import {
   NotificationContextType,
   NotificationItem,
@@ -44,77 +45,115 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
     }
   }, []);
 
+  // --- 1. Fetch Initial Notification History from Database ---
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      try {
+        const data = await apiRequest<NotificationItem[]>({
+          method: "GET",
+          url: "/api/notifications",
+        });
+
+        if (Array.isArray(data)) {
+          setNotifications(data);
+          setUnreadCount(data.filter((n) => !n.isRead).length);
+        }
+      } catch (error) {
+        console.error("Failed to fetch initial notifications:", error);
+      }
+    };
+
+    fetchNotifications();
+  }, []); // Runs once on mount
+
+  // --- 2. Real-Time Socket Listeners ---
   useEffect(() => {
     if (!socket) return;
 
     const handleNotification = (payload: any) => {
       console.log("🔔 Received Notification:", payload);
 
-      const { type, data } = payload;
+      const type = payload.type || "SYSTEM";
+      const data = payload.data || {};
 
-      // 🚨 1. Time Check (Prevents spam on page refresh when socket dumps history)
+      // Extract title safely (from root or nested data)
+      const title = payload.title || data.title || "Уведомление";
+      const message = payload.message || payload.body || "Новое сообщение";
+
+      // Time Check (Prevents spam on page refresh when socket dumps history)
       const notifTime = payload.createdAt
         ? new Date(payload.createdAt).getTime()
         : Date.now();
       const isOldMessage = Date.now() - notifTime > 10000; // Older than 10 seconds
 
-      // Handle "CHAT_MESSAGE" type ---
+      // Handle "CHAT_MESSAGE" type
       if (type === "CHAT_MESSAGE") {
         const chatItem: NotificationItem = {
-          id: payload.id || Date.now().toString(),
+          id: payload.id || crypto.randomUUID(),
           type: "CHAT_MESSAGE",
-          message: payload.message || `Новое сообщение от ${data?.senderName}`,
+          message: message || `Новое сообщение от ${data?.senderName}`,
           isRead: false,
           createdAt: payload.createdAt || new Date().toISOString(),
           data: {
             chatId: data?.chatId,
             senderName: data?.senderName,
             preview: data?.preview,
-            url: data?.url || `/chat/${data?.chatId}`, // Ensure easy deep linking
+            url: data?.url || `/chat/${data?.chatId}`,
           },
         };
 
-        // We add it to the dropdown list, but we DO NOT increment `unreadCount`
-        // Chat messages use their own DB count! We also don't play sound here.
         setNotifications((prev) => [chatItem, ...prev]);
       }
-
-      // Handle Generic/System types ---
+      // Handle Generic/System/Booking types
       else {
-        // 🚨 2. Safely map to the NotificationItem interface
         const genericItem: NotificationItem = {
-          id: payload.id || Date.now().toString(),
-          type: type || "SYSTEM",
-          message: payload.message || payload.body || "Системное уведомление",
+          id: payload.id || crypto.randomUUID(),
+          type: type,
+          message: message,
           isRead: false,
           createdAt: payload.createdAt || new Date().toISOString(),
-          data: data || {},
+          data: data,
         };
 
         setNotifications((prev) => [genericItem, ...prev]);
         setUnreadCount((prev) => prev + 1);
 
-        // 🚨 3. Only play sound and show toast if it's a NEW notification
+        // Only play sound and show interactive toast for NEW notifications
         if (!isOldMessage) {
           playNotificationSound();
+
+          // Map booking statuses to visual variants
+          let variant: "default" | "success" | "destructive" = "default";
+          if (type === "BOOKING_ACCEPTED" || type === "SUCCESS")
+            variant = "success";
+          if (
+            type === "BOOKING_REJECTED" ||
+            type === "BOOKING_CANCELLED" ||
+            type === "FAILED"
+          )
+            variant = "destructive";
+
           toast({
-            variant: "success",
-            title: payload.title || "Уведомление",
-            description:
-              payload.message || payload.body || "Новое сообщение от системы",
+            variant: variant,
+            title: title,
+            description: message,
+            // Deep-link action button for Sonner
+            action: data?.url
+              ? {
+                  label: "Открыть",
+                  onClick: () => router.push(data.url),
+                }
+              : undefined,
           });
         }
       }
     };
 
-    // Attach Listeners
-    socket.on("notification", handleNotification);
-
     // Map specific message notifications to our generic handler
     const handleSpecificMessage = (payload: any) => {
       handleNotification({
         type: "CHAT_MESSAGE",
-        id: Date.now().toString(),
+        id: crypto.randomUUID(),
         message: `Сообщение от ${payload.senderName}`,
         createdAt: new Date().toISOString(),
         data: {
@@ -125,6 +164,8 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
       });
     };
 
+    // Attach Listeners
+    socket.on("notification", handleNotification);
     socket.on("message_notification", handleSpecificMessage);
 
     return () => {
@@ -133,7 +174,10 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
     };
   }, [socket, toast, router, playNotificationSound]);
 
-  // --- Mark Read Logic ---
+  // --- 3. Mark Read Logic (Optimistic UI Updates) ---
+  // Note: The actual database PATCH requests are handled inside the NotificationsPage
+  // to keep this provider lean, but we update the UI instantly here.
+
   const markAllAsRead = () => {
     setUnreadCount(0);
     setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));

@@ -4,7 +4,14 @@ import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { apiRequest } from "@/utils/api-client";
-import { getSubscriptionPlans, SubscriptionPlan } from "@/services/payment";
+import {
+  getSubscriptionPlans,
+  purchaseSubscription,
+  topUpWallet,
+  validatePromoCode,
+  SubscriptionPlan,
+  BillingInterval,
+} from "@/services/payment";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,9 +38,6 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
-// ---------------------------------------------------------------------------
-// INNER COMPONENT (Requires Suspense because of useSearchParams)
-// ---------------------------------------------------------------------------
 function CheckoutContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -41,19 +45,19 @@ function CheckoutContent() {
   const { status: sessionStatus } = useSession();
 
   const planId = searchParams.get("planId");
-  const interval = searchParams.get("interval");
+  const interval = searchParams.get("interval") as BillingInterval;
 
   const [isLoading, setIsLoading] = useState(true);
   const [plan, setPlan] = useState<SubscriptionPlan | null>(null);
   const [user, setUser] = useState<any>(null);
 
-  // Оплата
+  // Payments
   const [selectedMethod, setSelectedMethod] = useState<
     "card" | "wallet" | "invoice"
   >("card");
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Промокод
+  // Promo Code
   const [promoInput, setPromoInput] = useState("");
   const [promoError, setPromoError] = useState<string | null>(null);
   const [isVerifyingPromo, setIsVerifyingPromo] = useState(false);
@@ -64,13 +68,12 @@ function CheckoutContent() {
     code: string;
   } | null>(null);
 
-  // --- NEW: Состояния для пополнения кошелька ---
+  // Wallet Top-Up Modal
   const [isTopUpModalOpen, setIsTopUpModalOpen] = useState(false);
   const [topUpAmount, setTopUpAmount] = useState<string>("");
   const [isProcessingTopUp, setIsProcessingTopUp] = useState(false);
   const PRESET_AMOUNTS = [500, 1000, 2000, 5000];
 
-  // Загрузка начальных данных
   useEffect(() => {
     if (sessionStatus === "unauthenticated") {
       router.push("/login?callbackUrl=/pricing");
@@ -90,7 +93,7 @@ function CheckoutContent() {
         ]);
 
         const selected = plans.find((p) => p.id === planId);
-        if (!selected) throw new Error("Plan not found");
+        if (!selected) throw new Error("Тариф не найден");
 
         setPlan(selected);
         setUser(userData);
@@ -105,7 +108,7 @@ function CheckoutContent() {
     if (sessionStatus === "authenticated") fetchData();
   }, [planId, interval, sessionStatus, router, toast]);
 
-  // Расчет базовой цены
+  // Calculate Base Price
   let basePrice = 0;
   if (plan) {
     if (interval === "month") basePrice = plan.priceMonthly;
@@ -116,36 +119,35 @@ function CheckoutContent() {
   }
 
   const finalPrice = promoData ? promoData.finalPrice : basePrice;
-  const isB2B =
-    user &&
-    ["individualEntrepreneur", "legalEntity", "agency"].includes(
-      user.account_type,
-    );
-  const isWalletSufficient = user && user.walletBalance >= finalPrice;
-  const shortfall = finalPrice - (user?.walletBalance || 0);
 
-  // Обработчик применения промокода
+  // Safe extraction of accountType from nested profiles
+  const accountType =
+    user?.customerProfile?.accountType ||
+    user?.performerProfile?.accountType ||
+    user?.partnerProfile?.accountType ||
+    user?.accountType;
+  const isB2B = ["individualEntrepreneur", "legalEntity", "agency"].includes(
+    accountType,
+  );
+
+  // Ensure shortfall is never negative
+  const shortfall = Math.max(0, finalPrice - (user?.walletBalance || 0));
+  const isWalletSufficient = user && user.walletBalance >= finalPrice;
+
+  // Handlers
   const handleApplyPromo = async () => {
     if (!promoInput.trim()) return;
     setIsVerifyingPromo(true);
     setPromoError(null);
     try {
-      const res = await apiRequest<any>({
-        method: "post",
-        url: "/api/promo-codes/validate",
-        data: { code: promoInput.trim(), planId, interval },
-      });
+      const res = await validatePromoCode(promoInput.trim(), planId!, interval);
       setPromoData({
         valid: true,
         discountAmount: res.discountAmount,
         finalPrice: res.finalPrice,
         code: promoInput.trim(),
       });
-      toast({
-        variant: "success",
-        title: "Промокод применен!",
-        className: "bg-green-50 border-green-200",
-      });
+      toast({ variant: "success", title: "Промокод успешно применен!" });
     } catch (error: any) {
       setPromoData(null);
       setPromoError(error.response?.data?.message || "Неверный промокод");
@@ -159,26 +161,21 @@ function CheckoutContent() {
     }
   };
 
-  // Обработчик оформления заказа
   const handleCheckout = async () => {
     setIsProcessing(true);
     try {
-      const response = await apiRequest<any>({
-        method: "post",
-        url: `/api/payments/${planId}/purchase`,
-        data: {
-          interval,
-          paymentMethod: selectedMethod,
-          promoCode: promoData?.code || undefined,
-        },
-      });
+      const response = await purchaseSubscription(
+        planId!,
+        interval,
+        selectedMethod,
+        promoData?.code,
+      );
 
       if (selectedMethod === "invoice") {
         router.push(`/pricing?b2b_payment=success`);
       } else if (selectedMethod === "wallet") {
         router.push(`/pricing?subscription=success`);
-      } else {
-        // Редирект на Tinkoff
+      } else if (response.checkoutUrl) {
         window.location.href = response.checkoutUrl;
       }
     } catch (error: any) {
@@ -192,36 +189,31 @@ function CheckoutContent() {
     }
   };
 
-  // --- NEW: Обработчик пополнения кошелька ---
   const handleTopUp = async () => {
     const amount = parseInt(topUpAmount, 10);
     if (!amount || amount < 100) {
-      toast({ variant: "destructive", title: "Минимальная сумма — 100 ₽" });
-      return;
+      return toast({
+        variant: "destructive",
+        title: "Минимальная сумма — 100 ₽",
+      });
     }
 
     setIsProcessingTopUp(true);
     try {
-      const response = await apiRequest<any>({
-        method: "post",
-        url: "/api/payments/wallet/topup",
-        data: { amount },
-      });
-
-      // Перенаправляем на шлюз Тинькофф для оплаты пополнения
-      window.location.href = response.checkoutUrl;
+      const response = await topUpWallet(amount);
+      if (response.checkoutUrl) window.location.href = response.checkoutUrl;
     } catch (error: any) {
       toast({
         variant: "destructive",
         title: "Ошибка",
         description:
-          error.response?.data?.message || "Не удалось инициировать пополнение",
+          error.response?.data?.message || "Не удалось пополнить счет",
       });
       setIsProcessingTopUp(false);
     }
   };
 
-  // Скелетон загрузки
+  // Render Loader
   if (isLoading) {
     return (
       <div className="container max-w-5xl mx-auto py-16 px-4 grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -244,7 +236,6 @@ function CheckoutContent() {
 
   return (
     <div className="min-h-screen bg-muted/10 pb-20">
-      {/* Шапка (Header) */}
       <header className="bg-background border-b sticky top-0 z-10">
         <div className="container max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
           <Link
@@ -265,12 +256,11 @@ function CheckoutContent() {
         </h1>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
-          {/* ЛЕВАЯ КОЛОНКА: МЕТОДЫ ОПЛАТЫ */}
+          {/* LEFT COLUMN: PAYMENT METHODS */}
           <div className="lg:col-span-7 space-y-6">
             <h2 className="text-xl font-bold">Способ оплаты</h2>
-
             <div className="grid gap-4">
-              {/* ОПЛАТА КАРТОЙ (B2C) */}
+              {/* CARD */}
               <label
                 className={cn(
                   "relative flex cursor-pointer rounded-2xl border-2 p-5 transition-all duration-200",
@@ -316,7 +306,7 @@ function CheckoutContent() {
                 />
               </label>
 
-              {/* ОПЛАТА КОШЕЛЬКОМ */}
+              {/* WALLET */}
               <label
                 className={cn(
                   "relative flex rounded-2xl border-2 p-5 transition-all duration-200",
@@ -351,14 +341,12 @@ function CheckoutContent() {
                           {user?.walletBalance.toLocaleString("ru-RU")} ₽
                         </span>
                       </p>
-                      {/* Interactive Top-Up Button replaces the old Link */}
                       {!isWalletSufficient && (
                         <div className="mt-2">
                           <button
                             type="button"
                             onClick={(e) => {
                               e.preventDefault();
-                              // Prefill the input with the exact shortfall, or 1000 default
                               setTopUpAmount(
                                 shortfall > 0 ? shortfall.toString() : "1000",
                               );
@@ -397,7 +385,7 @@ function CheckoutContent() {
                 />
               </label>
 
-              {/* ОПЛАТА ПО СЧЕТУ (B2B) */}
+              {/* INVOICE (B2B) */}
               <label
                 className={cn(
                   "relative flex rounded-2xl border-2 p-5 transition-all duration-200",
@@ -463,11 +451,10 @@ function CheckoutContent() {
             </div>
           </div>
 
-          {/* ПРАВАЯ КОЛОНКА: ДЕТАЛИ ЗАКАЗА */}
+          {/* RIGHT COLUMN: ORDER SUMMARY */}
           <div className="lg:col-span-5">
             <div className="bg-card border border-border/60 shadow-xl shadow-black/5 rounded-[2rem] p-6 sm:p-8 sticky top-24">
               <h2 className="text-xl font-bold mb-6">Ваш заказ</h2>
-
               <div className="flex justify-between items-start mb-6">
                 <div>
                   <p className="font-bold text-lg">{plan?.name}</p>
@@ -481,7 +468,6 @@ function CheckoutContent() {
               </div>
 
               <div className="border-t border-b border-border/50 py-6 mb-6 space-y-4">
-                {/* ПРОМОКОД */}
                 {!promoData?.valid ? (
                   <div className="space-y-2">
                     <Label className="text-xs uppercase font-bold text-muted-foreground">
@@ -518,7 +504,6 @@ function CheckoutContent() {
                         )}
                       </Button>
                     </div>
-
                     {promoError && (
                       <p className="text-xs text-red-500 font-medium animate-in fade-in slide-in-from-top-1">
                         {promoError}
@@ -552,7 +537,6 @@ function CheckoutContent() {
                   </div>
                 )}
 
-                {/* ПОДИТОГ */}
                 <div className="space-y-2 text-sm font-medium">
                   <div className="flex justify-between text-muted-foreground">
                     <span>Сумма</span>
@@ -569,7 +553,6 @@ function CheckoutContent() {
                 </div>
               </div>
 
-              {/* ИТОГ К ОПЛАТЕ */}
               <div className="flex justify-between items-end mb-8">
                 <span className="text-lg font-bold">Итого к оплате</span>
                 <span className="text-4xl font-black text-primary">
@@ -608,14 +591,14 @@ function CheckoutContent() {
         </div>
       </div>
 
-      {/* --- NEW: МОДАЛЬНОЕ ОКНО ПОПОЛНЕНИЯ КОШЕЛЬКА --- */}
+      {/* TOP-UP MODAL */}
       <Dialog open={isTopUpModalOpen} onOpenChange={setIsTopUpModalOpen}>
         <DialogContent className="sm:max-w-md rounded-[2rem] p-0 overflow-hidden border-0 shadow-2xl">
           <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-8 text-white">
             <DialogHeader>
               <DialogTitle className="text-2xl font-bold flex items-center gap-2">
-                <Wallet className="w-6 h-6 text-emerald-400" />
-                Пополнение кошелька
+                <Wallet className="w-6 h-6 text-emerald-400" /> Пополнение
+                кошелька
               </DialogTitle>
               <DialogDescription className="text-slate-300 mt-2">
                 Текущий баланс:{" "}
@@ -698,9 +681,6 @@ function CheckoutContent() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// MAIN EXPORT (Wraps the component in Suspense)
-// ---------------------------------------------------------------------------
 export default function CheckoutPage() {
   return (
     <Suspense

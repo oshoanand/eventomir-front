@@ -3,35 +3,27 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import YandexProvider from "next-auth/providers/yandex";
 import GoogleProvider from "next-auth/providers/google";
 import VkProvider from "next-auth/providers/vk";
-import { PrismaAdapter } from "@next-auth/prisma-adapter";
-import type { Adapter } from "next-auth/adapters";
-import { prisma } from "@/utils/prisma";
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
 
-// =================================================================
-// CUSTOM PRISMA ADAPTER
-// =================================================================
-const CustomAdapter = PrismaAdapter(prisma) as Adapter;
+// 🚨 Safe JWT Decoder: Works natively in Next.js Edge Runtime without 'jsonwebtoken'
+function decodeJwt(token: string) {
+  try {
+    const base64Url = token.split(".")[1];
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split("")
+        .map(function (c) {
+          return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2);
+        })
+        .join(""),
+    );
+    return JSON.parse(jsonPayload);
+  } catch (error) {
+    return null;
+  }
+}
 
-const originalCreateUser = CustomAdapter.createUser;
-CustomAdapter.createUser = async (data: any) => {
-  return originalCreateUser!({
-    ...data,
-    profile_picture: data.image || null,
-  });
-};
-
-const originalLinkAccount = CustomAdapter.linkAccount;
-CustomAdapter.linkAccount = async (account: any) => {
-  await prisma.user.update({
-    where: { id: account.userId },
-    data: { auth_provider: account.provider },
-  });
-  return originalLinkAccount!(account);
-};
-
-// 🚨 Фолбэк-функции для бесплатного тарифа
+// Fallback features
 const DEFAULT_FREE_FEATURES = {
   maxPhotoUpload: 3,
   emailSupport: true,
@@ -39,30 +31,10 @@ const DEFAULT_FREE_FEATURES = {
   profileSeo: false,
 };
 
-// Нормализация JSON-фичей из БД
-const normalizeFeatures = (rawFeatures: any) => {
-  const normalized: Record<string, any> = {};
-  if (typeof rawFeatures === "object" && rawFeatures !== null) {
-    for (const [key, data] of Object.entries(rawFeatures)) {
-      if (
-        data &&
-        typeof data === "object" &&
-        !Array.isArray(data) &&
-        (data as any).value !== undefined
-      ) {
-        normalized[key] = (data as any).value;
-      } else {
-        normalized[key] = data;
-      }
-    }
-  }
-  return normalized;
-};
-
 export const authOptions: NextAuthOptions = {
-  adapter: CustomAdapter,
   session: {
     strategy: "jwt",
+    maxAge: 30 * 24 * 60 * 60, // 30 Days
   },
   providers: [
     YandexProvider({
@@ -96,72 +68,52 @@ export const authOptions: NextAuthOptions = {
             );
           }
 
-          const user = await prisma.user.findUnique({
-            where: { email: credentials.email },
-            include: {
-              subscription: {
-                include: { plan: true },
-              },
-            },
+          const backendUrl =
+            process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8800";
+
+          // 1. Delegate Authentication to Node.js Backend
+          const res = await fetch(`${backendUrl}/api/auth/app/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email: credentials.email,
+              password: credentials.password,
+            }),
           });
 
-          if (!user || !user.password) {
-            throw new Error("Неверный адрес электронной почты или пароль!");
-          }
+          const data = await res.json();
 
-          const isValidPassword = await bcrypt.compare(
-            credentials.password,
-            user.password,
-          );
-
-          if (!isValidPassword) {
-            throw new Error("Неверный адрес электронной почты или пароль!");
-          }
-
-          const secret = process.env.NEXTAUTH_SECRET || process.env.JWT_SECRET;
-          if (!secret) {
+          // 2. Handle Backend Rejections
+          if (!res.ok) {
+            if (data.type === "PARTNER_REDIRECT") {
+              throw new Error(JSON.stringify(data));
+            }
             throw new Error(
-              "КРИТИЧЕСКАЯ ОШИБКА: NEXTAUTH_SECRET не задан в .env файле сервера!",
+              data.message || "Неверный адрес электронной почты или пароль!",
             );
           }
 
-          // 🚨 Надежная проверка подписки (устойчива к изменениям Prisma Schema)
-          const now = new Date();
-          const sub = user.subscription as any; // Cast to any to bypass strict TS schema mismatches
-          let activeFeatures = DEFAULT_FREE_FEATURES;
-          let subEndDate = null;
+          const { token, user } = data;
 
-          if (sub) {
-            // Поддержка как старого булева значения, так и нового строкового статуса
-            const isSubActive =
-              sub.status === "ACTIVE" || sub.isActive === true;
-            const isNotExpired = !sub.endDate || new Date(sub.endDate) > now;
-
-            if (isSubActive && isNotExpired) {
-              activeFeatures = {
-                ...DEFAULT_FREE_FEATURES,
-                ...normalizeFeatures(sub.plan?.features),
-              };
-              subEndDate = sub.endDate
-                ? new Date(sub.endDate).toISOString()
-                : null;
-            }
+          if (!token) {
+            throw new Error("Ошибка сервера: токен авторизации не получен.");
           }
 
-          const token = jwt.sign(
-            {
-              id: user.id,
-              name: user.name,
-              email: user.email,
-              role: user.role,
-              iat: Math.floor(Date.now() / 1000),
-              exp: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
-            },
-            secret,
-            { algorithm: "HS256" },
-          );
+          // 3. 🚨 DECODE JWT NATIVELY TO EXTRACT ID AND ROLE
+          const decodedToken = decodeJwt(token);
 
-          if (user.role === "partner") {
+          if (!decodedToken || decodedToken.id === undefined) {
+            throw new Error("Ошибка сервера: недействительный токен.");
+          }
+
+          const userId = decodedToken.id;
+
+          // 🚨 Strict check allows empty strings ("") to pass through!
+          const userRole =
+            decodedToken.role !== undefined ? decodedToken.role : "customer";
+
+          // 4. Legacy Partner Redirect Support
+          if (userRole === "partner") {
             throw new Error(
               JSON.stringify({
                 type: "PARTNER_REDIRECT",
@@ -170,36 +122,26 @@ export const authOptions: NextAuthOptions = {
             );
           }
 
+          // 5. Return Payload to NextAuth JWT Callback
           return {
-            id: user.id,
-            name: user.name || "",
-            email: user.email,
-            phone: user.phone || "",
-            role: user.role || "customer",
+            id: userId,
+            name: user?.name || "",
+            email: user?.email || credentials.email,
+            phone: user?.phone || "",
+            role: userRole,
+            image: user?.image || null,
             accessToken: token,
-            features: activeFeatures,
-            subscriptionEndDate: subEndDate,
+            features: data.features || DEFAULT_FREE_FEATURES,
+            subscriptionEndDate: data.subscriptionEndDate || null,
           } as any;
         } catch (error: any) {
-          console.error("🚨 Authorize Error:", error);
+          console.error("🚨 Authorize Error:", error.message);
 
           if (error.message && error.message.includes("PARTNER_REDIRECT")) {
             throw error;
           }
 
-          // Если это наша кастомная ошибка валидации, передаем ее клиенту
-          if (
-            error.message ===
-              "Требуется указать адрес электронной почты и пароль" ||
-            error.message === "Неверный адрес электронной почты или пароль!" ||
-            error.message.includes("КРИТИЧЕСКАЯ ОШИБКА")
-          ) {
-            throw error;
-          }
-
-          // Если произошел системный сбой (например, Prisma упала), показываем реальную ошибку
-          // throw new Error(`Системная ошибка сервера: ${error.message}`);
-          throw new Error(`Системная ошибка сервера`);
+          throw new Error(error.message || "Системная ошибка сервера");
         }
       },
     }),
@@ -212,72 +154,79 @@ export const authOptions: NextAuthOptions = {
 
     // --- JWT CALLBACK ---
     async jwt({ token, user, account, trigger, session }) {
-      if (trigger === "update" && session?.role) {
-        token.role = session.role;
+      // 🚨 Robust Session Update: Allows adopting new Token & Features post-registration
+      if (trigger === "update" && session) {
+        if (session.role !== undefined) token.role = session.role;
+        if (session.accessToken) token.accessToken = session.accessToken;
+        if (session.features) token.features = session.features;
+        if (session.subscriptionEndDate !== undefined) {
+          token.subscriptionEndDate = session.subscriptionEndDate;
+        }
       }
 
-      if (user) {
-        token.id = user.id;
-        token.image = user.image ? user.image.toString() : null;
-        token.name = user.name ? user.name.toString() : "";
-        token.email = user.email ? user.email.toString() : "";
-        token.role = (user as any).role || null;
-
+      // Initial Sign In Hook
+      if (account && user) {
         const isOAuth = ["yandex", "google", "vk"].includes(
-          account?.provider || "",
+          account.provider || "",
         );
 
         if (isOAuth) {
-          const dbUser = await prisma.user.findUnique({
-            where: { id: user.id },
-            include: { subscription: { include: { plan: true } } },
-          });
-
-          const now = new Date();
-          const sub = dbUser?.subscription as any;
-          let activeFeatures = DEFAULT_FREE_FEATURES;
-          let subEndDate = null;
-
-          if (sub) {
-            const isSubActive =
-              sub.status === "ACTIVE" || sub.isActive === true;
-            const isNotExpired = !sub.endDate || new Date(sub.endDate) > now;
-
-            if (isSubActive && isNotExpired) {
-              activeFeatures = {
-                ...DEFAULT_FREE_FEATURES,
-                ...normalizeFeatures(sub.plan?.features),
-              };
-              subEndDate = sub.endDate
-                ? new Date(sub.endDate).toISOString()
-                : null;
-            }
-          }
-
-          token.features = activeFeatures;
-          token.subscriptionEndDate = subEndDate;
-
-          const secret = process.env.NEXTAUTH_SECRET || process.env.JWT_SECRET;
-          if (secret) {
-            token.accessToken = jwt.sign(
-              {
-                id: user.id,
-                name: user.name,
+          // 🚨 OAUTH DELEGATION TO BACKEND
+          try {
+            const backendUrl =
+              process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8800";
+            const oauthRes = await fetch(`${backendUrl}/api/auth/oauth`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                provider: account.provider,
+                providerAccountId: account.providerAccountId,
                 email: user.email,
-                role: token.role,
-                iat: Math.floor(Date.now() / 1000),
-                exp: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
-              },
-              secret,
-              { algorithm: "HS256" },
-            );
+                name: user.name,
+                image: user.image,
+              }),
+            });
+
+            const oauthData = await oauthRes.json();
+
+            if (oauthRes.ok && oauthData.token) {
+              // 🚨 NATIVE DECODE OAUTH TOKEN FOR ID & ROLE
+              const decodedOAuthToken = decodeJwt(oauthData.token);
+
+              if (decodedOAuthToken) {
+                token.id = decodedOAuthToken.id;
+                // 🚨 Strict check ensures `""` stays `""` for the complete-registration route
+                token.role =
+                  decodedOAuthToken.role !== undefined
+                    ? decodedOAuthToken.role
+                    : "customer";
+              }
+
+              token.accessToken = oauthData.token;
+              token.features = oauthData.features || DEFAULT_FREE_FEATURES;
+              token.subscriptionEndDate = oauthData.subscriptionEndDate || null;
+            } else {
+              console.error("OAuth Backend Sync Failed:", oauthData);
+            }
+          } catch (err) {
+            console.error("OAuth Backend Fetch Error:", err);
           }
         } else {
+          // Credentials login data mapping
+          token.id = user.id;
+          token.role =
+            (user as any).role !== undefined ? (user as any).role : "customer";
           token.accessToken = (user as any).accessToken;
-          token.features = (user as any).features;
-          token.subscriptionEndDate = (user as any).subscriptionEndDate;
+          token.features = (user as any).features || DEFAULT_FREE_FEATURES;
+          token.subscriptionEndDate = (user as any).subscriptionEndDate || null;
         }
+
+        // Map standard user info
+        token.image = user.image ? user.image.toString() : null;
+        token.name = user.name ? user.name.toString() : "";
+        token.email = user.email ? user.email.toString() : "";
       }
+
       return token;
     },
 
@@ -285,7 +234,7 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string;
-        session.user.image = token.image as string;
+        session.user.image = token.image as string | null;
         session.user.name = token.name as string;
         session.user.email = token.email as string;
         session.user.role = token.role as string;

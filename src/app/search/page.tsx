@@ -24,14 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -50,6 +43,12 @@ import {
   ChevronRight,
   Layers,
   Share2,
+  BadgeCheck,
+  Star,
+  Send,
+  Youtube,
+  Globe,
+  SendIcon,
 } from "lucide-react";
 
 // Services & Hooks
@@ -67,7 +66,6 @@ import {
   type SiteCategory,
 } from "@/services/settings";
 
-// Фолбэк-категории на случай, если настройки сайта еще не загрузились
 const FALLBACK_CATEGORIES: SiteCategory[] = [
   {
     id: "1",
@@ -108,14 +106,6 @@ const FALLBACK_CATEGORIES: SiteCategory[] = [
 
 const PAGE_SIZE = 12;
 
-// ============================================================================
-// УТИЛИТЫ ПАРСИНГА URL (УМНЫЙ МАППИНГ КАТЕГОРИЙ ИЗ АДМИНКИ)
-// ============================================================================
-
-/**
- * Безопасно извлекает параметр из строки ссылки
- * (например, из "/search?category=photographer" вернет "photographer")
- */
 const extractParamFromLink = (link: string | undefined, paramName: string) => {
   if (!link) return null;
   try {
@@ -136,14 +126,13 @@ export default function SearchPage() {
   const pathname = usePathname();
   const { toast } = useToast();
 
-  // Загружаем категории сайта из админки
   const { data: settings, isLoading: isLoadingCategories } =
     useGeneralSettingsQuery();
   const categories = settings?.siteCategories?.length
     ? settings.siteCategories
     : FALLBACK_CATEGORIES;
 
-  // --- СОСТОЯНИЯ ФИЛЬТРОВ ---
+  // Filters State
   const [cityInput, setCityInput] = useState(searchParams.get("city") || "");
   const [minPrice, setMinPrice] = useState(searchParams.get("priceMin") || "");
   const [maxPrice, setMaxPrice] = useState(searchParams.get("priceMax") || "");
@@ -155,13 +144,12 @@ export default function SearchPage() {
     searchParams.get("onlyVip") === "true",
   );
 
-  // 🚨 Храним РЕАЛЬНЫЕ названия категорий из БД (например "Фотографы"), а не английские слаги
   const [selectedService, setSelectedService] = useState<string | null>(null);
   const [selectedSubCategories, setSelectedSubCategories] = useState<string[]>(
     [],
   );
 
-  // --- СОСТОЯНИЯ РЕЗУЛЬТАТОВ ---
+  // Results State
   const [currentPage, setCurrentPage] = useState(
     Number(searchParams.get("page")) || 1,
   );
@@ -170,25 +158,19 @@ export default function SearchPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
 
-  // Автокомплит городов
+  // Autocomplete
   const [regions, setRegions] = useState<
     { name: string; cities: { name: string }[] }[]
   >([]);
   const [autocompleteResults, setAutocompleteResults] = useState<string[]>([]);
 
-  // Определяем активную категорию и ее подкатегории
   const activeCategoryObj = categories.find((c) => c.name === selectedService);
   const availableSubCategories = activeCategoryObj?.subCategories || [];
 
-  // ============================================================================
-  // ЭФФЕКТ 1: СИНХРОНИЗАЦИЯ URL -> ВНУТРЕННЕЕ СОСТОЯНИЕ (РАЗРЕШЕНИЕ СЛАГОВ)
-  // ============================================================================
   useEffect(() => {
-    // Получаем сырые параметры из URL (могут быть английскими слагами)
     const paramCategory = searchParams.get("category");
     const paramSubCats = searchParams.get("subCategories");
 
-    // 1. Разрешаем основную категорию
     let resolvedCategoryName: string | null = null;
     if (paramCategory && paramCategory !== "_all_") {
       const matchedCat = categories.find((c) => {
@@ -202,7 +184,6 @@ export default function SearchPage() {
     }
     setSelectedService(resolvedCategoryName);
 
-    // 2. Разрешаем подкатегории (если есть основная категория)
     if (paramSubCats && resolvedCategoryName) {
       const activeCat = categories.find((c) => c.name === resolvedCategoryName);
       if (activeCat && activeCat.subCategories) {
@@ -228,20 +209,15 @@ export default function SearchPage() {
     }
   }, [searchParams, categories]);
 
-  // ============================================================================
-  // ОБРАТНОЕ ПРЕОБРАЗОВАНИЕ: ИМЯ БД -> URL СЛАГ ДЛЯ КРАСИВЫХ ССЫЛОК
-  // ============================================================================
   const updateURLParams = useCallback(
     (page: number) => {
       const params = new URLSearchParams();
 
-      // Поиск по текстовому запросу, если он есть
       const query = searchParams.get("q");
       if (query) params.set("q", query);
 
       if (cityInput) params.set("city", cityInput);
 
-      // 1. Преобразуем название основной категории в слаг
       if (selectedService && selectedService !== "_all_") {
         const catObj = categories.find((c) => c.name === selectedService);
         const slug = catObj
@@ -250,7 +226,6 @@ export default function SearchPage() {
         params.set("category", slug || selectedService);
       }
 
-      // 2. Преобразуем названия подкатегорий в слаги
       if (
         selectedSubCategories.length > 0 &&
         activeCategoryObj?.subCategories
@@ -293,12 +268,10 @@ export default function SearchPage() {
     ],
   );
 
-  // --- ФЕТЧИНГ РЕЗУЛЬТАТОВ ---
   const fetchResults = useCallback(
     async (page: number) => {
       setIsSearching(true);
       try {
-        // Отправляем на бэкенд ИМЕНА категорий на РУССКОМ, как они хранятся в БД
         const result = await getPerformersPaginated({
           page,
           pageSize: PAGE_SIZE,
@@ -313,7 +286,7 @@ export default function SearchPage() {
           onlyVip: onlyVip ? "true" : undefined,
           accountType:
             selectedAccountType === "all" ? undefined : selectedAccountType,
-          query: searchParams.get("q") || undefined, // Поиск по строке из хидера
+          query: searchParams.get("q") || undefined,
         });
 
         setSearchResults(result.items);
@@ -349,13 +322,11 @@ export default function SearchPage() {
 
   useEffect(() => {
     if (mounted) fetchResults(currentPage);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mounted, searchParams]); // Перезапускаем поиск, если изменились параметры URL
+  }, [mounted, searchParams]);
 
-  // --- ОБРАБОТЧИКИ СОБЫТИЙ UI ---
   const handleCategoryChange = (val: string) => {
     setSelectedService(val === "_all_" ? null : val);
-    setSelectedSubCategories([]); // Сброс подкатегорий при смене основной
+    setSelectedSubCategories([]);
   };
 
   const toggleSubCategory = (subName: string) => {
@@ -429,8 +400,8 @@ export default function SearchPage() {
 
   if (!mounted) {
     return (
-      <div className="container mx-auto py-10">
-        <Skeleton className="h-[500px] w-full rounded-xl" />
+      <div className="container mx-auto py-10 px-4 md:px-8">
+        <Skeleton className="h-[500px] w-full rounded-3xl" />
       </div>
     );
   }
@@ -438,13 +409,12 @@ export default function SearchPage() {
   const totalPages = Math.ceil(totalResults / PAGE_SIZE);
 
   return (
-    <div className="container px-4 md:px-8 py-2 md:py-10 animate-in fade-in duration-500">
+    <div className="container mx-auto py-10 px-4 md:px-8 animate-in fade-in duration-500">
       <div className="grid gap-6">
         {/* --- FILTERS SECTION --- */}
-        <Card className="border-primary/10 shadow-sm">
+        <Card className="border-primary/10 shadow-sm rounded-3xl overflow-hidden">
           <CardContent className="pt-6 space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
-              {/* Dynamic Category Select */}
               <div className="space-y-2">
                 <Label>Категория услуги</Label>
                 <Select
@@ -452,7 +422,7 @@ export default function SearchPage() {
                   onValueChange={handleCategoryChange}
                   disabled={isLoadingCategories}
                 >
-                  <SelectTrigger className="bg-muted/30 font-semibold">
+                  <SelectTrigger className="bg-muted/30 font-semibold rounded-xl h-11">
                     <SelectValue
                       placeholder={
                         isLoadingCategories ? "Загрузка..." : "Все услуги"
@@ -475,7 +445,6 @@ export default function SearchPage() {
                 </Select>
               </div>
 
-              {/* Date Select */}
               <div className="space-y-2">
                 <Label>Дата мероприятия</Label>
                 <Popover>
@@ -483,7 +452,7 @@ export default function SearchPage() {
                     <Button
                       variant="outline"
                       className={cn(
-                        "w-full justify-start text-left font-normal bg-muted/30",
+                        "w-full justify-start text-left font-normal bg-muted/30 rounded-xl h-11",
                         !selectedDate && "text-muted-foreground",
                       )}
                     >
@@ -495,7 +464,10 @@ export default function SearchPage() {
                       )}
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
+                  <PopoverContent
+                    className="w-auto p-0 rounded-2xl"
+                    align="start"
+                  >
                     <Calendar
                       mode="single"
                       selected={selectedDate}
@@ -508,14 +480,13 @@ export default function SearchPage() {
                 </Popover>
               </div>
 
-              {/* Account Type */}
               <div className="space-y-2">
                 <Label>Тип исполнителя</Label>
                 <Select
                   value={selectedAccountType}
                   onValueChange={setSelectedAccountType}
                 >
-                  <SelectTrigger className="bg-muted/30">
+                  <SelectTrigger className="bg-muted/30 rounded-xl h-11">
                     <SelectValue placeholder="Тип аккаунта" />
                   </SelectTrigger>
                   <SelectContent>
@@ -526,7 +497,6 @@ export default function SearchPage() {
                 </Select>
               </div>
 
-              {/* City Input */}
               <div className="space-y-2 relative">
                 <Label>Город</Label>
                 <Input
@@ -534,14 +504,14 @@ export default function SearchPage() {
                   placeholder="Введите город..."
                   value={cityInput}
                   onChange={handleCityInputChange}
-                  className="bg-muted/30"
+                  className="bg-muted/30 rounded-xl h-11"
                 />
                 {autocompleteResults.length > 0 && (
-                  <div className="absolute z-50 mt-1 w-full rounded-md border bg-background shadow-lg max-h-60 overflow-y-auto">
+                  <div className="absolute z-50 mt-1 w-full rounded-2xl border bg-background shadow-xl max-h-60 overflow-y-auto py-2">
                     {autocompleteResults.map((res, i) => (
                       <div
                         key={i}
-                        className="cursor-pointer px-4 py-2 text-sm hover:bg-accent"
+                        className="cursor-pointer px-4 py-2.5 text-sm hover:bg-muted font-medium transition-colors"
                         onClick={() => {
                           setCityInput(res);
                           setAutocompleteResults([]);
@@ -555,10 +525,9 @@ export default function SearchPage() {
               </div>
             </div>
 
-            {/* DYNAMIC SUB-CATEGORY BLOCK */}
             {availableSubCategories.length > 0 && (
               <div className="pt-4 border-t border-dashed animate-in slide-in-from-top-4 fade-in duration-300">
-                <Label className="mb-3 flex items-center gap-2 text-sm font-semibold text-primary">
+                <Label className="mb-3 flex items-center gap-2 text-sm font-bold text-primary">
                   <Layers className="h-4 w-4" /> Уточните специализацию:
                 </Label>
                 <div className="flex flex-wrap gap-2">
@@ -567,7 +536,7 @@ export default function SearchPage() {
                       selectedSubCategories.length === 0 ? "default" : "outline"
                     }
                     size="sm"
-                    className="rounded-full shadow-sm"
+                    className="rounded-full shadow-sm font-bold"
                     onClick={() => setSelectedSubCategories([])}
                   >
                     Все в категории "{activeCategoryObj?.name}"
@@ -580,7 +549,7 @@ export default function SearchPage() {
                         variant={isSelected ? "default" : "outline"}
                         size="sm"
                         className={cn(
-                          "rounded-full shadow-sm transition-all",
+                          "rounded-full shadow-sm transition-all font-semibold",
                           isSelected
                             ? "bg-primary text-primary-foreground"
                             : "bg-background hover:bg-muted",
@@ -595,7 +564,6 @@ export default function SearchPage() {
               </div>
             )}
 
-            {/* Price & Search Row */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end pt-2">
               <div className="space-y-2">
                 <Label>Бюджет (₽)</Label>
@@ -605,7 +573,7 @@ export default function SearchPage() {
                     placeholder="от"
                     value={minPrice}
                     onChange={(e) => setMinPrice(e.target.value)}
-                    className="bg-muted/30"
+                    className="bg-muted/30 rounded-xl h-11"
                   />
                   <span className="text-muted-foreground">-</span>
                   <Input
@@ -613,55 +581,59 @@ export default function SearchPage() {
                     placeholder="до"
                     value={maxPrice}
                     onChange={(e) => setMaxPrice(e.target.value)}
-                    className="bg-muted/30"
+                    className="bg-muted/30 rounded-xl h-11"
                   />
                 </div>
               </div>
 
-              <div className="flex items-center space-x-2 border rounded-md px-3 py-2 bg-yellow-500/5 border-yellow-500/20 h-10">
+              <div
+                className="flex items-center space-x-2 border rounded-xl px-4 py-2 bg-yellow-500/5 border-yellow-500/20 h-11 cursor-pointer transition-colors hover:bg-yellow-500/10"
+                onClick={() => setOnlyVip(!onlyVip)}
+              >
                 <Checkbox
                   id="vip-only"
                   checked={onlyVip}
                   onCheckedChange={(v) => setOnlyVip(!!v)}
+                  className="border-yellow-500/50 data-[state=checked]:bg-yellow-500 data-[state=checked]:border-yellow-500"
                 />
                 <Label
                   htmlFor="vip-only"
-                  className="text-xs font-bold text-yellow-700 flex items-center gap-1 cursor-pointer"
+                  className="text-sm font-bold text-yellow-700 flex items-center gap-1.5 cursor-pointer w-full"
                 >
-                  <Crown className="h-3 w-3" /> Только VIP / Звезды
+                  <Crown className="h-4 w-4" /> Только VIP / Звезды
                 </Label>
               </div>
 
               <div className="lg:col-span-2 flex gap-2">
                 <Button
                   variant="destructive"
-                  className="flex-grow font-bold shadow-lg shadow-destructive/20 h-10"
+                  className="flex-grow font-bold shadow-lg shadow-destructive/20 h-11 rounded-xl text-base"
                   onClick={handleSearchClick}
                   disabled={isSearching}
                 >
                   {isSearching ? (
-                    <Search className="mr-2 h-4 w-4 animate-bounce" />
+                    <Search className="mr-2 h-5 w-5 animate-bounce" />
                   ) : (
-                    <Search className="mr-2 h-4 w-4" />
-                  )}{" "}
+                    <Search className="mr-2 h-5 w-5" />
+                  )}
                   Найти исполнителей
                 </Button>
-                <div className="flex gap-1">
+                <div className="flex gap-1 bg-muted/20 p-1 rounded-xl border">
                   <Button
-                    variant={viewMode === "list" ? "secondary" : "outline"}
+                    variant={viewMode === "list" ? "default" : "ghost"}
                     size="icon"
                     onClick={() => setViewMode("list")}
                     title="Список"
-                    className="h-10 w-10"
+                    className="h-9 w-9 rounded-lg"
                   >
                     <List className="h-4 w-4" />
                   </Button>
                   <Button
-                    variant={viewMode === "map" ? "secondary" : "outline"}
+                    variant={viewMode === "map" ? "default" : "ghost"}
                     size="icon"
                     onClick={() => setViewMode("map")}
                     title="Карта"
-                    className="h-10 w-10"
+                    className="h-9 w-9 rounded-lg"
                   >
                     <MapIcon className="h-4 w-4" />
                   </Button>
@@ -673,147 +645,269 @@ export default function SearchPage() {
 
         {/* --- RESULTS SECTION --- */}
         <div className="mt-4 space-y-6">
-          <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-bold tracking-tight">
+          <div className="flex justify-between items-center px-2">
+            <h2 className="text-2xl font-black tracking-tight">
               Найдено: {totalResults}
             </h2>
-            <div className="text-sm text-muted-foreground font-medium">
+            <div className="text-sm text-muted-foreground font-semibold bg-white px-3 py-1 rounded-full border shadow-sm">
               Показано {searchResults.length} на странице
             </div>
           </div>
 
           {isSearching ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[1, 2, 3, 4, 5, 6].map((i) => (
-                <Skeleton key={i} className="h-[340px] w-full rounded-2xl" />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                <Skeleton key={i} className="h-[420px] w-full rounded-3xl" />
               ))}
             </div>
           ) : searchResults.length > 0 ? (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {searchResults.map((performer) => (
-                  <Card
-                    key={performer.id}
-                    className={cn(
-                      "flex flex-col relative transition-all hover:shadow-xl group border border-muted shadow-sm bg-card overflow-hidden rounded-2xl",
-                      performer.isVip &&
-                        "ring-2 ring-yellow-500/50 border-yellow-500/20",
-                    )}
-                  >
-                    {performer.isVip && (
-                      <div className="absolute top-0 right-0 p-1.5 bg-gradient-to-tr from-yellow-600 to-yellow-400 text-white rounded-bl-xl shadow-md z-10 flex items-center gap-1 text-[10px] font-extrabold tracking-wider">
-                        <Crown className="h-3 w-3" /> STAR
-                      </div>
-                    )}
-                    <CardHeader className="pb-4">
-                      <div className="flex items-start justify-between">
-                        <Link
-                          href={`/performer-profile?id=${performer.id}`}
-                          className="flex items-center gap-4 group/link flex-grow min-w-0 pr-2"
-                        >
-                          <Avatar className="h-16 w-16 border-2 border-background shadow-md shrink-0">
-                            <AvatarImage
-                              src={performer.profilePicture || ""}
-                              alt={performer.name}
-                              className="object-cover"
-                            />
-                            <AvatarFallback className="bg-primary/10 text-primary font-bold text-xl">
-                              {performer.name.substring(0, 1).toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="flex flex-col overflow-hidden">
-                            <CardTitle className="text-lg group-hover/link:text-primary transition-colors truncate">
-                              {performer.name}
-                            </CardTitle>
-                            <CardDescription className="flex items-center text-xs gap-1 mt-1 font-medium">
-                              <MapPin className="h-3 w-3 text-primary/70 shrink-0" />{" "}
-                              <span className="truncate">{performer.city}</span>
-                            </CardDescription>
-                            {performer.parentAgencyName && (
-                              <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-muted-foreground font-bold uppercase tracking-tight bg-muted/50 w-fit px-2 py-0.5 rounded-full">
-                                <Briefcase className="h-3 w-3" /> от{" "}
-                                {performer.parentAgencyName}
-                              </div>
-                            )}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {searchResults.map((performer) => {
+                  // Helper to safely access social links
+                  const socials = performer.socialLinks as
+                    | Record<string, string>
+                    | undefined;
+                  const hasSocials = socials && Object.keys(socials).length > 0;
+                  // Basic Verified heuristic: either VIP or assumed verified for the aesthetic
+                  const isVerified =
+                    performer.isVip ||
+                    performer.moderationStatus === "APPROVED";
+
+                  return (
+                    <Card
+                      key={performer.id}
+                      className={cn(
+                        "group relative flex flex-col rounded-[24px] overflow-hidden transition-all duration-300 hover:shadow-2xl hover:shadow-primary/5 border border-border/50 bg-background hover:-translate-y-1",
+                        performer.isVip &&
+                          "ring-2 ring-yellow-400/60 border-yellow-400/20",
+                      )}
+                    >
+                      {/* 1. HERO COVER IMAGE */}
+                      <div className="h-32 w-full relative overflow-hidden bg-muted">
+                        {performer.backgroundPicture ? (
+                          <img
+                            src={performer.backgroundPicture}
+                            alt="Cover"
+                            className="object-cover w-full h-full transition-transform duration-700 group-hover:scale-105"
+                          />
+                        ) : (
+                          <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-primary/5 to-background" />
+                        )}
+                        {/* Soft Gradient Overlay for text readability if needed */}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
+
+                        {/* VIP Badge on Cover */}
+                        {performer.isVip && (
+                          <div className="absolute top-3 right-3 bg-gradient-to-r from-amber-500 to-yellow-400 text-white text-[10px] font-black px-2.5 py-1 rounded-full flex items-center gap-1 shadow-md">
+                            <Crown className="w-3 h-3" /> PRO
                           </div>
-                        </Link>
-                        <div className="flex items-center gap-1 shrink-0">
+                        )}
+                      </div>
+
+                      {/* 2. PROFILE PHOTO & QUICK ACTIONS */}
+                      <div className="flex justify-between items-end px-5 -mt-10 relative z-10 mb-2">
+                        <Avatar className="w-20 h-20 border-4 border-background shadow-md bg-muted">
+                          <AvatarImage
+                            src={performer.profilePicture || ""}
+                            className="object-cover"
+                          />
+                          <AvatarFallback className="text-2xl font-black text-primary bg-primary/10">
+                            {performer.name.substring(0, 1).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+
+                        <div className="flex gap-1 pb-1">
+                          {hasSocials && (
+                            <>
+                              {socials.vk && (
+                                <a
+                                  href={socials.vk}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="w-6 h-6 rounded-full bg-[#0077FF]/10 text-[#0077FF] flex items-center justify-center hover:bg-[#0077FF]/20 transition-colors"
+                                >
+                                  <span className="font-bold text-[10px]">
+                                    VK
+                                  </span>
+                                </a>
+                              )}
+
+                              {socials.telegram && (
+                                <a
+                                  href={socials.telegram}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="w-6 h-6 rounded-full bg-[#24A1DE]/10 text-[#24A1DE] flex items-center justify-center hover:bg-[#24A1DE]/20 transition-colors"
+                                >
+                                  <SendIcon className="w-3 h-3" />
+                                </a>
+                              )}
+
+                              {socials.youtube && (
+                                <a
+                                  href={socials.youtube}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="w-6 h-6 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center hover:bg-red-500/20 transition-colors"
+                                >
+                                  <Youtube className="w-4 h-4" />
+                                </a>
+                              )}
+
+                              {socials.website && (
+                                <a
+                                  href={socials.website}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="w-6 h-6 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center hover:bg-gray-500/20 transition-colors"
+                                >
+                                  <Globe className="w-4 h-4" />
+                                </a>
+                              )}
+                            </>
+                          )}
+
                           <Button
-                            variant="ghost"
+                            variant="secondary"
                             size="icon"
-                            className="h-8 w-8 rounded-full bg-muted/30 hover:bg-muted text-muted-foreground transition-colors"
+                            className="h-6 w-6 rounded-full shadow-sm bg-background hover:bg-muted text-muted-foreground transition-colors"
                             onClick={(e) => {
                               e.preventDefault();
                               handleShare(performer);
                             }}
-                            title="Поделиться профилем"
+                            title="Поделиться"
                           >
                             <Share2 className="h-4 w-4" />
                           </Button>
+
                           <CompareButton performerId={performer.id} />
                         </div>
                       </div>
-                    </CardHeader>
-                    <CardContent className="flex-grow">
-                      <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed">
-                        {performer.description || "О себе не рассказано"}
-                      </p>
-                      <div className="flex flex-wrap gap-1.5 mt-4">
-                        {performer.roles.slice(0, 4).map((r) => (
-                          <Badge
-                            key={r}
-                            variant="secondary"
-                            className="text-[10px] bg-primary/10 text-primary hover:bg-primary/20 transition-colors border-none"
+
+                      {/* 3. CONTENT BODY */}
+                      <CardContent className="px-5 pt-2 pb-5 flex-grow flex flex-col">
+                        {/* Title & Verified */}
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <Link
+                            href={`/performer-profile?id=${performer.id}`}
+                            className="text-lg font-bold truncate hover:text-primary transition-colors leading-tight"
+                            title={performer.name}
                           >
-                            {r}
-                          </Badge>
-                        ))}
+                            {performer.name}
+                          </Link>
+                          {isVerified && (
+                            <BadgeCheck className="w-4 h-4 text-blue-500 shrink-0" />
+                          )}
+                        </div>
+
+                        {/* City & Rating Row */}
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground mb-4 font-medium">
+                          <span className="flex items-center gap-1">
+                            <MapPin className="w-3.5 h-3.5" />{" "}
+                            {performer.city || "Город не указан"}
+                          </span>
+
+                          {/* Mocking rating display if real one exists */}
+                          {/* {performer.averageRating ? (
+                            <span className="flex items-center gap-1 text-amber-500 bg-amber-500/10 px-1.5 rounded-md">
+                              <Star className="w-3.5 h-3.5 fill-current" />{" "}
+                              {performer.averageRating.toFixed(1)}
+                            </span>
+                          ) : null} */}
+                        </div>
+
+                        {/* Roles Badges */}
+                        <div className="flex flex-wrap gap-1.5 mb-4">
+                          {performer.roles.slice(0, 3).map((r) => (
+                            <Badge
+                              key={r}
+                              variant="secondary"
+                              className="text-[10px] bg-primary/10 text-primary border-transparent font-bold px-2 py-0.5 rounded-md"
+                            >
+                              {r}
+                            </Badge>
+                          ))}
+                          {performer.roles.length > 3 && (
+                            <Badge
+                              variant="secondary"
+                              className="text-[10px] bg-muted text-muted-foreground border-transparent font-bold px-2 py-0.5 rounded-md"
+                            >
+                              +{performer.roles.length - 3}
+                            </Badge>
+                          )}
+                        </div>
+
+                        {/* Description */}
+                        <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed mb-4">
+                          {performer.description ||
+                            "Информация о себе пока не заполнена."}
+                        </p>
+
+                        {/* Agency Tag (If applicable) */}
+                        {performer.parentAgencyName && (
+                          <div className="mt-auto pt-2">
+                            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-bold uppercase tracking-tight bg-muted/40 w-fit px-2.5 py-1 rounded-lg border">
+                              <Briefcase className="h-3 w-3" /> от{" "}
+                              {performer.parentAgencyName}
+                            </div>
+                          </div>
+                        )}
+                      </CardContent>
+
+                      {/* 4. FOOTER: Price & Action */}
+                      <div className="px-5 py-4 border-t bg-muted/10 flex items-center justify-between mt-auto">
+                        <div className="flex flex-col">
+                          <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider mb-0.5">
+                            Стоимость
+                          </span>
+                          <span className="text-base font-black text-foreground">
+                            {performer.priceRange && performer.priceRange[0] > 0
+                              ? `от ${performer.priceRange[0].toLocaleString("ru-RU")} ₽`
+                              : "По запросу"}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <Button
+                            asChild
+                            variant={
+                              performer.isVip ? "destructive" : "default"
+                            }
+                            size="sm"
+                            className="font-bold rounded-xl px-5 shadow-sm hover:shadow-md transition-shadow"
+                          >
+                            <Link
+                              href={`/performer-profile?id=${performer.id}`}
+                            >
+                              Перейти
+                            </Link>
+                          </Button>
+                        </div>
                       </div>
-                    </CardContent>
-                    <CardFooter className="flex justify-between items-center pt-5 border-t bg-muted/10">
-                      <div className="flex flex-col">
-                        <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider mb-0.5">
-                          Стоимость
-                        </span>
-                        <span className="text-sm font-black text-primary">
-                          {performer.priceRange && performer.priceRange[0] > 0
-                            ? `от ${performer.priceRange[0].toLocaleString()} ₽`
-                            : "По запросу"}
-                        </span>
-                      </div>
-                      <Button
-                        asChild
-                        variant={performer.isVip ? "destructive" : "default"}
-                        size="sm"
-                        className="font-bold rounded-full px-5 shadow-sm"
-                      >
-                        <Link href={`/performer-profile?id=${performer.id}`}>
-                          Подробнее
-                        </Link>
-                      </Button>
-                    </CardFooter>
-                  </Card>
-                ))}
+                    </Card>
+                  );
+                })}
               </div>
 
               {totalPages > 1 && (
-                <div className="flex justify-center items-center gap-4 mt-12 bg-card border rounded-full w-fit mx-auto p-2 shadow-sm">
+                <div className="flex justify-center items-center gap-4 mt-14 bg-white border rounded-full w-fit mx-auto p-2 shadow-sm">
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="rounded-full"
+                    className="rounded-full hover:bg-muted transition-colors"
                     onClick={() => handlePageChange(currentPage - 1)}
                     disabled={currentPage === 1}
                   >
                     <ChevronLeft className="h-5 w-5" />
                   </Button>
-                  <div className="text-sm font-semibold px-4 text-muted-foreground">
+                  <div className="text-sm font-bold px-4 text-muted-foreground">
                     Страница {currentPage} из {totalPages}
                   </div>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="rounded-full"
+                    className="rounded-full hover:bg-muted transition-colors"
                     onClick={() => handlePageChange(currentPage + 1)}
                     disabled={currentPage === totalPages}
                   >
@@ -823,7 +917,7 @@ export default function SearchPage() {
               )}
             </>
           ) : (
-            <div className="text-center py-24 bg-muted/10 rounded-3xl border-2 border-dashed">
+            <div className="text-center py-24 bg-white rounded-3xl border border-dashed shadow-sm">
               <Search className="h-16 w-16 mx-auto text-muted-foreground opacity-20 mb-4" />
               <h3 className="text-2xl font-bold mb-2">Ничего не найдено</h3>
               <p className="text-muted-foreground max-w-sm mx-auto">
@@ -831,7 +925,7 @@ export default function SearchPage() {
               </p>
               <Button
                 variant="outline"
-                className="mt-6 rounded-full"
+                className="mt-6 rounded-xl font-bold"
                 onClick={() => {
                   setSelectedService(null);
                   setSelectedSubCategories([]);

@@ -1,119 +1,1918 @@
+// "use client";
+
+// import { useState, useEffect, useCallback, useRef } from "react";
+// import { useSearchParams, useRouter } from "next/navigation";
+// import { useSession } from "next-auth/react";
+// import { useChatStore } from "@/store/useChatStore";
+
+// // --- API Services ---
+// import {
+//   usePerformerProfile,
+//   useUpdatePerformerProfile,
+//   useAddGalleryItem,
+//   useRemoveGalleryItem,
+//   useAddAudioTrack,
+//   useRemoveAudioTrack,
+//   useAddCertificate,
+//   useRemoveCertificate,
+//   useAddFeedPost,
+//   useDeleteFeedPost,
+//   useTogglePostVisibility,
+//   useLikeFeedPost,
+//   useAddFeedComment,
+// } from "@/services/performer";
+// import {
+//   isFavorite as checkIsFavorite,
+//   addToFavorites,
+//   removeFromFavorites,
+// } from "@/services/favorites";
+// import { useReviews } from "@/services/reviews";
+// import { getSiteSettings } from "@/services/settings";
+// import { apiRequest } from "@/utils/api-client";
+// import { useToast } from "@/hooks/use-toast";
+// import { format } from "date-fns";
+// import { ru } from "date-fns/locale";
+
+// // --- UI Components ---
+// import {
+//   Dialog,
+//   DialogContent,
+//   DialogHeader,
+//   DialogTitle,
+//   DialogDescription,
+//   DialogFooter,
+//   DialogClose,
+// } from "@/components/ui/dialog";
+// import { Label } from "@/components/ui/label";
+// import { Checkbox } from "@/components/ui/checkbox";
+// import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+// import { Button } from "@/components/ui/button";
+// import { Textarea } from "@/components/ui/textarea";
+// import { Badge } from "@/components/ui/badge";
+// import { Input } from "@/components/ui/input";
+// import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+// import { Separator } from "@/components/ui/separator";
+// import {
+//   User,
+//   Loader2,
+//   CalendarIcon,
+//   Edit3,
+//   Wallet,
+//   PlusCircle,
+//   CreditCard,
+//   Music,
+//   Trash2,
+//   MapPin,
+//   MessageCircle,
+//   Heart,
+//   Video,
+//   Image as ImageIcon,
+//   ChefHat,
+//   Link as LinkIcon,
+//   Youtube,
+//   Send as SendIcon,
+//   CheckCircle2,
+//   Banknote,
+//   EyeOff,
+//   Eye,
+//   Send,
+//   Award,
+//   FileText,
+//   LayoutGrid,
+//   X,
+//   ChevronDown,
+//   ChevronRight,
+//   Globe,
+// } from "lucide-react";
+
+// // --- Custom Components ---
+// import GalleryManager from "@/components/performer-profile/GalleryManager";
+// import ReviewsSection from "@/components/performer-profile/ReviewsSection";
+// import CalendarSection from "@/components/performer-profile/CalendarSection";
+// import AudioManager from "@/components/performer-profile/AudioManager";
+// import AudioUploadDialog from "@/components/performer-profile/AudioUploadDialog";
+// import FileUploadDialog from "@/components/performer-profile/FileUploadDialog";
+// import AgencyDashboard from "@/components/performer-profile/AgencyDashboard";
+// import SubscriptionStatusCard from "@/components/profile/SubscriptionStatusCard";
+// import { cn } from "@/utils/utils";
+
+// const API_BASE =
+//   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8800";
+
+// const getImageUrl = (path: string | undefined | null) => {
+//   if (!path) return "";
+//   if (path.startsWith("http")) return path;
+//   return `${API_BASE}${path}`;
+// };
+
+// // Types for Category Dialog
+// interface SubCategory {
+//   id: string;
+//   name: string;
+// }
+// interface SiteCategory {
+//   id: string;
+//   name: string;
+//   subCategories?: SubCategory[];
+// }
+
+// export default function PerformerProfileClient() {
+//   const searchParams = useSearchParams();
+//   const { data: session, status: authStatus } = useSession();
+//   const router = useRouter();
+//   const { toast } = useToast();
+//   const [feedFiles, setFeedFiles] = useState<File[]>([]);
+//   const [feedPreviews, setFeedPreviews] = useState<
+//     { url: string; type: string }[]
+//   >([]);
+
+//   // 🚨 REFS FOR FILE UPLOADS
+//   const fileInputRef = useRef<HTMLInputElement>(null);
+//   const backgroundInputRef = useRef<HTMLInputElement>(null);
+//   const profileInputRef = useRef<HTMLInputElement>(null);
+
+//   const [isUploadingBackground, setIsUploadingBackground] = useState(false);
+//   const [isUploadingProfile, setIsUploadingProfile] = useState(false);
+
+//   const PRESET_AMOUNTS = [500, 1000, 2000, 5000];
+//   const [isTopUpModalOpen, setIsTopUpModalOpen] = useState(false);
+//   const [topUpAmount, setTopUpAmount] = useState<string>("1000");
+//   const [isProcessingTopUp, setIsProcessingTopUp] = useState(false);
+
+//   const urlProfileId = searchParams.get("id");
+//   const sessionUser = session?.user;
+//   const targetProfileId =
+//     urlProfileId ||
+//     (sessionUser?.role === "performer" ? sessionUser?.id : null);
+//   const isOwnProfile = !!(
+//     sessionUser?.id && targetProfileId === sessionUser.id
+//   );
+
+//   const {
+//     data: profile,
+//     isLoading: isProfileLoading,
+//     isError,
+//     refetch: refetchProfile,
+//   } = usePerformerProfile(targetProfileId || null);
+
+//   const isOnlineInStore = useChatStore((state) => {
+//     if (!targetProfileId) return false;
+//     const users = state.onlineUsers;
+//     // Safely check both Set and Array just in case
+//     if (typeof users?.has === "function") return users.has(targetProfileId);
+//     if (Array.isArray(users)) return users.includes(targetProfileId);
+//     return false;
+//   });
+
+//   const isPerformerOnline = isOwnProfile || isOnlineInStore;
+//   const { data: reviews = [] } = useReviews(targetProfileId || null);
+
+//   // --- Role Intelligence ---
+//   const rolesArray = profile?.roles?.map((r) => r.toLowerCase()) || [];
+//   const isAudioHeavy = rolesArray.some(
+//     (r) =>
+//       r.includes("dj") ||
+//       r.includes("вокал") ||
+//       r.includes("певец") ||
+//       r.includes("музыкант"),
+//   );
+//   const isVisualHeavy = rolesArray.some(
+//     (r) =>
+//       r.includes("танц") ||
+//       r.includes("шоу") ||
+//       r.includes("фото") ||
+//       r.includes("видео"),
+//   );
+//   const isChef = rolesArray.some(
+//     (r) => r.includes("повар") || r.includes("кейтеринг"),
+//   );
+
+//   // --- State ---
+//   const [isFavorite, setIsFavorite] = useState(false);
+//   const [walletBalance, setWalletBalance] = useState<number>(0);
+//   const [newPostText, setNewPostText] = useState("");
+//   const [activeCommentPostId, setActiveCommentPostId] = useState<string | null>(
+//     null,
+//   );
+//   const [commentText, setCommentText] = useState("");
+
+//   const [portfolioFilter, setPortfolioFilter] = useState<
+//     "all" | "photo" | "audio" | "docs"
+//   >("all");
+
+//   // Dialog States
+//   const [isGalleryDialogOpen, setIsGalleryDialogOpen] = useState(false);
+//   const [isAudioDialogOpen, setIsAudioDialogOpen] = useState(false);
+//   const [isCertificateDialogOpen, setIsCertificateDialogOpen] = useState(false);
+
+//   // 🚨 Category State
+//   const [adminCategories, setAdminCategories] = useState<SiteCategory[]>([]);
+//   const [tempSelectedRoles, setTempSelectedRoles] = useState<string[]>([]);
+//   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
+//   const [isSavingCategories, setIsSavingCategories] = useState(false);
+
+//   // Mutations
+//   const addGalleryItemMutation = useAddGalleryItem();
+//   const removeGalleryItemMutation = useRemoveGalleryItem();
+//   const addAudioMutation = useAddAudioTrack();
+//   const removeAudioMutation = useRemoveAudioTrack();
+//   const addCertificateMutation = useAddCertificate();
+//   const removeCertificateMutation = useRemoveCertificate();
+//   const updateMutation = useUpdatePerformerProfile();
+//   const addFeedPostMutation = useAddFeedPost();
+//   const deleteFeedPostMutation = useDeleteFeedPost();
+//   const toggleVisibilityMutation = useTogglePostVisibility();
+//   const likeMutation = useLikeFeedPost();
+//   const commentMutation = useAddFeedComment();
+
+//   // --- CATEGORY HANDLERS ---
+//   useEffect(() => {
+//     if (isOwnProfile) {
+//       getSiteSettings()
+//         .then((settings) => {
+//           if (settings?.siteCategories)
+//             setAdminCategories(settings.siteCategories);
+//         })
+//         .catch(console.error);
+//     }
+//   }, [isOwnProfile]);
+
+//   useEffect(() => {
+//     if (profile && isCategoryDialogOpen) {
+//       setTempSelectedRoles(profile.roles || []);
+//     }
+//   }, [profile, isCategoryDialogOpen]);
+
+//   const handleCategoryToggle = (category: SiteCategory, isChecked: boolean) => {
+//     if (isChecked) {
+//       // 🚨 One Main Category Rule: Overwrite everything with this new category
+//       setTempSelectedRoles([category.name]);
+//     } else {
+//       // Uncheck clears everything
+//       setTempSelectedRoles([]);
+//     }
+//   };
+
+//   const toggleTempRole = (subRoleName: string) => {
+//     setTempSelectedRoles((prev) =>
+//       prev.includes(subRoleName)
+//         ? prev.filter((r) => r !== subRoleName)
+//         : [...prev, subRoleName],
+//     );
+//   };
+
+//   const handleSaveCategories = async () => {
+//     if (!profile) return;
+//     setIsSavingCategories(true);
+//     try {
+//       await updateMutation.mutateAsync({
+//         performerId: profile.id,
+//         data: { roles: tempSelectedRoles },
+//       });
+//       toast({ title: "Специализации успешно обновлены!" });
+//       setIsCategoryDialogOpen(false);
+//     } catch (error) {
+//       toast({ variant: "destructive", title: "Ошибка сохранения" });
+//     } finally {
+//       setIsSavingCategories(false);
+//     }
+//   };
+
+//   // --- IMAGE UPLOAD HANDLERS ---
+//   const handleBackgroundChange = async (
+//     e: React.ChangeEvent<HTMLInputElement>,
+//   ) => {
+//     const file = e.target.files?.[0];
+//     if (!file || !profile) return;
+
+//     if (!file.type.startsWith("image/")) {
+//       return toast({
+//         variant: "destructive",
+//         title: "Пожалуйста, выберите изображение",
+//       });
+//     }
+//     if (file.size > 5 * 1024 * 1024) {
+//       return toast({
+//         variant: "destructive",
+//         title: "Файл слишком большой (макс. 5МБ)",
+//       });
+//     }
+
+//     setIsUploadingBackground(true);
+//     try {
+//       await updateMutation.mutateAsync({
+//         performerId: profile.id,
+//         data: { backgroundPictureFile: file },
+//       });
+//       toast({ variant: "default", title: "Обложка успешно обновлена!" });
+//     } catch (error) {
+//       toast({ variant: "destructive", title: "Ошибка при загрузке обложки" });
+//     } finally {
+//       setIsUploadingBackground(false);
+//       if (backgroundInputRef.current) backgroundInputRef.current.value = "";
+//     }
+//   };
+
+//   const handleProfileChange = async (
+//     e: React.ChangeEvent<HTMLInputElement>,
+//   ) => {
+//     const file = e.target.files?.[0];
+//     if (!file || !profile) return;
+
+//     if (!file.type.startsWith("image/")) {
+//       return toast({
+//         variant: "destructive",
+//         title: "Пожалуйста, выберите изображение",
+//       });
+//     }
+//     if (file.size > 5 * 1024 * 1024) {
+//       return toast({
+//         variant: "destructive",
+//         title: "Файл слишком большой (макс. 5МБ)",
+//       });
+//     }
+
+//     setIsUploadingProfile(true);
+//     try {
+//       await updateMutation.mutateAsync({
+//         performerId: profile.id,
+//         data: { profilePictureFile: file },
+//       });
+//       toast({ variant: "default", title: "Аватар успешно обновлен!" });
+//     } catch (error) {
+//       toast({ variant: "destructive", title: "Ошибка при загрузке аватара" });
+//     } finally {
+//       setIsUploadingProfile(false);
+//       if (profileInputRef.current) profileInputRef.current.value = "";
+//     }
+//   };
+
+//   // --- FEED UPLOAD HANDLERS ---
+//   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+//     if (!e.target.files) return;
+//     const files = Array.from(e.target.files);
+//     const validFiles: File[] = [];
+//     let hasVideo = feedFiles.some((f) => f.type.startsWith("video/"));
+
+//     for (const file of files) {
+//       if (file.type.startsWith("image/")) {
+//         if (file.size > 5 * 1024 * 1024) {
+//           toast({
+//             variant: "destructive",
+//             title: `Файл ${file.name} превышает 5МБ`,
+//           });
+//           continue;
+//         }
+//         validFiles.push(file);
+//       } else if (file.type.startsWith("video/")) {
+//         if (hasVideo) {
+//           toast({
+//             variant: "destructive",
+//             title: "В один пост можно добавить только одно видео",
+//           });
+//           continue;
+//         }
+//         if (file.size > 15 * 1024 * 1024) {
+//           toast({
+//             variant: "destructive",
+//             title: `Видео ${file.name} превышает 15МБ`,
+//           });
+//           continue;
+//         }
+//         validFiles.push(file);
+//         hasVideo = true;
+//       }
+//     }
+
+//     if (validFiles.length > 0) {
+//       setFeedFiles((prev) => [...prev, ...validFiles]);
+//       const newPreviews = validFiles.map((f) => ({
+//         url: URL.createObjectURL(f),
+//         type: f.type,
+//       }));
+//       setFeedPreviews((prev) => [...prev, ...newPreviews]);
+//     }
+//     e.target.value = "";
+//   };
+
+//   const removeFeedFile = (index: number) => {
+//     URL.revokeObjectURL(feedPreviews[index].url);
+//     setFeedFiles((prev) => prev.filter((_, i) => i !== index));
+//     setFeedPreviews((prev) => prev.filter((_, i) => i !== index));
+//   };
+
+//   const handlePostFeed = () => {
+//     if (!profile) return;
+//     if (!newPostText.trim() && feedFiles.length === 0) return;
+
+//     addFeedPostMutation.mutate(
+//       { performerId: profile.id, text: newPostText, files: feedFiles },
+//       {
+//         onSuccess: () => {
+//           toast({ title: "Запись опубликована!" });
+//           setNewPostText("");
+//           setFeedFiles([]);
+//           setFeedPreviews([]);
+//         },
+//         onError: (err: any) => {
+//           toast({
+//             variant: "destructive",
+//             title: err.message || "Ошибка публикации",
+//           });
+//         },
+//       },
+//     );
+//   };
+
+//   // --- OTHER HANDLERS ---
+//   const handleTopUp = async () => {
+//     const amount = parseInt(topUpAmount, 10);
+//     if (isNaN(amount) || amount < 100) {
+//       toast({
+//         variant: "destructive",
+//         title: "Некорректная сумма",
+//         description: "Минимальная сумма пополнения — 100 ₽",
+//       });
+//       return;
+//     }
+
+//     setIsProcessingTopUp(true);
+//     try {
+//       const response = await apiRequest<{ paymentUrl: string }>({
+//         method: "post",
+//         url: "/api/wallet/topup/performer",
+//         data: { amount },
+//       });
+
+//       if (response.paymentUrl) {
+//         toast({ variant: "default", title: "Переход к оплате..." });
+//         window.location.href = response.paymentUrl;
+//       }
+//     } catch (error: any) {
+//       toast({
+//         variant: "destructive",
+//         title: "Ошибка",
+//         description:
+//           error.message || "Не удалось создать платеж. Попробуйте позже.",
+//       });
+//     } finally {
+//       setIsProcessingTopUp(false);
+//     }
+//   };
+
+//   const handleCommentSubmit = (postId: string) => {
+//     if (!sessionUser)
+//       return toast({
+//         variant: "destructive",
+//         title: "Войдите, чтобы комментировать",
+//       });
+//     if (!commentText.trim()) return;
+
+//     commentMutation.mutate(
+//       { postId, text: commentText },
+//       {
+//         onSuccess: () => {
+//           toast({ title: "Комментарий добавлен" });
+//           setCommentText("");
+//           setActiveCommentPostId(null);
+//         },
+//         onError: () =>
+//           toast({
+//             variant: "destructive",
+//             title: "Ошибка добавления комментария",
+//           }),
+//       },
+//     );
+//   };
+
+//   const handleToggleFavorite = async () => {
+//     if (!profile || !sessionUser) return;
+//     try {
+//       if (isFavorite) {
+//         await removeFromFavorites(sessionUser.id, profile.id);
+//         toast({ description: "Удалено из избранного" });
+//       } else {
+//         await addToFavorites(sessionUser.id, {
+//           id: profile.id,
+//           name: profile.name,
+//           profilePicture: profile.profilePicture || "",
+//           city: profile.city,
+//           roles: profile.roles,
+//         });
+//         toast({ description: "Добавлено в избранное" });
+//       }
+//       setIsFavorite(!isFavorite);
+//     } catch (e) {
+//       toast({ variant: "destructive", title: "Ошибка" });
+//     }
+//   };
+
+//   const fetchWallet = useCallback(async () => {
+//     if (!isOwnProfile) return;
+//     try {
+//       const data = await apiRequest<{ walletBalance: number }>({
+//         method: "get",
+//         url: "/api/users/me",
+//       });
+//       setWalletBalance(data.walletBalance || 0);
+//     } catch (error) {
+//       console.error("Failed to fetch wallet", error);
+//     }
+//   }, [isOwnProfile]);
+
+//   useEffect(() => {
+//     fetchWallet();
+//   }, [fetchWallet]);
+
+//   useEffect(() => {
+//     if (profile && sessionUser?.role === "customer") {
+//       checkIsFavorite(sessionUser.id, profile.id).then(setIsFavorite);
+//     }
+//   }, [profile, sessionUser]);
+
+//   // --- Render ---
+//   if (isProfileLoading || authStatus === "loading") {
+//     return (
+//       <div className="p-20 text-center font-medium text-muted-foreground flex flex-col items-center">
+//         <Loader2 className="w-8 h-8 animate-spin mb-4" />
+//         Загрузка профиля...
+//       </div>
+//     );
+//   }
+
+//   if (isError || !profile) {
+//     return (
+//       <div className="text-center py-20 font-bold text-2xl">
+//         Профиль не найден
+//       </div>
+//     );
+//   }
+
+//   if (isOwnProfile && profile.accountType === "agency" && !urlProfileId) {
+//     return <AgencyDashboard profile={profile} />;
+//   }
+
+//   return (
+//     <div className="bg-[#EDEEF0] min-h-screen pb-20 font-sans selection:bg-primary/20">
+//       {/* 1. COVER & HEADER */}
+
+//       <div className="bg-white border-b border-border/40 shadow-sm">
+//         <div className="container max-w-5xl mx-auto px-0 md:px-4">
+//           <div className="relative h-48 md:h-64 w-full bg-gradient-to-r from-muted to-muted/50 group overflow-hidden md:rounded-b-2xl">
+//             {profile.backgroundPicture ? (
+//               <img
+//                 src={getImageUrl(profile.backgroundPicture)}
+//                 className="w-full h-full object-cover transition-opacity duration-300"
+//                 alt="Cover"
+//                 style={{ opacity: isUploadingBackground ? 0.5 : 1 }}
+//               />
+//             ) : (
+//               <div className="absolute inset-0 flex items-center justify-center text-muted-foreground/30">
+//                 <ImageIcon className="w-16 h-16" />
+//               </div>
+//             )}
+
+//             {isOwnProfile && (
+//               <>
+//                 <input
+//                   type="file"
+//                   ref={backgroundInputRef}
+//                   onChange={handleBackgroundChange}
+//                   accept="image/jpeg,image/png,image/webp"
+//                   className="hidden"
+//                 />
+//                 <Button
+//                   variant="secondary"
+//                   size="sm"
+//                   onClick={() => backgroundInputRef.current?.click()}
+//                   disabled={isUploadingBackground}
+//                   className="absolute top-4 right-4 bg-black/50 hover:bg-black/70 text-white border-0 backdrop-blur-md transition-all"
+//                 >
+//                   {isUploadingBackground ? (
+//                     <>
+//                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />{" "}
+//                       Обновление...
+//                     </>
+//                   ) : (
+//                     <>
+//                       <Edit3 className="w-4 h-4 mr-2" /> Изменить обложку
+//                     </>
+//                   )}
+//                 </Button>
+//               </>
+//             )}
+//           </div>
+
+//           <div className="px-4 md:px-8 pb-6 relative flex flex-col md:flex-row gap-4 md:gap-6 items-center md:items-end -mt-16 md:-mt-12">
+//             {/* 🚨 PROFILE PICTURE AVATAR */}
+//             <div
+//               className={cn("relative group", isOwnProfile && "cursor-pointer")}
+//               onClick={() =>
+//                 isOwnProfile &&
+//                 !isUploadingProfile &&
+//                 profileInputRef.current?.click()
+//               }
+//             >
+//               <Avatar
+//                 className={cn(
+//                   "w-32 h-32 md:w-40 md:h-40 border-4 border-white shadow-md bg-white transition-opacity",
+//                   isUploadingProfile && "opacity-50",
+//                 )}
+//               >
+//                 <AvatarImage
+//                   src={getImageUrl(profile.profilePicture)}
+//                   className="object-cover"
+//                 />
+//                 <AvatarFallback className="text-4xl font-bold bg-primary/10 text-primary">
+//                   {profile.name?.charAt(0)}
+//                 </AvatarFallback>
+//               </Avatar>
+
+//               {isOwnProfile && (
+//                 <>
+//                   <input
+//                     type="file"
+//                     ref={profileInputRef}
+//                     onChange={handleProfileChange}
+//                     accept="image/jpeg,image/png,image/webp"
+//                     className="hidden"
+//                   />
+//                   <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+//                     {isUploadingProfile ? (
+//                       <Loader2 className="w-8 h-8 text-white animate-spin" />
+//                     ) : (
+//                       <Edit3 className="w-8 h-8 text-white" />
+//                     )}
+//                   </div>
+//                 </>
+//               )}
+//             </div>
+
+//             <div className="flex-1 text-center md:text-left mb-2">
+//               <div className="flex items-center justify-center md:justify-start gap-2 mb-1">
+//                 <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">
+//                   {profile.name}
+//                 </h1>
+//                 {profile.moderationStatus === "APPROVED" && (
+//                   <CheckCircle2 className="w-6 h-6 text-blue-500" />
+//                 )}
+//               </div>
+//               <p className="text-muted-foreground font-medium text-sm flex items-center justify-center md:justify-start gap-1.5">
+//                 <MapPin className="w-4 h-4" />{" "}
+//                 {profile.city || "Город не указан"}
+//                 <span className="mx-2 text-muted-foreground/30">•</span>
+//                 <span
+//                   className={cn(
+//                     "flex items-center gap-1.5 text-sm font-medium transition-colors",
+//                     isPerformerOnline
+//                       ? "text-emerald-600"
+//                       : "text-muted-foreground/80",
+//                   )}
+//                 >
+//                   <span className="relative flex h-2.5 w-2.5 items-center justify-center">
+//                     {/* Pulsing ring (only renders when online) */}
+//                     {isPerformerOnline && (
+//                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+//                     )}
+
+//                     {/* Solid inner dot */}
+//                     <span
+//                       className={cn(
+//                         "relative inline-flex h-2.5 w-2.5 rounded-full transition-colors",
+//                         isPerformerOnline
+//                           ? "bg-emerald-500"
+//                           : "bg-muted-foreground/40",
+//                       )}
+//                     />
+//                   </span>
+//                   {isPerformerOnline ? "Онлайн" : "Был(а) недавно"}
+//                 </span>
+//               </p>
+//             </div>
+
+//             <div className="flex w-full md:w-auto gap-3 mb-2">
+//               {!isOwnProfile ? (
+//                 <>
+//                   <Button
+//                     className="flex-1 md:flex-none rounded-xl h-11 px-6 font-bold"
+//                     onClick={() => router.push(`/chat/${profile.id}`)}
+//                   >
+//                     <MessageCircle className="w-4 h-4 mr-2" /> Написать
+//                   </Button>
+//                   <Button
+//                     variant="outline"
+//                     className="flex-1 md:flex-none rounded-xl h-11 px-6 font-bold text-primary border-primary hover:bg-primary/5"
+//                   >
+//                     <CalendarIcon className="w-4 h-4 mr-2" /> Забронировать
+//                   </Button>
+//                   <Button
+//                     variant="secondary"
+//                     size="icon"
+//                     onClick={handleToggleFavorite}
+//                     className="rounded-xl h-11 w-11 shrink-0"
+//                   >
+//                     <Heart
+//                       className={cn(
+//                         "w-5 h-5 transition-colors",
+//                         isFavorite
+//                           ? "fill-red-500 text-red-500"
+//                           : "text-foreground",
+//                       )}
+//                     />
+//                   </Button>
+//                 </>
+//               ) : (
+//                 <Button
+//                   variant="outline"
+//                   className="w-full md:w-auto rounded-xl h-11 px-6 font-bold"
+//                   onClick={() => router.push("/settings")}
+//                 >
+//                   <Edit3 className="w-4 h-4 mr-2" /> Настройки профиля
+//                 </Button>
+//               )}
+//             </div>
+//           </div>
+//         </div>
+//       </div>
+
+//       {/* 2. MAIN DASHBOARD */}
+//       <div className="container max-w-5xl mx-auto px-4 mt-6 flex flex-col md:flex-row gap-6">
+//         {/* --- LEFT COLUMN --- */}
+//         <div className="flex-1 space-y-6 min-w-0">
+//           <Tabs defaultValue="wall" className="w-full">
+//             <TabsList className="w-full bg-white justify-start h-14 p-1.5 shadow-sm rounded-2xl gap-1 overflow-x-auto no-scrollbar border border-border/40">
+//               <TabsTrigger
+//                 value="wall"
+//                 className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-xl px-5 py-2.5 font-bold text-sm"
+//               >
+//                 Стена
+//               </TabsTrigger>
+//               <TabsTrigger
+//                 value="portfolio"
+//                 className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-xl px-5 py-2.5 font-bold text-sm"
+//               >
+//                 Портфолио
+//               </TabsTrigger>
+
+//               {isOwnProfile && (
+//                 <>
+//                   <TabsTrigger
+//                     value="subscription"
+//                     className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-xl px-5 py-2.5 font-bold text-sm"
+//                   >
+//                     Подписка
+//                   </TabsTrigger>
+//                   <TabsTrigger
+//                     value="finance"
+//                     className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-xl px-5 py-2.5 font-bold text-sm"
+//                   >
+//                     Финансы
+//                   </TabsTrigger>
+//                   <TabsTrigger
+//                     value="reviews"
+//                     className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-xl px-5 py-2.5 font-bold text-sm"
+//                   >
+//                     Отзывы{" "}
+//                     {reviews.length > 0 && (
+//                       <span className="ml-2 opacity-50">{reviews.length}</span>
+//                     )}
+//                   </TabsTrigger>
+//                 </>
+//               )}
+//             </TabsList>
+
+//             <div className="mt-6">
+//               {/* === WALL / FEED === */}
+//               <TabsContent
+//                 value="wall"
+//                 className="space-y-6 focus-visible:outline-none"
+//               >
+//                 {/* Create Post Widget (Owner Only) */}
+//                 {isOwnProfile && (
+//                   <div className="bg-white rounded-2xl p-4 shadow-sm border border-border/40 animate-in fade-in">
+//                     <div className="flex gap-3">
+//                       <Avatar className="w-10 h-10">
+//                         <AvatarImage
+//                           src={getImageUrl(profile.profilePicture)}
+//                         />
+//                         <AvatarFallback>
+//                           {profile.name?.charAt(0)}
+//                         </AvatarFallback>
+//                       </Avatar>
+//                       <div className="flex-1 min-w-0">
+//                         <Textarea
+//                           placeholder="Что у вас нового?"
+//                           className="min-h-[80px] bg-muted/20 border-transparent focus-visible:ring-0 focus-visible:bg-muted/40 resize-none text-base rounded-xl mb-3"
+//                           value={newPostText}
+//                           onChange={(e) => setNewPostText(e.target.value)}
+//                         />
+
+//                         {/* MEDIA PREVIEWS */}
+//                         {feedPreviews.length > 0 && (
+//                           <div className="flex flex-wrap gap-3 mb-3">
+//                             {feedPreviews.map((preview, idx) => (
+//                               <div
+//                                 key={idx}
+//                                 className="relative w-20 h-20 rounded-xl overflow-hidden border border-border"
+//                               >
+//                                 {preview.type.startsWith("image/") ? (
+//                                   <img
+//                                     src={preview.url}
+//                                     alt="Preview"
+//                                     className="w-full h-full object-cover"
+//                                   />
+//                                 ) : (
+//                                   <video
+//                                     src={preview.url}
+//                                     className="w-full h-full object-cover"
+//                                     muted
+//                                   />
+//                                 )}
+//                                 <button
+//                                   onClick={() => removeFeedFile(idx)}
+//                                   className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1 hover:bg-red-500 transition-colors"
+//                                 >
+//                                   <X className="w-3 h-3" />
+//                                 </button>
+//                               </div>
+//                             ))}
+//                           </div>
+//                         )}
+
+//                         <div className="flex justify-between items-center">
+//                           <div className="flex gap-1">
+//                             <input
+//                               type="file"
+//                               ref={fileInputRef}
+//                               onChange={handleFileSelect}
+//                               accept="image/*,video/mp4,video/quicktime,video/x-msvideo"
+//                               multiple
+//                               className="hidden"
+//                             />
+//                             <Button
+//                               variant="ghost"
+//                               size="sm"
+//                               onClick={() => fileInputRef.current?.click()}
+//                               className="text-muted-foreground hover:bg-muted rounded-lg px-3"
+//                             >
+//                               <ImageIcon className="w-4 h-4 mr-2" /> Фото /
+//                               Видео
+//                             </Button>
+//                           </div>
+
+//                           <Button
+//                             onClick={handlePostFeed}
+//                             disabled={
+//                               addFeedPostMutation.isPending ||
+//                               (!newPostText.trim() && feedFiles.length === 0)
+//                             }
+//                             className="rounded-xl px-6 font-bold shadow-sm"
+//                           >
+//                             {addFeedPostMutation.isPending ? (
+//                               <Loader2 className="w-4 h-4 animate-spin" />
+//                             ) : (
+//                               "Опубликовать"
+//                             )}
+//                           </Button>
+//                         </div>
+//                       </div>
+//                     </div>
+//                   </div>
+//                 )}
+
+//                 {profile.feedPosts && profile.feedPosts.length > 0 ? (
+//                   profile.feedPosts.map((post) => (
+//                     <div
+//                       key={post.id}
+//                       className={cn(
+//                         "bg-white rounded-2xl p-5 shadow-sm border border-border/40 transition-opacity animate-in fade-in",
+//                         !post.isPublic && "opacity-70",
+//                       )}
+//                     >
+//                       <div className="flex items-center gap-3 mb-4">
+//                         <Avatar className="w-10 h-10">
+//                           <AvatarImage
+//                             src={getImageUrl(profile.profilePicture)}
+//                           />
+//                         </Avatar>
+//                         <div className="flex-1">
+//                           <h4 className="font-bold text-[15px]">
+//                             {profile.name}
+//                           </h4>
+//                           <p className="text-xs text-muted-foreground">
+//                             {format(new Date(post.createdAt), "d MMM в HH:mm", {
+//                               locale: ru,
+//                             })}
+//                           </p>
+//                         </div>
+
+//                         {isOwnProfile && (
+//                           <div className="flex items-center gap-2">
+//                             <Button
+//                               variant="ghost"
+//                               size="sm"
+//                               onClick={() =>
+//                                 toggleVisibilityMutation.mutate({
+//                                   performerId: profile.id,
+//                                   postId: post.id,
+//                                 })
+//                               }
+//                               className="text-muted-foreground hover:bg-muted rounded-lg"
+//                             >
+//                               {post.isPublic ? (
+//                                 <Eye className="w-4 h-4" />
+//                               ) : (
+//                                 <EyeOff className="w-4 h-4 text-destructive" />
+//                               )}
+//                             </Button>
+//                             <Button
+//                               variant="ghost"
+//                               size="sm"
+//                               onClick={() =>
+//                                 deleteFeedPostMutation.mutate({
+//                                   performerId: profile.id,
+//                                   postId: post.id,
+//                                 })
+//                               }
+//                               className="text-destructive hover:bg-red-50 rounded-lg"
+//                             >
+//                               <Trash2 className="w-4 h-4" />
+//                             </Button>
+//                           </div>
+//                         )}
+//                       </div>
+
+//                       {post.text && (
+//                         <p className="text-[15px] text-foreground/90 leading-relaxed mb-4 whitespace-pre-wrap">
+//                           {post.text}
+//                         </p>
+//                       )}
+
+//                       {/* Video Render */}
+//                       {post.videoUrl && (
+//                         <video
+//                           src={getImageUrl(post.videoUrl)}
+//                           controls
+//                           className="w-full rounded-xl mb-4 max-h-[400px] bg-black"
+//                         />
+//                       )}
+
+//                       {/* Image Render */}
+//                       {post.imageUrls && post.imageUrls.length > 0 && (
+//                         <div
+//                           className={cn(
+//                             "grid gap-2 mb-4",
+//                             post.imageUrls.length > 1
+//                               ? "grid-cols-2"
+//                               : "grid-cols-1",
+//                           )}
+//                         >
+//                           {post.imageUrls.map((img, i) => (
+//                             <img
+//                               key={i}
+//                               src={getImageUrl(img)}
+//                               alt="Post media"
+//                               className="rounded-xl w-full h-auto max-h-[400px] object-cover"
+//                             />
+//                           ))}
+//                         </div>
+//                       )}
+
+//                       <Separator className="mb-3" />
+
+//                       <div className="flex gap-4">
+//                         <Button
+//                           variant="ghost"
+//                           size="sm"
+//                           onClick={() => {
+//                             if (!sessionUser)
+//                               return toast({
+//                                 title: "Войдите в систему",
+//                                 variant: "destructive",
+//                               });
+//                             likeMutation.mutate({ postId: post.id });
+//                           }}
+//                           className={cn(
+//                             "font-medium rounded-lg transition-colors",
+//                             post.isLikedByMe
+//                               ? "text-red-500 hover:text-red-600 hover:bg-red-50"
+//                               : "text-muted-foreground hover:bg-muted",
+//                           )}
+//                         >
+//                           <Heart
+//                             className={cn(
+//                               "w-5 h-5 mr-1.5",
+//                               post.isLikedByMe && "fill-red-500",
+//                             )}
+//                           />{" "}
+//                           {post.likesCount}
+//                         </Button>
+//                         <Button
+//                           variant="ghost"
+//                           size="sm"
+//                           onClick={() =>
+//                             setActiveCommentPostId(
+//                               activeCommentPostId === post.id ? null : post.id,
+//                             )
+//                           }
+//                           className="text-muted-foreground font-medium rounded-lg"
+//                         >
+//                           <MessageCircle className="w-5 h-5 mr-1.5" />{" "}
+//                           {post.commentsCount}
+//                         </Button>
+//                       </div>
+
+//                       {/* Comments Section */}
+//                       {activeCommentPostId === post.id && (
+//                         <div className="mt-4 pt-4 border-t animate-in fade-in slide-in-from-top-2">
+//                           <div className="space-y-4 mb-4 max-h-60 overflow-y-auto custom-scrollbar">
+//                             {post.comments?.map((comment) => (
+//                               <div key={comment.id} className="flex gap-3">
+//                                 <Avatar className="w-8 h-8 shrink-0">
+//                                   <AvatarImage
+//                                     src={getImageUrl(comment.user.image)}
+//                                   />
+//                                   <AvatarFallback>
+//                                     {comment.user.name.charAt(0)}
+//                                   </AvatarFallback>
+//                                 </Avatar>
+//                                 <div className="bg-muted/40 p-3 rounded-2xl rounded-tl-none">
+//                                   <p className="font-bold text-sm mb-0.5">
+//                                     {comment.user.name}
+//                                   </p>
+//                                   <p className="text-sm text-foreground/90">
+//                                     {comment.text}
+//                                   </p>
+//                                 </div>
+//                               </div>
+//                             ))}
+//                             {(!post.comments || post.comments.length === 0) && (
+//                               <p className="text-sm text-muted-foreground text-center py-2">
+//                                 Нет комментариев. Будьте первыми!
+//                               </p>
+//                             )}
+//                           </div>
+
+//                           <div className="flex gap-2">
+//                             <Input
+//                               placeholder="Написать комментарий..."
+//                               className="rounded-xl bg-muted/20"
+//                               value={commentText}
+//                               onChange={(e) => setCommentText(e.target.value)}
+//                               onKeyDown={(e) => {
+//                                 if (e.key === "Enter")
+//                                   handleCommentSubmit(post.id);
+//                               }}
+//                             />
+//                             <Button
+//                               size="icon"
+//                               onClick={() => handleCommentSubmit(post.id)}
+//                               className="rounded-xl shrink-0"
+//                               disabled={
+//                                 !commentText.trim() || commentMutation.isPending
+//                               }
+//                             >
+//                               <Send className="w-4 h-4" />
+//                             </Button>
+//                           </div>
+//                         </div>
+//                       )}
+//                     </div>
+//                   ))
+//                 ) : (
+//                   <div className="bg-white rounded-2xl p-10 text-center text-muted-foreground border border-border/40">
+//                     <ImageIcon className="w-12 h-12 mx-auto mb-3 opacity-20" />
+//                     <p>На стене пока нет записей.</p>
+//                   </div>
+//                 )}
+//               </TabsContent>
+
+//               {/* === DYNAMIC PORTFOLIO === */}
+//               <TabsContent
+//                 value="portfolio"
+//                 className="space-y-6 focus-visible:outline-none"
+//               >
+//                 <div className="bg-white p-2 rounded-2xl shadow-sm border border-border/40 flex gap-2 overflow-x-auto no-scrollbar">
+//                   <Button
+//                     variant={portfolioFilter === "all" ? "default" : "ghost"}
+//                     onClick={() => setPortfolioFilter("all")}
+//                     className="rounded-xl h-9 text-sm font-semibold shrink-0"
+//                   >
+//                     <LayoutGrid className="w-4 h-4 mr-2" /> Все материалы
+//                   </Button>
+//                   <Button
+//                     variant={portfolioFilter === "photo" ? "default" : "ghost"}
+//                     onClick={() => setPortfolioFilter("photo")}
+//                     className="rounded-xl h-9 text-sm font-semibold shrink-0"
+//                   >
+//                     <ImageIcon className="w-4 h-4 mr-2" />{" "}
+//                     {isChef ? "Блюда и Меню" : "Фотогалерея"}
+//                   </Button>
+//                   {isAudioHeavy && (
+//                     <Button
+//                       variant={
+//                         portfolioFilter === "audio" ? "default" : "ghost"
+//                       }
+//                       onClick={() => setPortfolioFilter("audio")}
+//                       className="rounded-xl h-9 text-sm font-semibold shrink-0"
+//                     >
+//                       <Music className="w-4 h-4 mr-2" /> Аудио / Миксы
+//                     </Button>
+//                   )}
+//                   <Button
+//                     variant={portfolioFilter === "docs" ? "default" : "ghost"}
+//                     onClick={() => setPortfolioFilter("docs")}
+//                     className="rounded-xl h-9 text-sm font-semibold shrink-0"
+//                   >
+//                     <Award className="w-4 h-4 mr-2" /> Награды / Документы
+//                   </Button>
+//                 </div>
+
+//                 {/* 1. AUDIO SECTION */}
+//                 {(portfolioFilter === "all" || portfolioFilter === "audio") &&
+//                   isAudioHeavy && (
+//                     <div className="bg-white rounded-2xl p-6 shadow-sm border border-border/40 animate-in fade-in slide-in-from-bottom-4">
+//                       <div className="flex items-center justify-between mb-6">
+//                         <div className="flex items-center gap-2">
+//                           <div className="p-2 bg-primary/10 rounded-lg text-primary">
+//                             <Music className="w-5 h-5" />
+//                           </div>
+//                           <h2 className="text-xl font-bold">Аудио и Демо</h2>
+//                         </div>
+//                         {isOwnProfile && (
+//                           <Button
+//                             variant="outline"
+//                             size="sm"
+//                             onClick={() => setIsAudioDialogOpen(true)}
+//                             className="rounded-xl h-9 font-semibold text-primary border-primary/30 hover:bg-primary/5"
+//                           >
+//                             <PlusCircle className="w-4 h-4 mr-2" /> Загрузить
+//                             трек
+//                           </Button>
+//                         )}
+//                       </div>
+//                       <AudioManager
+//                         tracks={(profile as any).audioTracks || []}
+//                         isOwnProfile={isOwnProfile}
+//                         onAddClick={() => setIsAudioDialogOpen(true)}
+//                         onDelete={(trackId) =>
+//                           removeAudioMutation.mutate({
+//                             performerId: profile.id,
+//                             trackId,
+//                           })
+//                         }
+//                         getImageUrl={getImageUrl}
+//                       />
+//                     </div>
+//                   )}
+
+//                 {/* 2. PHOTO GALLERY SECTION */}
+//                 {(portfolioFilter === "all" || portfolioFilter === "photo") && (
+//                   <div className="bg-white rounded-2xl p-6 shadow-sm border border-border/40 animate-in fade-in slide-in-from-bottom-4">
+//                     <div className="flex items-center justify-between mb-6">
+//                       <div className="flex items-center gap-2">
+//                         <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500">
+//                           <ImageIcon className="w-5 h-5" />
+//                         </div>
+//                         <h2 className="text-xl font-bold">
+//                           {isChef
+//                             ? "Подача и Блюда"
+//                             : isVisualHeavy
+//                               ? "Шоу и Выступления"
+//                               : "Фотогалерея"}
+//                         </h2>
+//                       </div>
+//                       {isOwnProfile && (
+//                         <Button
+//                           variant="outline"
+//                           size="sm"
+//                           onClick={() => setIsGalleryDialogOpen(true)}
+//                           className="rounded-xl h-9 font-semibold text-blue-600 border-blue-200 hover:bg-blue-50"
+//                         >
+//                           <PlusCircle className="w-4 h-4 mr-2" /> Добавить фото
+//                         </Button>
+//                       )}
+//                     </div>
+//                     <GalleryManager
+//                       gallery={profile.gallery || []}
+//                       isOwnProfile={isOwnProfile}
+//                       onAddOrEdit={() => setIsGalleryDialogOpen(true)}
+//                       onDelete={(id) =>
+//                         removeGalleryItemMutation.mutate({
+//                           performerId: profile.id,
+//                           itemId: id,
+//                         })
+//                       }
+//                     />
+//                   </div>
+//                 )}
+
+//                 {/* 3. DOCUMENTS & CERTIFICATES SECTION */}
+//                 {(portfolioFilter === "all" || portfolioFilter === "docs") && (
+//                   <div className="bg-white rounded-2xl p-6 shadow-sm border border-border/40 animate-in fade-in slide-in-from-bottom-4">
+//                     <div className="flex items-center justify-between mb-6">
+//                       <div className="flex items-center gap-2">
+//                         <div className="p-2 bg-amber-500/10 rounded-lg text-amber-500">
+//                           <Award className="w-5 h-5" />
+//                         </div>
+//                         <h2 className="text-xl font-bold">
+//                           {isChef
+//                             ? "Санкнижки и Дипломы"
+//                             : "Сертификаты и Награды"}
+//                         </h2>
+//                       </div>
+//                       {isOwnProfile && (
+//                         <Button
+//                           variant="outline"
+//                           size="sm"
+//                           onClick={() => setIsCertificateDialogOpen(true)}
+//                           className="rounded-xl h-9 font-semibold text-amber-600 border-amber-200 hover:bg-amber-50"
+//                         >
+//                           <PlusCircle className="w-4 h-4 mr-2" /> Загрузить
+//                           документ
+//                         </Button>
+//                       )}
+//                     </div>
+
+//                     {profile.certificates && profile.certificates.length > 0 ? (
+//                       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+//                         {profile.certificates.map((cert) => (
+//                           <div
+//                             key={cert.id}
+//                             className="relative group rounded-xl overflow-hidden border border-border/50 bg-muted/20 aspect-[3/4]"
+//                           >
+//                             <img
+//                               src={getImageUrl(cert.fileUrl)}
+//                               alt={cert.description || "Документ"}
+//                               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+//                             />
+//                             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3">
+//                               <p className="text-white text-xs font-medium line-clamp-2">
+//                                 {cert.description}
+//                               </p>
+//                               {isOwnProfile && (
+//                                 <Button
+//                                   variant="destructive"
+//                                   size="sm"
+//                                   className="w-full mt-2 h-7 text-xs"
+//                                   onClick={() =>
+//                                     removeCertificateMutation.mutate({
+//                                       performerId: profile.id,
+//                                       itemId: cert.id,
+//                                     })
+//                                   }
+//                                 >
+//                                   Удалить
+//                                 </Button>
+//                               )}
+//                             </div>
+//                           </div>
+//                         ))}
+//                       </div>
+//                     ) : (
+//                       <div className="p-8 border-2 border-dashed border-border/60 rounded-xl text-center text-muted-foreground bg-muted/10">
+//                         <FileText className="w-10 h-10 mx-auto mb-3 opacity-20" />
+//                         <p className="font-medium text-sm">
+//                           Документы пока не загружены.
+//                         </p>
+//                       </div>
+//                     )}
+//                   </div>
+//                 )}
+//               </TabsContent>
+
+//               {/* === REVIEWS === */}
+//               <TabsContent
+//                 value="reviews"
+//                 className="focus-visible:outline-none"
+//               >
+//                 <div className="bg-white rounded-2xl p-6 shadow-sm border border-border/40">
+//                   <ReviewsSection
+//                     profileId={profile.id}
+//                     currentUserRole={sessionUser?.role as string | null}
+//                     currentUserId={sessionUser?.id || null}
+//                     currentUserName={sessionUser?.name || null}
+//                     onReviewSubmit={() => refetchProfile()}
+//                   />
+//                 </div>
+//               </TabsContent>
+
+//               {/* === SUBSCRIPTION (OWNER ONLY) === */}
+//               {isOwnProfile && (
+//                 <TabsContent
+//                   value="subscription"
+//                   className="focus-visible:outline-none"
+//                 >
+//                   <SubscriptionStatusCard />
+//                 </TabsContent>
+//               )}
+
+//               {/* === FINANCE & BANKING (OWNER ONLY) === */}
+//               {isOwnProfile && (
+//                 <TabsContent
+//                   value="finance"
+//                   className="space-y-6 focus-visible:outline-none"
+//                 >
+//                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+//                     {/* Platform Wallet */}
+//                     <div className="bg-gradient-to-br from-orange-600 to-orange-500 rounded-2xl p-6 shadow-md text-white relative overflow-hidden">
+//                       <Wallet className="absolute right-[-20px] bottom-[-20px] w-40 h-40 opacity-10 pointer-events-none" />
+//                       <p className="text-white font-medium mb-2 relative z-10">
+//                         Баланс кошелька Eventomir
+//                       </p>
+//                       <h3 className="text-4xl font-black mb-6 relative z-10">
+//                         {walletBalance.toLocaleString("ru-RU")}{" "}
+//                         <span className="text-2xl text-white">₽</span>
+//                       </h3>
+//                       <Button
+//                         onClick={() => setIsTopUpModalOpen(true)}
+//                         className="w-full bg-white text-black hover:bg-gray-200 font-bold rounded-xl h-12 relative z-10 transition-colors"
+//                       >
+//                         Пополнить баланс
+//                       </Button>
+//                     </div>
+
+//                     {/* Bank Requisites */}
+//                     <div className="bg-white rounded-2xl p-6 shadow-sm border border-border/40 flex flex-col h-full">
+//                       <div className="flex items-center gap-2 mb-4">
+//                         <Banknote className="w-5 h-5 text-green-600" />
+//                         <h3 className="font-bold text-lg">
+//                           Платежные реквизиты
+//                         </h3>
+//                       </div>
+//                       <p className="text-sm text-muted-foreground mb-4">
+//                         Укажите реквизиты для получения выплат за заказы. Мы
+//                         поддерживаем переводы на карты РФ и счета ИП/ООО.
+//                       </p>
+
+//                       <div className="space-y-4 mt-auto">
+//                         {profile.bankDetails &&
+//                         profile.bankDetails.length > 0 ? (
+//                           profile.bankDetails.map((bank, idx) => (
+//                             <div
+//                               key={idx}
+//                               className="p-3 border rounded-xl flex items-center justify-between"
+//                             >
+//                               <div className="flex items-center gap-3">
+//                                 <div className="w-10 h-6 bg-blue-100 rounded flex items-center justify-center text-[10px] font-bold text-blue-800">
+//                                   {bank.cardType || "CARD"}
+//                                 </div>
+//                                 <div>
+//                                   <p className="text-sm font-bold">
+//                                     ••••{" "}
+//                                     {bank.accountNumber?.slice(-4) || "****"}
+//                                   </p>
+//                                   <p className="text-xs text-muted-foreground">
+//                                     {bank.bankName}
+//                                   </p>
+//                                 </div>
+//                               </div>
+//                               {bank.isDefault && (
+//                                 <Badge
+//                                   variant="outline"
+//                                   className="bg-green-50 text-green-600 border-green-200"
+//                                 >
+//                                   Основная
+//                                 </Badge>
+//                               )}
+//                             </div>
+//                           ))
+//                         ) : (
+//                           <div className="p-3 border border-dashed rounded-xl text-center text-sm text-muted-foreground bg-muted/20">
+//                             Реквизиты пока не добавлены
+//                           </div>
+//                         )}
+
+//                         <Button
+//                           variant="outline"
+//                           onClick={() => router.push("/settings")}
+//                           className="w-full border-dashed rounded-xl h-12 font-bold text-muted-foreground hover:text-foreground"
+//                         >
+//                           <PlusCircle className="w-4 h-4 mr-2" /> Добавить карту
+//                           или счет
+//                         </Button>
+//                       </div>
+//                     </div>
+//                   </div>
+//                 </TabsContent>
+//               )}
+//             </div>
+//           </Tabs>
+//         </div>
+
+//         {/* --- RIGHT COLUMN (SIDEBAR) --- */}
+//         <div className="w-full md:w-[320px] shrink-0 space-y-6">
+//           {/* About / Info Widget */}
+//           <div className="bg-white rounded-2xl p-5 shadow-sm border border-border/40">
+//             <h3 className="font-bold text-[15px] mb-4 flex items-center gap-2">
+//               <User className="w-4 h-4 text-primary" /> Подробная информация
+//             </h3>
+
+//             <div className="space-y-4">
+//               <div className="text-sm">
+//                 <div className="flex items-center justify-between mb-1.5">
+//                   <span className="text-muted-foreground block text-[13px]">
+//                     Услуги:
+//                   </span>
+//                   {isOwnProfile && (
+//                     <button
+//                       onClick={() => setIsCategoryDialogOpen(true)}
+//                       className="text-primary hover:underline text-xs font-semibold flex items-center"
+//                     >
+//                       <Edit3 className="w-3 h-3 mr-1" /> Изменить
+//                     </button>
+//                   )}
+//                 </div>
+//                 <div className="flex flex-wrap gap-1.5">
+//                   {profile.roles?.map((r) => (
+//                     <Badge
+//                       key={r}
+//                       variant="secondary"
+//                       className="bg-primary/20  border-primary hover:bg-muted/80 text-foreground font-medium rounded-md"
+//                     >
+//                       {r}
+//                     </Badge>
+//                   ))}
+//                   {(!profile.roles || profile.roles.length === 0) && (
+//                     <span className="text-xs text-muted-foreground italic">
+//                       Не указано
+//                     </span>
+//                   )}
+//                 </div>
+//               </div>
+
+//               {profile.priceRange && profile.priceRange.length > 0 && (
+//                 <>
+//                   <Separator />
+//                   <div className="text-sm">
+//                     <span className="text-muted-foreground block text-[13px] mb-1">
+//                       Прайс:
+//                     </span>
+//                     <span className="font-semibold text-primary text-base">
+//                       от {profile.priceRange[0].toLocaleString("ru-RU")} ₽
+//                     </span>
+//                   </div>
+//                 </>
+//               )}
+
+//               <Separator />
+//               <div className="text-sm">
+//                 <span className="text-muted-foreground block text-[13px] mb-1">
+//                   О себе:
+//                 </span>
+//                 <p className="text-foreground/90 leading-relaxed whitespace-pre-wrap">
+//                   {profile.description || "Информация пока не заполнена."}
+//                 </p>
+//               </div>
+//             </div>
+
+//             {isOwnProfile && (
+//               <Button
+//                 variant="outline"
+//                 className="w-full mt-5 rounded-xl text-sm font-semibold h-10"
+//                 onClick={() => router.push("/settings")}
+//               >
+//                 Редактировать инфо
+//               </Button>
+//             )}
+//           </div>
+
+//           {/* Social Links Widget */}
+//           <div className="bg-white rounded-2xl p-5 shadow-sm border border-border/40">
+//             <div className="flex items-center justify-between mb-4">
+//               <h3 className="font-bold text-[15px] flex items-center gap-2">
+//                 <LinkIcon className="w-4 h-4 text-primary" /> Контакты и сети
+//               </h3>
+//               {isOwnProfile && (
+//                 <Button
+//                   variant="ghost"
+//                   size="icon"
+//                   className="w-8 h-8 rounded-full"
+//                   onClick={() => router.push("/settings")}
+//                 >
+//                   <Edit3 className="w-4 h-4" />
+//                 </Button>
+//               )}
+//             </div>
+
+//             <div className="space-y-3">
+//               {profile.socialLinks?.vk && (
+//                 <a
+//                   href={profile.socialLinks.vk}
+//                   target="_blank"
+//                   rel="noreferrer"
+//                   className="flex items-center gap-3 px-2 py-1 rounded-xl hover:bg-muted/50 transition-colors group border border-transparent hover:border-border"
+//                 >
+//                   <div className="w-8 h-8 rounded-lg bg-[#0077FF]/10 text-[#0077FF] flex items-center justify-center">
+//                     <span className="font-bold text-xs">VK</span>
+//                   </div>
+//                   <div className="flex-1 min-w-0">
+//                     <p className="text-sm font-semibold text-foreground group-hover:text-[#0077FF] transition-colors">
+//                       ВКонтакте
+//                     </p>
+//                     <p className="text-primary text-xs font-medium ">
+//                       {profile.socialLinks.vk}
+//                     </p>
+//                   </div>
+//                 </a>
+//               )}
+
+//               {profile.socialLinks?.telegram && (
+//                 <a
+//                   href={profile.socialLinks.telegram}
+//                   target="_blank"
+//                   rel="noreferrer"
+//                   className="flex items-center gap-3 px-2 py-1 rounded-xl hover:bg-muted/50 transition-colors group border border-transparent hover:border-border"
+//                 >
+//                   <div className="w-8 h-8 rounded-lg bg-[#24A1DE]/10 text-[#24A1DE] flex items-center justify-center">
+//                     <SendIcon className="w-4 h-4" />
+//                   </div>
+//                   <div className="flex-1 min-w-0">
+//                     <p className="text-sm font-semibold text-foreground group-hover:text-[#24A1DE] transition-colors">
+//                       Telegram
+//                     </p>
+//                     <p className="text-primary text-xs font-medium ">
+//                       {profile.socialLinks.telegram}
+//                     </p>
+//                   </div>
+//                 </a>
+//               )}
+
+//               {profile.socialLinks?.youtube && (
+//                 <a
+//                   href={profile.socialLinks.youtube}
+//                   target="_blank"
+//                   rel="noreferrer"
+//                   className="flex items-center gap-3 px-2 py-1 rounded-xl hover:bg-muted/50 transition-colors group border border-transparent hover:border-border"
+//                 >
+//                   <div className="w-8 h-8 rounded-lg bg-red-500/10 text-red-500 flex items-center justify-center">
+//                     <Youtube className="w-4 h-4" />
+//                   </div>
+//                   <div className="flex-1 min-w-0">
+//                     <p className="text-sm font-semibold text-foreground group-hover:text-red-500 transition-colors">
+//                       YouTube
+//                     </p>
+//                     <p className="text-primary text-xs font-medium ">
+//                       {profile.socialLinks.youtube}
+//                     </p>
+//                   </div>
+//                 </a>
+//               )}
+
+//               {profile.socialLinks?.website && (
+//                 <a
+//                   href={profile.socialLinks.website}
+//                   target="_blank"
+//                   rel="noreferrer"
+//                   className="flex items-center gap-3 px-2 py-1 rounded-xl hover:bg-muted/50 transition-colors group border border-transparent hover:border-border"
+//                 >
+//                   <div className="w-8 h-8 rounded-lg bg-red-500/10 text-red-500 flex items-center justify-center">
+//                     <Globe className="w-4 h-4" />
+//                   </div>
+//                   <div className="flex-1 min-w-0">
+//                     <p className="text-sm font-semibold text-foreground group-hover:text-red-500 transition-colors">
+//                       Веб-сайт
+//                     </p>
+//                     <p className="text-primary text-xs font-medium ">
+//                       {profile.socialLinks.website}
+//                     </p>
+//                   </div>
+//                 </a>
+//               )}
+
+//               {(!profile.socialLinks ||
+//                 Object.keys(profile.socialLinks).length === 0) && (
+//                 <p className="text-sm text-muted-foreground text-center py-2">
+//                   Ссылки не указаны.
+//                 </p>
+//               )}
+//             </div>
+//           </div>
+
+//           {/* Calendar Widget */}
+//           <div className="bg-white rounded-2xl p-5 shadow-sm border border-border/40 overflow-hidden">
+//             <h3 className="font-bold text-[15px] mb-4 flex items-center gap-2">
+//               <CalendarIcon className="w-4 h-4 text-primary" /> График занятости
+//             </h3>
+//             <div className="scale-90 origin-top-left w-[110%] pointer-events-none">
+//               <CalendarSection profile={profile} />
+//             </div>
+//           </div>
+//         </div>
+//       </div>
+
+//       {/* --- MODALS --- */}
+//       {isOwnProfile && (
+//         <>
+//           <AudioUploadDialog
+//             isOpen={isAudioDialogOpen}
+//             onClose={() => setIsAudioDialogOpen(false)}
+//             title="Загрузить аудио трек"
+//             description="Файл формата MP3 или WAV"
+//             accept="audio/mpeg, audio/wav"
+//             onFileUpload={async (file, title) => {
+//               if (!profile) return false;
+//               try {
+//                 await addAudioMutation.mutateAsync({
+//                   performerId: profile.id,
+//                   file,
+//                   title,
+//                 });
+//                 toast({ variant: "default", title: "Трек успешно загружен" });
+//                 return true;
+//               } catch {
+//                 return false;
+//               }
+//             }}
+//           />
+//           <FileUploadDialog
+//             isOpen={isGalleryDialogOpen}
+//             onClose={() => setIsGalleryDialogOpen(false)}
+//             title="Добавить в портфолио"
+//             description="Загрузите качественное фото или афишу"
+//             onFileUpload={async (file, desc) => {
+//               if (!profile) return false;
+//               try {
+//                 await addGalleryItemMutation.mutateAsync({
+//                   performerId: profile.id,
+//                   file,
+//                   title: "Портфолио",
+//                   description: desc,
+//                 });
+//                 toast({ variant: "default", title: "Фото загружено" });
+//                 return true;
+//               } catch {
+//                 return false;
+//               }
+//             }}
+//           />
+//           <FileUploadDialog
+//             isOpen={isCertificateDialogOpen}
+//             onClose={() => setIsCertificateDialogOpen(false)}
+//             title="Загрузить документ"
+//             description="Скан диплома, сертификата или награды (JPG/PNG/PDF)"
+//             onFileUpload={async (file, desc) => {
+//               if (!profile) return false;
+//               try {
+//                 await addCertificateMutation.mutateAsync({
+//                   performerId: profile.id,
+//                   file,
+//                   description: desc,
+//                 });
+//                 toast({ variant: "default", title: "Документ добавлен" });
+//                 return true;
+//               } catch {
+//                 return false;
+//               }
+//             }}
+//           />
+
+//           {/* 🚨 CATEGORY SELECTION MODAL */}
+//           <Dialog
+//             open={isCategoryDialogOpen}
+//             onOpenChange={setIsCategoryDialogOpen}
+//           >
+//             <DialogContent className="sm:max-w-xl rounded-3xl p-6">
+//               <DialogHeader>
+//                 <DialogTitle className="text-xl font-bold">
+//                   Специализации
+//                 </DialogTitle>
+//                 <DialogDescription>
+//                   Выберите одну основную категорию и уточните услуги
+//                   (подкатегории).
+//                 </DialogDescription>
+//               </DialogHeader>
+
+//               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
+//                 {adminCategories.length > 0 ? (
+//                   adminCategories.map((category) => {
+//                     const isCategorySelected = tempSelectedRoles.includes(
+//                       category.name,
+//                     );
+//                     const isAnotherMainSelected = tempSelectedRoles.some(
+//                       (role) =>
+//                         adminCategories.some(
+//                           (c) => c.name === role && c.name !== category.name,
+//                         ),
+//                     );
+
+//                     return (
+//                       <div
+//                         key={category.id}
+//                         className={`flex flex-col border rounded-2xl p-4 transition-all duration-300 ${
+//                           isCategorySelected
+//                             ? "bg-primary/5 border-primary/40 shadow-sm ring-1 ring-primary/20"
+//                             : isAnotherMainSelected
+//                               ? "opacity-50 grayscale-[0.5] hover:opacity-100 hover:grayscale-0 border-border/50"
+//                               : "hover:bg-muted/50 border-border/50"
+//                         }`}
+//                       >
+//                         <div
+//                           className="flex items-start space-x-3 cursor-pointer group"
+//                           onClick={() =>
+//                             handleCategoryToggle(category, !isCategorySelected)
+//                           }
+//                         >
+//                           <div
+//                             className={`mt-0.5 w-5 h-5 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
+//                               isCategorySelected
+//                                 ? "border-primary bg-primary"
+//                                 : "border-primary/50 group-hover:border-primary"
+//                             }`}
+//                           >
+//                             {isCategorySelected && (
+//                               <div className="w-2 h-2 bg-white rounded-full" />
+//                             )}
+//                           </div>
+
+//                           <Label className="text-[15px] font-bold leading-tight cursor-pointer w-full flex justify-between items-center pointer-events-none">
+//                             {category.name}
+//                             {category.subCategories &&
+//                               category.subCategories.length > 0 &&
+//                               (isCategorySelected ? (
+//                                 <ChevronDown className="h-4 w-4 text-primary" />
+//                               ) : (
+//                                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
+//                               ))}
+//                           </Label>
+//                         </div>
+
+//                         {/* Subcategories (Only visible if Main Category is selected) */}
+//                         {isCategorySelected &&
+//                           category.subCategories &&
+//                           category.subCategories.length > 0 && (
+//                             <div className="ml-8 flex flex-col space-y-3 mt-4 pt-3 border-t border-dashed border-primary/20 animate-in slide-in-from-top-2 fade-in duration-200">
+//                               {category.subCategories.map((sub: any) => (
+//                                 <div
+//                                   key={sub.id}
+//                                   className="flex items-center space-x-3"
+//                                 >
+//                                   <Checkbox
+//                                     id={`sub-${sub.id}`}
+//                                     checked={tempSelectedRoles.includes(
+//                                       sub.name,
+//                                     )}
+//                                     onCheckedChange={() =>
+//                                       toggleTempRole(sub.name)
+//                                     }
+//                                     className="rounded-sm border-primary/50 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+//                                   />
+//                                   <Label
+//                                     htmlFor={`sub-${sub.id}`}
+//                                     className="text-sm font-medium leading-none cursor-pointer text-foreground/80 hover:text-foreground transition-colors"
+//                                   >
+//                                     {sub.name}
+//                                   </Label>
+//                                 </div>
+//                               ))}
+//                             </div>
+//                           )}
+//                       </div>
+//                     );
+//                   })
+//                 ) : (
+//                   <div className="col-span-full text-center py-8 text-muted-foreground font-medium">
+//                     <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2 text-primary" />{" "}
+//                     Загрузка категорий...
+//                   </div>
+//                 )}
+//               </div>
+
+//               <DialogFooter className="mt-2 gap-2 sm:gap-0">
+//                 <DialogClose asChild>
+//                   <Button
+//                     variant="outline"
+//                     className="rounded-xl h-11 w-full sm:w-auto"
+//                   >
+//                     Отмена
+//                   </Button>
+//                 </DialogClose>
+//                 <Button
+//                   onClick={handleSaveCategories}
+//                   disabled={
+//                     isSavingCategories || tempSelectedRoles.length === 0
+//                   }
+//                   className="rounded-xl h-11 font-bold w-full sm:w-auto"
+//                 >
+//                   {isSavingCategories && (
+//                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+//                   )}{" "}
+//                   Сохранить
+//                 </Button>
+//               </DialogFooter>
+//             </DialogContent>
+//           </Dialog>
+//         </>
+//       )}
+
+//       {/* TOP UP MODAL DIALOG */}
+//       <Dialog open={isTopUpModalOpen} onOpenChange={setIsTopUpModalOpen}>
+//         <DialogContent className="sm:max-w-md rounded-[2rem] p-0 overflow-hidden border-0 shadow-2xl text-white">
+//           <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-8 text-white">
+//             <DialogHeader>
+//               <DialogTitle className="text-2xl font-bold flex items-center gap-2">
+//                 <Wallet className="w-6 h-6 text-emerald-400" />
+//                 Пополнение кошелька
+//               </DialogTitle>
+//               <DialogDescription className="text-slate-300 mt-2">
+//                 Текущий баланс:{" "}
+//                 <strong className="text-white">
+//                   {walletBalance.toLocaleString("ru-RU")} ₽
+//                 </strong>
+//               </DialogDescription>
+//             </DialogHeader>
+//           </div>
+
+//           <div className="p-8 space-y-6 bg-background text-slate-600">
+//             <div className="space-y-3">
+//               <Label className="font-bold text-muted-foreground">
+//                 Выберите сумму или введите свою
+//               </Label>
+//               <div className="grid grid-cols-2 gap-2">
+//                 {PRESET_AMOUNTS.map((amt) => (
+//                   <Button
+//                     key={amt}
+//                     type="button"
+//                     variant={
+//                       topUpAmount === amt.toString() ? "default" : "outline"
+//                     }
+//                     className={cn(
+//                       "rounded-xl h-12 font-bold transition-all",
+//                       topUpAmount === amt.toString()
+//                         ? "shadow-md"
+//                         : "bg-muted/30 border-transparent hover:border-border",
+//                     )}
+//                     onClick={() => setTopUpAmount(amt.toString())}
+//                   >
+//                     {amt.toLocaleString("ru-RU")} ₽
+//                   </Button>
+//                 ))}
+//               </div>
+//             </div>
+
+//             <div className="relative">
+//               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">
+//                 ₽
+//               </span>
+//               <Input
+//                 type="number"
+//                 value={topUpAmount}
+//                 onChange={(e) => setTopUpAmount(e.target.value)}
+//                 className="pl-9 h-14 text-lg font-bold rounded-xl bg-muted/30 focus-visible:ring-primary border-border/60"
+//                 placeholder="Сумма пополнения"
+//               />
+//             </div>
+
+//             <Button
+//               className="w-full h-14 text-lg font-bold rounded-xl shadow-lg hover:shadow-xl transition-all"
+//               onClick={handleTopUp}
+//               disabled={
+//                 isProcessingTopUp || !topUpAmount || parseInt(topUpAmount) < 100
+//               }
+//             >
+//               {isProcessingTopUp ? (
+//                 <>
+//                   <Loader2 className="w-5 h-5 mr-2 animate-spin" /> Переход к
+//                   оплате...
+//                 </>
+//               ) : (
+//                 `Пополнить картой`
+//               )}
+//             </Button>
+//           </div>
+//         </DialogContent>
+//       </Dialog>
+//     </div>
+//   );
+// }
+
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-
-// --- Global Zustand Store ---
 import { useChatStore } from "@/store/useChatStore";
 
-import {
-  PerformerProfile,
-  usePerformerProfile,
-  useUpdatePerformerProfile,
-  useDeletePerformerProfile,
-  useCreateBookingRequest,
-  useAcceptBookingRequest,
-  useRejectBookingRequest,
-  useAddGalleryItem,
-  useRemoveGalleryItem,
-  useAddCertificate,
-  useRemoveCertificate,
-  useAddRecommendationLetter,
-  useRemoveRecommendationLetter,
-  useAddAudioTrack,
-  useRemoveAudioTrack,
-} from "@/services/performer";
-import {
-  isFavorite as checkIsFavorite,
-  addToFavorites,
-  removeFromFavorites,
-} from "@/services/favorites";
-import { getSiteSettings } from "@/services/settings";
+import { usePerformerProfile } from "@/services/performer";
+import { isFavorite as checkIsFavorite } from "@/services/favorites";
 import { useReviews } from "@/services/reviews";
-import { apiRequest } from "@/utils/api-client";
-import { useTariff } from "@/hooks/use-tariff";
 
-// --- Components ---
-import SubscriptionStatusCard from "@/components/profile/SubscriptionStatusCard";
-import { useToast } from "@/hooks/use-toast";
-import { Skeleton } from "@/components/ui/skeleton";
+// UI
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-  DialogClose,
-} from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import {
-  User,
-  Star,
-  BookOpen,
-  Gem,
-  Loader2,
-  CalendarIcon,
-  Edit3,
-  Tags,
-  Wallet,
-  PlusCircle,
-  CreditCard,
-  ChevronRight,
-  ChevronDown,
-  Music,
-  Trash2,
-} from "lucide-react";
-
-import AgencyDashboard from "@/components/performer-profile/AgencyDashboard";
-import ProfileHeader from "@/components/performer-profile/ProfileHeader";
-import AboutSection from "@/components/performer-profile/AboutSection";
-import GalleryManager from "@/components/performer-profile/GalleryManager";
-import ReviewsSection from "@/components/performer-profile/ReviewsSection";
-import BookingsSection from "@/components/performer-profile/BookingsSection";
-import CalendarSection from "@/components/performer-profile/CalendarSection";
-import FileUploadDialog from "@/components/performer-profile/FileUploadDialog";
-import AudioUploadDialog from "@/components/performer-profile/AudioUploadDialog";
-import AudioManager from "@/components/performer-profile/AudioManager";
+import { Loader2, Image as ImageIcon } from "lucide-react";
 import { cn } from "@/utils/utils";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8800";
-
-const getImageUrl = (path: string | undefined | null) => {
-  if (!path) return "";
-  if (path.startsWith("http")) return path;
-  return `${API_BASE}${path}`;
-};
-
-interface SubCategory {
-  id: string;
-  name: string;
-}
-
-interface SiteCategory {
-  id: string;
-  name: string;
-  subCategories?: SubCategory[];
-}
-
-const ProfileSkeleton = () => (
-  <div className="flex flex-col p-4 space-y-6 pt-safe min-h-screen bg-muted/10">
-    <Skeleton className="h-64 w-full rounded-3xl" />
-    <Skeleton className="h-32 w-full rounded-3xl" />
-    <Skeleton className="h-60 w-full rounded-3xl" />
-  </div>
-);
-
-const TOP_UP_PRESETS = [500, 1000, 2000, 5000];
+// Extracted Components
+import ProfileHeader from "@/components/performer-profile/ProfileHeader";
+import FeedTab from "@/components/performer-profile/tabs/FeedTab";
+import PortfolioTab from "@/components/performer-profile/tabs/PortfolioTab";
+import FinanceTab from "@/components/performer-profile/tabs/FinanceTab";
+import ProfileSidebar from "@/components/performer-profile/ProfileSidebar";
+import ReviewsSection from "@/components/performer-profile/ReviewsSection";
+import CalendarSection from "@/components/performer-profile/CalendarSection";
+import SubscriptionStatusCard from "@/components/profile/SubscriptionStatusCard";
+import AgencyDashboard from "@/components/performer-profile/AgencyDashboard";
+import { useToast } from "@/hooks/use-toast";
 
 export default function PerformerProfileClient() {
   const searchParams = useSearchParams();
@@ -121,1219 +1920,192 @@ export default function PerformerProfileClient() {
   const router = useRouter();
   const { toast } = useToast();
 
-  const onlineUsers = useChatStore((state) => state.onlineUsers);
-  const { canPerformAction, getLimit } = useTariff();
-
   const urlProfileId = searchParams.get("id");
   const sessionUser = session?.user;
-  const targetProfileId = urlProfileId
-    ? urlProfileId
-    : sessionUser?.role === "performer"
-      ? sessionUser?.id
-      : null;
+  const targetProfileId =
+    urlProfileId ||
+    (sessionUser?.role === "performer" ? sessionUser?.id : null);
   const isOwnProfile = !!(
     sessionUser?.id && targetProfileId === sessionUser.id
   );
 
   const {
     data: profile,
-    isLoading: isProfileLoading,
+    isLoading,
     isError,
-    refetch: refetchProfile,
+    refetch,
   } = usePerformerProfile(targetProfileId || null);
 
-  const isPerformerOnline = profile ? onlineUsers.has(profile.id) : false;
-  const { data: reviews = [] } = useReviews(targetProfileId || null);
+  const isOnlineInStore = useChatStore((state) => {
+    if (!targetProfileId) return false;
 
-  // Check if the user is a DJ to conditionally render the audio upload section
-  const isDJ = profile?.roles?.some(
-    (role) => role.toLowerCase() === "dj" || role.toLowerCase() === "диджеи",
-  );
+    return !!state.onlineUsers[targetProfileId];
+  });
 
-  const [adminCategories, setAdminCategories] = useState<SiteCategory[]>([]);
-  const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
-  const [tempSelectedRoles, setTempSelectedRoles] = useState<string[]>([]);
-  const [isSavingCategories, setIsSavingCategories] = useState(false);
-
-  const updateMutation = useUpdatePerformerProfile();
-  const deleteMutation = useDeletePerformerProfile();
-  const createBookingMutation = useCreateBookingRequest();
-  const acceptBookingMutation = useAcceptBookingRequest();
-  const rejectBookingMutation = useRejectBookingRequest();
-
-  const addGalleryItemMutation = useAddGalleryItem();
-  const removeGalleryItemMutation = useRemoveGalleryItem();
-  const addCertificateMutation = useAddCertificate();
-  const removeCertificateMutation = useRemoveCertificate();
-  const addLetterMutation = useAddRecommendationLetter();
-  const removeLetterMutation = useRemoveRecommendationLetter();
-
-  // NEW: Audio Mutations
-  const addAudioMutation = useAddAudioTrack();
-  const removeAudioMutation = useRemoveAudioTrack();
+  const isPerformerOnline = isOwnProfile || isOnlineInStore;
 
   const [isFavorite, setIsFavorite] = useState(false);
-  const [isBookingOpen, setIsBookingOpen] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>();
-  const [bookingDetails, setBookingDetails] = useState("");
-
-  const [isGalleryDialogOpen, setIsGalleryDialogOpen] = useState(false);
-  const [isCertificateDialogOpen, setIsCertificateDialogOpen] = useState(false);
-  const [isLetterDialogOpen, setIsLetterDialogOpen] = useState(false);
-  const [isAudioDialogOpen, setIsAudioDialogOpen] = useState(false);
-
-  const [isTopUpDialogOpen, setIsTopUpDialogOpen] = useState(false);
-  const [topUpAmount, setTopUpAmount] = useState<string>("1000");
-  const [isProcessingTopUp, setIsProcessingTopUp] = useState(false);
-  const [walletBalance, setWalletBalance] = useState<number>(0);
-
-  const targetSub = (profile as any)?.subscription;
-  const targetFeatures = targetSub?.plan?.features;
-  let performerHasChat = false;
-
-  if (targetFeatures && typeof targetFeatures.chatSupport !== "undefined") {
-    performerHasChat = !!targetFeatures.chatSupport;
-  } else {
-    performerHasChat =
-      targetSub?.planId === "STANDARD" || targetSub?.planId === "PREMIUM";
-  }
-
-  const fetchWallet = useCallback(async () => {
-    if (!isOwnProfile) return;
-    try {
-      const data = await apiRequest<{ walletBalance: number }>({
-        method: "get",
-        url: "/api/users/me",
-      });
-      setWalletBalance(data.walletBalance || 0);
-    } catch (error) {
-      console.error("Failed to fetch wallet balance", error);
-    }
-  }, [isOwnProfile]);
 
   useEffect(() => {
-    fetchWallet();
-  }, [fetchWallet]);
-
-  useEffect(() => {
-    if (profile) {
-      setTempSelectedRoles(profile.roles || []);
-      if (sessionUser?.role === "customer") {
-        checkIsFavorite(sessionUser.id, profile.id).then(setIsFavorite);
-      }
+    if (profile && sessionUser?.role === "customer") {
+      checkIsFavorite(sessionUser.id, profile.id).then(setIsFavorite);
     }
   }, [profile, sessionUser]);
 
-  useEffect(() => {
-    getSiteSettings()
-      .then((settings) => {
-        if (settings?.siteCategories) {
-          setAdminCategories(settings.siteCategories);
-        }
-      })
-      .catch(console.error);
-  }, []);
-
-  useEffect(() => {
-    if (profile && isOwnProfile) {
-      if (profile.subscription?.status === "EXPIRED") {
-        setTimeout(() => {
-          toast({
-            variant: "destructive",
-            title: "Срок действия тарифа истек",
-            description: `Действие вашего тарифа завершено. Перейдите во вкладку "Подписка", чтобы обновить план.`,
-          });
-        }, 1000);
-      }
-    }
-  }, [profile, isOwnProfile, toast]);
-
-  useEffect(() => {
-    const topupStatus = searchParams.get("topup");
-    const paymentStatus = searchParams.get("payment");
-
-    if (topupStatus === "success") {
-      toast({
-        title: "Обработка платежа...",
-        description: "Ожидаем подтверждение от банка. Пожалуйста, подождите...",
-      });
-
-      let attempts = 0;
-      const pollInterval = setInterval(() => {
-        attempts++;
-        refetchProfile();
-        fetchWallet();
-
-        if (attempts >= 4) {
-          clearInterval(pollInterval);
-          toast({
-            title: "Баланс обновлен!",
-            description: "Средства успешно зачислены на ваш кошелек.",
-            variant: "default",
-          });
-        }
-      }, 1500);
-
-      router.replace("/performer-profile", { scroll: false });
-      return () => clearInterval(pollInterval);
-    }
-
-    if (topupStatus === "failed") {
-      toast({
-        variant: "destructive",
-        title: "Ошибка оплаты",
-        description: "Платеж был отклонен или отменен банком.",
-      });
-      router.replace("/performer-profile", { scroll: false });
-    }
-
-    if (paymentStatus === "success") {
-      toast({
-        title: "Успешно!",
-        description: "Заявка успешно оплачена и опубликована.",
-        variant: "default",
-      });
-      router.replace("/performer-profile", { scroll: false });
-    }
-  }, [searchParams, toast, router, refetchProfile, fetchWallet]);
-
-  const handlePartialUpdate = async (
-    dataToUpdate: Partial<PerformerProfile>,
-    files?: {
-      profilePictureFile?: File | null;
-      backgroundPictureFile?: File | null;
-    },
-  ): Promise<void> => {
-    if (!profile) return Promise.reject("No profile loaded");
-    return new Promise((resolve, reject) => {
-      updateMutation.mutate(
-        { performerId: profile.id, data: { ...dataToUpdate, ...files } },
-        {
-          onSuccess: () => {
-            toast({ variant: "default", title: "Изменения сохранены" });
-            resolve();
-          },
-          onError: (error) => {
-            toast({ variant: "destructive", title: "Ошибка сохранения" });
-            reject(error);
-          },
-        },
-      );
-    });
-  };
-
-  const handleSaveCategories = async () => {
-    setIsSavingCategories(true);
-    try {
-      await handlePartialUpdate({ roles: tempSelectedRoles });
-      setIsCategoryDialogOpen(false);
-    } finally {
-      setIsSavingCategories(false);
-    }
-  };
-
-  // const handleCategoryToggle = (category: SiteCategory, isChecked: boolean) => {
-  //   if (isChecked) {
-  //     setTempSelectedRoles((prev) => [...prev, category.name]);
-  //   } else {
-  //     const subNames = category.subCategories?.map((s) => s.name) || [];
-  //     setTempSelectedRoles((prev) =>
-  //       prev.filter((r) => r !== category.name && !subNames.includes(r)),
-  //     );
-  //   }
-  // };
-
-  // const toggleTempRole = (roleName: string) => {
-  //   setTempSelectedRoles((prev) =>
-  //     prev.includes(roleName)
-  //       ? prev.filter((r) => r !== roleName)
-  //       : [...prev, roleName],
-  //   );
-  // };
-
-  const handleCategoryToggle = (category: any, isChecked: boolean) => {
-    if (isChecked) {
-      // 🚨 Clear everything and only select the new main category
-      setTempSelectedRoles([category.name]);
-    } else {
-      // If they uncheck the current main category, clear everything
-      setTempSelectedRoles([]);
-    }
-  };
-
-  const toggleTempRole = (subRoleName: string) => {
-    setTempSelectedRoles((prev) =>
-      prev.includes(subRoleName)
-        ? prev.filter((r) => r !== subRoleName)
-        : [...prev, subRoleName],
-    );
-  };
-
-  const handleDeleteProfile = () => {
-    if (!profile || !isOwnProfile) return;
-    if (confirm("Вы уверены? Это действие необратимо.")) {
-      deleteMutation.mutate(profile.id, {
-        onSuccess: () => {
-          toast({ title: "Профиль удален" });
-          router.push("/");
-        },
-        onError: () =>
-          toast({ variant: "destructive", title: "Ошибка удаления" }),
-      });
-    }
-  };
-
-  const handleToggleFavorite = async () => {
-    if (!profile || !sessionUser) return;
-    try {
-      if (isFavorite) {
-        await removeFromFavorites(sessionUser.id, profile.id);
-        toast({ description: "Удалено из избранного" });
-      } else {
-        await addToFavorites(sessionUser.id, {
-          id: profile.id,
-          name: profile.name,
-          profilePicture: profile.profilePicture || "",
-          city: profile.city,
-          roles: profile.roles,
-        });
-        toast({
-          variant: "default",
-          description: "Добавлено в избранное",
-        });
-      }
-      setIsFavorite(!isFavorite);
-    } catch (e) {
-      toast({ variant: "destructive", title: "Ошибка" });
-    }
-  };
-
-  const handleOpenChat = async () => {
-    if (!profile || !sessionUser) {
-      return toast({ variant: "destructive", title: "Войдите в систему" });
-    }
-    if (profile.id === sessionUser.id) {
-      return toast({
-        variant: "destructive",
-        title: "Вы не можете отправить сообщение самому себе",
-      });
-    }
-    if (!performerHasChat && !isOwnProfile) {
-      return toast({
-        variant: "destructive",
-        title: "Чат недоступен",
-        description:
-          "Тарифный план данного исполнителя не поддерживает личные сообщения.",
-      });
-    }
-    router.push(`/chat/${profile.id}`);
-  };
-
-  const handleSubmitBooking = () => {
-    if (!profile || !selectedDate || !sessionUser)
-      return toast({
-        variant: "destructive",
-        title: "Ошибка",
-        description: "Войдите и выберите дату",
-      });
-    createBookingMutation.mutate(
-      {
-        performerId: profile.id,
-        requestData: {
-          date: selectedDate,
-          customerId: sessionUser.id,
-          customerName: sessionUser.name || "Customer",
-          details: bookingDetails,
-        },
-      },
-      {
-        onSuccess: () => {
-          toast({ title: "Запрос отправлен" });
-          setIsBookingOpen(false);
-          setBookingDetails("");
-          setSelectedDate(undefined);
-        },
-        onError: () =>
-          toast({ variant: "destructive", title: "Ошибка отправки" }),
-      },
-    );
-  };
-
-  const handleAddGalleryItem = async (
-    file: File,
-    title: string,
-    description: string,
-  ) => {
-    if (!profile) return false;
-
-    const currentCount = profile.gallery?.length || 0;
-    if (isOwnProfile && !canPerformAction("maxPhotoUpload", currentCount)) {
-      toast({
-        variant: "destructive",
-        title: "Лимит достигнут",
-        description: `Вы достигли максимального количества фото (${getLimit("maxPhotoUpload")}) для вашего тарифа.`,
-      });
-      return false;
-    }
-
-    if (file.size > 15 * 1024 * 1024) {
-      toast({ variant: "destructive", title: "Файл слишком большой" });
-      return false;
-    }
-    try {
-      await addGalleryItemMutation.mutateAsync({
-        performerId: profile.id,
-        file,
-        title,
-        description,
-      });
-      toast({ variant: "default", title: "Фото добавлено" });
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
-  const handleAddCertificateWrapper = async (
-    file: File,
-    description: string,
-  ) => {
-    if (!profile) return false;
-    try {
-      await addCertificateMutation.mutateAsync({
-        performerId: profile.id,
-        file,
-        description,
-      });
-      toast({ variant: "default", title: "Добавлено" });
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
-  const handleAddLetterWrapper = async (file: File, description: string) => {
-    if (!profile) return false;
-    try {
-      await addLetterMutation.mutateAsync({
-        performerId: profile.id,
-        file,
-        description,
-      });
-      toast({ variant: "default", title: "Добавлено" });
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
-  const handleTopUpSubmit = async () => {
-    const amount = Number(topUpAmount);
-    if (!amount || amount <= 0) {
-      toast({
-        variant: "destructive",
-        title: "Ошибка",
-        description: "Введите корректную сумму.",
-      });
+  const requireAuth = (actionCallback: () => void) => {
+    if (authStatus === "unauthenticated" || !sessionUser) {
+      toast({ title: "Требуется авторизация", variant: "destructive" });
+      router.push("/login");
       return;
     }
-
-    setIsProcessingTopUp(true);
-    try {
-      const response = await apiRequest<{ paymentUrl: string }>({
-        method: "post",
-        url: "/api/wallet/topup/performer",
-        data: { amount },
-      });
-
-      if (response.paymentUrl) {
-        toast({ title: "Переход к оплате..." });
-        window.location.href = response.paymentUrl;
-      }
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Ошибка",
-        description: "Не удалось создать платеж. Попробуйте позже.",
-      });
-    } finally {
-      setIsProcessingTopUp(false);
-    }
+    actionCallback();
   };
 
-  if (isProfileLoading || authStatus === "loading") return <ProfileSkeleton />;
-  if (isError || !profile) {
+  if (isLoading || authStatus === "loading")
     return (
-      <div className="container mx-auto py-20 flex flex-col items-center justify-center space-y-4">
-        <div className="h-20 w-20 bg-muted rounded-full flex items-center justify-center text-muted-foreground mb-4">
-          ?
-        </div>
-        <h2 className="text-2xl font-bold">Профиль не найден</h2>
-        <Button
-          onClick={() => router.push("/")}
-          variant="default"
-          className="mt-4"
-        >
-          Вернуться на главную
-        </Button>
+      <div className="p-20 text-center">
+        <Loader2 className="w-8 h-8 animate-spin mx-auto" />
       </div>
     );
-  }
-
-  if (isOwnProfile && profile.accountType === "agency" && !urlProfileId) {
+  if (isError || !profile)
     return (
-      <div className="flex flex-col min-h-screen bg-muted/10 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-10 pt-4 md:pt-10">
-        <div className="container mx-auto max-w-5xl px-4">
-          <AgencyDashboard profile={profile} />
-        </div>
+      <div className="text-center py-20 font-bold text-2xl">
+        Профиль не найден
       </div>
     );
-  }
+  if (isOwnProfile && profile.accountType === "agency" && !urlProfileId)
+    return <AgencyDashboard profile={profile} />;
 
   return (
-    <>
-      <div className="flex flex-col min-h-screen bg-muted/10 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-10 pt-4 md:pt-10">
-        <div className="container max-w-5xl mx-auto px-4 space-y-6">
-          <ProfileHeader
-            profile={profile}
-            isOwnProfile={isOwnProfile}
-            isFavorite={isFavorite}
-            isOnline={isPerformerOnline}
-            performerHasChat={performerHasChat}
-            onPartialUpdate={handlePartialUpdate}
-            onDeleteProfile={handleDeleteProfile}
-            onToggleFavorite={handleToggleFavorite}
-            onOpenChat={handleOpenChat}
-            onBook={() => {
-              if (!sessionUser) return router.push("/login");
-              setIsBookingOpen(true);
-            }}
-            getImageUrl={getImageUrl}
-          />
+    <div className="bg-white min-h-screen pb-20 font-sans selection:bg-primary/20">
+      {/* HEADER SECTION */}
+      <ProfileHeader
+        profile={profile}
+        isOwnProfile={isOwnProfile}
+        isPerformerOnline={isPerformerOnline}
+        isFavorite={isFavorite}
+        setIsFavorite={setIsFavorite}
+        sessionUser={sessionUser}
+        requireAuth={requireAuth}
+      />
 
-          {/* --- CATEGORY SECTION --- */}
-          <div className="bg-background rounded-3xl p-6 shadow-sm border border-border/50 relative group">
-            <div className="flex justify-between items-start mb-4">
-              <div className="flex items-center gap-2">
-                <Tags className="h-5 w-5 text-primary" />
-                <h3 className="text-lg font-bold">Специализации</h3>
-              </div>
-              {isOwnProfile && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-primary font-bold px-2 rounded-full hover:bg-primary/10"
-                  onClick={() => setIsCategoryDialogOpen(true)}
-                >
-                  <Edit3 className="h-4 w-4 mr-1.5" /> Редактировать
-                </Button>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {profile.roles && profile.roles.length > 0 ? (
-                profile.roles.map((role) => (
-                  <Badge
-                    key={role}
-                    variant="secondary"
-                    className="px-3 py-1.5 text-[13px] bg-primary/10 text-primary border-transparent rounded-lg font-semibold"
-                  >
-                    {role}
-                  </Badge>
-                ))
-              ) : (
-                <p className="text-sm text-muted-foreground italic">
-                  Категории пока не указаны.
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* --- TABS SECTION --- */}
-          <Tabs defaultValue="about" className="w-full">
-            <div className="sticky top-[60px] md:top-[70px] z-30 bg-muted/10 backdrop-blur-xl pb-4 pt-2 -mx-4 px-4 sm:mx-0 sm:px-0 transition-all">
-              <TabsList className="w-full justify-start h-auto p-1.5 bg-background/60 shadow-sm border border-border/50 gap-2 overflow-x-auto rounded-2xl no-scrollbar flex-nowrap">
-                <TabsTrigger
-                  value="about"
-                  className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md rounded-xl px-4 py-2.5 transition-all font-semibold text-sm whitespace-nowrap"
-                >
-                  <User className="mr-2 h-4 w-4" /> О себе
-                </TabsTrigger>
-                <TabsTrigger
-                  value="portfolio"
-                  className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md rounded-xl px-4 py-2.5 transition-all font-semibold text-sm whitespace-nowrap"
-                >
-                  <BookOpen className="mr-2 h-4 w-4" /> Портфолио
-                </TabsTrigger>
-                <TabsTrigger
-                  value="reviews"
-                  className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md rounded-xl px-4 py-2.5 transition-all font-semibold text-sm whitespace-nowrap"
-                >
-                  <Star className="mr-2 h-4 w-4" /> Отзывы
-                  {reviews.length > 0 && (
-                    <span className="ml-2 text-xs bg-background/20 px-1.5 py-0.5 rounded-full">
-                      {reviews.length}
-                    </span>
-                  )}
-                </TabsTrigger>
-
-                {isOwnProfile && (
-                  <>
-                    <TabsTrigger
-                      value="bookings"
-                      className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md rounded-xl px-4 py-2.5 transition-all font-semibold text-sm whitespace-nowrap"
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" /> Брони
-                    </TabsTrigger>
-                    <TabsTrigger
-                      value="subscription"
-                      className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md rounded-xl px-4 py-2.5 transition-all font-semibold text-sm whitespace-nowrap"
-                    >
-                      <Gem className="mr-2 h-4 w-4" /> Подписка
-                    </TabsTrigger>
-                    <TabsTrigger
-                      value="wallet"
-                      className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md rounded-xl px-4 py-2.5 transition-all font-semibold text-sm whitespace-nowrap"
-                    >
-                      <Wallet className="mr-2 h-4 w-4" /> Кошелек
-                    </TabsTrigger>
-                    <TabsTrigger
-                      value="calendar"
-                      className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md rounded-xl px-4 py-2.5 transition-all font-semibold text-sm whitespace-nowrap"
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" /> Календарь
-                    </TabsTrigger>
-                  </>
-                )}
-              </TabsList>
-            </div>
-
-            <div className="grid grid-cols-1 gap-8 mt-2">
-              <TabsContent
-                value="about"
-                className="m-0 focus-visible:outline-none animate-in fade-in duration-300"
+      {/* DASHBOARD LAYOUT */}
+      <div
+        className={cn(
+          "container mx-auto px-4 pt-2 md:pt-6  flex flex-col md:flex-row gap-6 pb-12",
+          isOwnProfile ? "max-w-5xl" : "max-w-4xl",
+        )}
+      >
+        {/* MAIN COLUMN */}
+        <div className="flex-1 min-w-0">
+          <Tabs defaultValue="wall" className="w-full">
+            <TabsList className="w-full justify-start h-auto p-1.5 bg-white rounded-3xl  shadow-sm border border-border/60  gap-1 overflow-x-auto flex-nowrap no-scrollbar sticky top-4 z-10 mb-4">
+              <TabsTrigger
+                value="wall"
+                className="rounded-md md:rounded-full px-3 py-2 font-bold data-[state=active]:bg-primary data-[state=active]:text-white"
               >
-                <AboutSection
-                  profile={profile}
-                  isOwnProfile={isOwnProfile}
-                  onPartialUpdate={handlePartialUpdate}
-                  onAddCertificate={() => setIsCertificateDialogOpen(true)}
-                  onDeleteCertificate={(id) =>
-                    removeCertificateMutation.mutate({
-                      performerId: profile.id,
-                      itemId: id,
-                    })
-                  }
-                  onAddLetter={() => setIsLetterDialogOpen(true)}
-                  onDeleteLetter={(id) =>
-                    removeLetterMutation.mutate({
-                      performerId: profile.id,
-                      itemId: id,
-                    })
-                  }
-                />
-              </TabsContent>
-
-              <TabsContent
+                Стена
+              </TabsTrigger>
+              <TabsTrigger
                 value="portfolio"
-                className="m-0 focus-visible:outline-none animate-in fade-in duration-300"
+                className="rounded-md md:rounded-full px-3 py-2 font-bold data-[state=active]:bg-primary data-[state=active]:text-white"
               >
-                {/* --- DJ AUDIO SECTION --- */}
-                {/* {isDJ && (
-                  <div className="mb-8 bg-background rounded-3xl p-6 shadow-sm border border-border/50">
-                    <div className="flex justify-between items-center mb-4">
-                      <div className="flex items-center gap-2">
-                        <Music className="h-5 w-5 text-primary" />
-                        <h3 className="text-lg font-bold">Аудиозаписи</h3>
-                      </div>
-                      {isOwnProfile && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-primary font-bold px-2 rounded-full hover:bg-primary/10"
-                          onClick={() => setIsAudioDialogOpen(true)}
-                        >
-                          <PlusCircle className="h-4 w-4 mr-1.5" /> Добавить
-                          трек
-                        </Button>
-                      )}
-                    </div>
-
-                    <div className="space-y-3">
-                      {(profile as any).audioTracks &&
-                      (profile as any).audioTracks.length > 0 ? (
-                        (profile as any).audioTracks.map((track: any) => (
-                          <div
-                            key={track.id}
-                            className="flex items-center gap-4 bg-muted/30 p-3 rounded-2xl border border-border/50"
-                          >
-                            <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-[15px] truncate mb-1.5 text-foreground">
-                                {track.title}
-                              </p>
-                              <audio
-                                controls
-                                className="w-full h-10 rounded-full outline-none"
-                              >
-                                <source
-                                  src={getImageUrl(track.file_url)}
-                                  type="audio/mpeg"
-                                />
-                                Ваш браузер не поддерживает элемент{" "}
-                                <code>audio</code>.
-                              </audio>
-                            </div>
-                            {isOwnProfile && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="text-destructive hover:bg-destructive/10 shrink-0"
-                                onClick={() =>
-                                  removeAudioMutation.mutate({
-                                    performerId: profile.id,
-                                    trackId: track.id,
-                                  })
-                                }
-                              >
-                                <Trash2 className="w-5 h-5" />
-                              </Button>
-                            )}
-                          </div>
-                        ))
-                      ) : (
-                        <div className="border border-dashed border-border/60 rounded-2xl p-6 flex flex-col items-center justify-center text-center text-muted-foreground bg-muted/10">
-                          <Music className="h-8 w-8 mb-2 opacity-20" />
-                          <p className="text-sm font-medium">
-                            Треки пока не загружены.
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )} */}
-
-                {isDJ && (
-                  <AudioManager
-                    tracks={(profile as any).audioTracks || []}
-                    isOwnProfile={isOwnProfile}
-                    onAddClick={() => setIsAudioDialogOpen(true)}
-                    onDelete={(trackId) =>
-                      removeAudioMutation.mutate({
-                        performerId: profile.id,
-                        trackId: trackId,
-                      })
-                    }
-                    getImageUrl={getImageUrl}
-                  />
-                )}
-
-                <GalleryManager
-                  gallery={profile.gallery || []}
-                  isOwnProfile={isOwnProfile}
-                  onAddOrEdit={() => setIsGalleryDialogOpen(true)}
-                  onDelete={(id) =>
-                    removeGalleryItemMutation.mutate({
-                      performerId: profile.id,
-                      itemId: id,
-                    })
-                  }
-                />
-              </TabsContent>
-
-              {/* <TabsContent
+                Портфолио
+              </TabsTrigger>
+              <TabsTrigger
                 value="reviews"
-                className="m-0 focus-visible:outline-none animate-in fade-in duration-300"
+                className="rounded-md md:rounded-full px-3 py-2 font-bold data-[state=active]:bg-primary data-[state=active]:text-white"
               >
-                <ReviewsSection
-                  profileId={profile.id}
-                  currentUserRole={sessionUser?.role as string | null}
-                  currentUserId={sessionUser?.id || null}
-                  currentUserName={sessionUser?.name || null}
-                  onReviewSubmit={() => refetchProfile()}
-                />
-              </TabsContent> */}
-
-              <TabsContent
-                value="reviews"
-                className="m-0 mt-6 focus-visible:outline-none animate-in fade-in duration-300"
-              >
-                <ReviewsSection
-                  profileId={profile.id}
-                  currentUserRole={sessionUser?.role as string | null}
-                  currentUserId={sessionUser?.id || null}
-                  currentUserName={sessionUser?.name || null}
-                  onReviewSubmit={() => refetchProfile()}
-                />
-              </TabsContent>
-
+                Отзывы
+              </TabsTrigger>
+              {!isOwnProfile && (
+                <TabsTrigger
+                  value="calendar"
+                  className="rounded-md md:rounded-full px-3 py-2 font-bold data-[state=active]:bg-primary data-[state=active]:text-white"
+                >
+                  Занятость
+                </TabsTrigger>
+              )}
               {isOwnProfile && (
                 <>
-                  <TabsContent
-                    value="bookings"
-                    className="m-0 focus-visible:outline-none animate-in fade-in duration-300"
-                  >
-                    <BookingsSection
-                      bookingRequests={profile.bookingRequests || []}
-                      onBookingAction={(id, action) =>
-                        action === "accept"
-                          ? acceptBookingMutation.mutate({
-                              performerId: profile.id,
-                              requestId: id,
-                            })
-                          : rejectBookingMutation.mutate({
-                              performerId: profile.id,
-                              requestId: id,
-                            })
-                      }
-                    />
-                  </TabsContent>
-
-                  <TabsContent
+                  <TabsTrigger
                     value="subscription"
-                    className="m-0 focus-visible:outline-none animate-in fade-in duration-300"
+                    className="rounded-md md:rounded-full px-3 py-2 font-bold data-[state=active]:bg-primary data-[state=active]:text-white"
                   >
-                    <div className="w-full">
-                      <SubscriptionStatusCard />
-                    </div>
-                  </TabsContent>
-
-                  <TabsContent
-                    value="wallet"
-                    className="m-0 focus-visible:outline-none animate-in fade-in duration-300"
+                    Подписка
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="finance"
+                    className="rounded-md md:rounded-full px-3 py-2 font-bold data-[state=active]:bg-primary data-[state=active]:text-white"
                   >
-                    {/* <div className="max-w-3xl space-y-6">
-                      <div className="rounded-3xl bg-gradient-to-br from-primary to-primary/80 p-6 text-primary-foreground shadow-lg relative overflow-hidden">
-                        <div className="absolute -right-6 -top-6 w-32 h-32 rounded-full bg-white/10 blur-2xl pointer-events-none" />
-                        <div className="absolute -left-6 -bottom-6 w-24 h-24 rounded-full bg-black/10 blur-xl pointer-events-none" />
-                        <Wallet className="absolute right-4 top-1/2 -translate-y-1/2 h-32 w-32 opacity-[0.07] pointer-events-none" />
-                        <div className="relative z-10 flex flex-col h-full justify-between gap-6">
-                          <div>
-                            <p className="text-primary-foreground/80 font-medium text-sm flex items-center gap-2">
-                              <Wallet className="h-4 w-4" /> Баланс кошелька
-                            </p>
-                            <div className="text-4xl font-black mt-1 tracking-tight">
-                              {walletBalance.toLocaleString("ru-RU")}{" "}
-                              <span className="text-2xl font-bold opacity-80">
-                                ₽
-                              </span>
-                            </div>
-                          </div>
-                          <Button
-                            onClick={() => setIsTopUpDialogOpen(true)}
-                            className="w-full bg-background/20 hover:bg-background/30 text-primary-foreground backdrop-blur-md border-0 rounded-2xl h-12 font-bold shadow-none active:scale-[0.98] transition-all"
-                          >
-                            <PlusCircle className="mr-2 h-5 w-5" /> Пополнить
-                          </Button>
-                        </div>
-                      </div>
-                      <div className="border border-border/50 rounded-3xl p-6 flex flex-col justify-center bg-background shadow-sm">
-                        <CreditCard className="h-10 w-10 mb-4 text-primary/50" />
-                        <h4 className="font-bold text-lg text-foreground mb-1">
-                          Удобная оплата
-                        </h4>
-                        <p className="text-sm text-muted-foreground font-medium">
-                          Используйте средства кошелька для мгновенной оплаты
-                          подписок или продвижения профиля без комиссий.
-                        </p>
-                      </div>
-                    </div> */}
-
-                    <div className="max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {/* Wallet Balance Card */}
-                      <div className="rounded-3xl bg-gradient-to-br from-primary to-primary/80 p-6 text-primary-foreground shadow-lg relative overflow-hidden h-full">
-                        <div className="absolute -right-6 -top-6 w-32 h-32 rounded-full bg-white/10 blur-2xl pointer-events-none" />
-                        <div className="absolute -left-6 -bottom-6 w-24 h-24 rounded-full bg-black/10 blur-xl pointer-events-none" />
-                        <Wallet className="absolute right-4 top-1/2 -translate-y-1/2 h-32 w-32 opacity-[0.07] pointer-events-none" />
-
-                        <div className="relative z-10 flex flex-col h-full justify-between gap-6">
-                          <div>
-                            <p className="text-primary-foreground/80 font-medium text-sm flex items-center gap-2">
-                              <Wallet className="h-4 w-4" /> Баланс кошелька
-                            </p>
-                            <div className="text-4xl font-black mt-1 tracking-tight">
-                              {walletBalance.toLocaleString("ru-RU")}{" "}
-                              <span className="text-2xl font-bold opacity-80">
-                                ₽
-                              </span>
-                            </div>
-                          </div>
-                          <Button
-                            onClick={() => setIsTopUpDialogOpen(true)}
-                            className="w-full shrink-0 bg-background/20 hover:bg-background/30 text-primary-foreground backdrop-blur-md border-0 rounded-2xl h-12 font-bold shadow-none active:scale-[0.98] transition-all"
-                          >
-                            <PlusCircle className="mr-2 h-5 w-5" /> Пополнить
-                          </Button>
-                        </div>
-                      </div>
-
-                      {/* Convenient Payment Info Card */}
-                      <div className="border border-border/50 rounded-3xl p-6 flex flex-col justify-center bg-background shadow-sm h-full">
-                        <CreditCard className="h-10 w-10 mb-4 text-primary/50" />
-                        <h4 className="font-bold text-lg text-foreground mb-1">
-                          Удобная оплата
-                        </h4>
-                        <p className="text-sm text-muted-foreground font-medium">
-                          Используйте средства кошелька для мгновенной оплаты
-                          подписок или продвижения профиля без комиссий.
-                        </p>
-                      </div>
-                    </div>
-                  </TabsContent>
-
-                  <TabsContent
-                    value="calendar"
-                    className="m-0 focus-visible:outline-none animate-in fade-in duration-300"
-                  >
-                    <CalendarSection profile={profile} />
-                  </TabsContent>
+                    Финансы
+                  </TabsTrigger>
                 </>
               )}
-            </div>
+            </TabsList>
+
+            <TabsContent value="wall" className="focus-visible:outline-none">
+              <FeedTab
+                profile={profile}
+                isOwnProfile={isOwnProfile}
+                sessionUser={sessionUser}
+                requireAuth={requireAuth}
+              />
+            </TabsContent>
+            <TabsContent
+              value="portfolio"
+              className="focus-visible:outline-none"
+            >
+              <PortfolioTab profile={profile} isOwnProfile={isOwnProfile} />
+            </TabsContent>
+            <TabsContent value="reviews" className="focus-visible:outline-none">
+              <div className="bg-white rounded-3xl p-6 shadow-sm border border-border/40">
+                <ReviewsSection
+                  profileId={profile.id}
+                  currentUserRole={sessionUser?.role as string}
+                  currentUserId={sessionUser?.id}
+                  currentUserName={sessionUser?.name}
+                  onReviewSubmit={() => refetch()}
+                />
+              </div>
+            </TabsContent>
+
+            {!isOwnProfile && (
+              <TabsContent
+                value="calendar"
+                className="focus-visible:outline-none"
+              >
+                <div className="bg-white rounded-3xl p-6 shadow-sm border border-border/40 pointer-events-none">
+                  <CalendarSection
+                    profile={profile}
+                    isOwnProfile={isOwnProfile}
+                  />
+                </div>
+              </TabsContent>
+            )}
+
+            {isOwnProfile && (
+              <>
+                <TabsContent
+                  value="subscription"
+                  className="focus-visible:outline-none"
+                >
+                  <SubscriptionStatusCard />
+                </TabsContent>
+                <TabsContent
+                  value="finance"
+                  className="focus-visible:outline-none"
+                >
+                  <FinanceTab profile={profile} />
+                </TabsContent>
+              </>
+            )}
           </Tabs>
         </div>
+
+        {/* SIDEBAR (OWNER ONLY) */}
+        {isOwnProfile && <ProfileSidebar profile={profile} />}
       </div>
-
-      {/* --- MODALS --- */}
-      <Dialog open={isTopUpDialogOpen} onOpenChange={setIsTopUpDialogOpen}>
-        <DialogContent className="sm:max-w-md rounded-3xl p-6">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-bold">
-              Сумма пополнения
-            </DialogTitle>
-            <DialogDescription>
-              Выберите или введите сумму (₽)
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-2 space-y-5">
-            <div className="grid grid-cols-2 gap-3">
-              {TOP_UP_PRESETS.map((amount) => (
-                <Button
-                  key={amount}
-                  type="button"
-                  variant={
-                    topUpAmount === amount.toString() ? "default" : "outline"
-                  }
-                  className={cn(
-                    "h-14 rounded-2xl font-bold text-lg transition-all",
-                    topUpAmount === amount.toString()
-                      ? "shadow-md"
-                      : "border-border/60 bg-muted/30",
-                  )}
-                  onClick={() => setTopUpAmount(amount.toString())}
-                >
-                  {amount}
-                </Button>
-              ))}
-            </div>
-            <div className="relative">
-              <Input
-                type="number"
-                placeholder="Другая сумма"
-                value={topUpAmount}
-                onChange={(e) => setTopUpAmount(e.target.value)}
-                className="h-14 rounded-2xl text-lg font-bold pl-4 pr-12 bg-muted/30 border-border/60"
-              />
-              <span className="absolute right-5 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">
-                ₽
-              </span>
-            </div>
-          </div>
-          <Button
-            onClick={handleTopUpSubmit}
-            disabled={isProcessingTopUp}
-            className="w-full h-14 rounded-2xl font-bold text-lg mt-2"
-          >
-            {isProcessingTopUp ? (
-              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-            ) : (
-              <CreditCard className="mr-2 h-5 w-5" />
-            )}
-            Оплатить
-          </Button>
-        </DialogContent>
-      </Dialog>
-      {/* 
-      <Dialog
-        open={isCategoryDialogOpen}
-        onOpenChange={setIsCategoryDialogOpen}
-      >
-        <DialogContent className="sm:max-w-xl rounded-3xl p-6">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-bold">
-              Специализации
-            </DialogTitle>
-            <DialogDescription>
-              Выберите основные категории и уточните услуги (подкатегории).
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
-            {adminCategories.length > 0 ? (
-              adminCategories.map((category) => {
-                const isCategorySelected = tempSelectedRoles.includes(
-                  category.name,
-                );
-                return (
-                  <div
-                    key={category.id}
-                    className={`flex flex-col border rounded-2xl p-4 transition-all duration-300 ${isCategorySelected ? "bg-primary/5 border-primary/40 shadow-sm" : "hover:bg-muted/50 border-border/50"}`}
-                  >
-                    <div className="flex items-start space-x-3">
-                      <Checkbox
-                        id={`cat-${category.id}`}
-                        checked={isCategorySelected}
-                        onCheckedChange={(checked) =>
-                          handleCategoryToggle(category, !!checked)
-                        }
-                        className="mt-0.5 rounded-md"
-                      />
-                      <Label
-                        htmlFor={`cat-${category.id}`}
-                        className="text-[15px] font-bold leading-tight cursor-pointer w-full flex justify-between items-center"
-                      >
-                        {category.name}
-                        {category.subCategories &&
-                          category.subCategories.length > 0 &&
-                          (isCategorySelected ? (
-                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                          ))}
-                      </Label>
-                    </div>
-                    {isCategorySelected &&
-                      category.subCategories &&
-                      category.subCategories.length > 0 && (
-                        <div className="ml-7 flex flex-col space-y-3 mt-4 pt-3 border-t border-dashed border-border animate-in slide-in-from-top-2 fade-in duration-200">
-                          {category.subCategories.map((sub) => (
-                            <div
-                              key={sub.id}
-                              className="flex items-center space-x-3"
-                            >
-                              <Checkbox
-                                id={`sub-${sub.id}`}
-                                checked={tempSelectedRoles.includes(sub.name)}
-                                onCheckedChange={() => toggleTempRole(sub.name)}
-                                className="rounded-sm"
-                              />
-                              <Label
-                                htmlFor={`sub-${sub.id}`}
-                                className="text-sm font-medium leading-none cursor-pointer"
-                              >
-                                {sub.name}
-                              </Label>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                  </div>
-                );
-              })
-            ) : (
-              <div className="col-span-full text-center py-8 text-muted-foreground font-medium">
-                <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2 text-primary" />{" "}
-                Загрузка категорий...
-              </div>
-            )}
-          </div>
-          <DialogFooter className="mt-2 gap-2">
-            <DialogClose asChild>
-              <Button variant="outline" className="rounded-xl h-11">
-                Отмена
-              </Button>
-            </DialogClose>
-            <Button
-              onClick={handleSaveCategories}
-              disabled={isSavingCategories}
-              className="rounded-xl h-11 font-bold"
-            >
-              {isSavingCategories && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}{" "}
-              Сохранить
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog> */}
-
-      <Dialog
-        open={isCategoryDialogOpen}
-        onOpenChange={setIsCategoryDialogOpen}
-      >
-        <DialogContent className="sm:max-w-xl rounded-3xl p-6">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-bold">
-              Специализации
-            </DialogTitle>
-            <DialogDescription>
-              Выберите одну основную категорию и уточните услуги (подкатегории).
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
-            {adminCategories.length > 0 ? (
-              adminCategories.map((category) => {
-                const isCategorySelected = tempSelectedRoles.includes(
-                  category.name,
-                );
-
-                // Check if ANOTHER main category is currently selected
-                const isAnotherMainSelected = tempSelectedRoles.some((role) =>
-                  adminCategories.some(
-                    (c) => c.name === role && c.name !== category.name,
-                  ),
-                );
-
-                return (
-                  <div
-                    key={category.id}
-                    className={`flex flex-col border rounded-2xl p-4 transition-all duration-300 ${
-                      isCategorySelected
-                        ? "bg-primary/5 border-primary/40 shadow-sm ring-1 ring-primary/20"
-                        : isAnotherMainSelected
-                          ? "opacity-50 grayscale-[0.5] hover:opacity-100 hover:grayscale-0 border-border/50"
-                          : "hover:bg-muted/50 border-border/50"
-                    }`}
-                  >
-                    <div
-                      className="flex items-start space-x-3 cursor-pointer group"
-                      onClick={() =>
-                        handleCategoryToggle(category, !isCategorySelected)
-                      }
-                    >
-                      {/* Main Category Selection */}
-                      <div
-                        className={`mt-0.5 w-5 h-5 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
-                          isCategorySelected
-                            ? "border-primary bg-primary"
-                            : "border-primary/50 group-hover:border-primary"
-                        }`}
-                      >
-                        {isCategorySelected && (
-                          <div className="w-2 h-2 bg-white rounded-full" />
-                        )}
-                      </div>
-
-                      <Label className="text-[15px] font-bold leading-tight cursor-pointer w-full flex justify-between items-center pointer-events-none">
-                        {category.name}
-                        {category.subCategories &&
-                          category.subCategories.length > 0 &&
-                          (isCategorySelected ? (
-                            <ChevronDown className="h-4 w-4 text-primary" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                          ))}
-                      </Label>
-                    </div>
-
-                    {/* Subcategories (Only visible if Main Category is selected) */}
-                    {isCategorySelected &&
-                      category.subCategories &&
-                      category.subCategories.length > 0 && (
-                        <div className="ml-8 flex flex-col space-y-3 mt-4 pt-3 border-t border-dashed border-primary/20 animate-in slide-in-from-top-2 fade-in duration-200">
-                          {category.subCategories.map((sub: any) => (
-                            <div
-                              key={sub.id}
-                              className="flex items-center space-x-3"
-                            >
-                              <Checkbox
-                                id={`sub-${sub.id}`}
-                                checked={tempSelectedRoles.includes(sub.name)}
-                                onCheckedChange={() => toggleTempRole(sub.name)}
-                                className="rounded-sm border-primary/50 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
-                              />
-                              <Label
-                                htmlFor={`sub-${sub.id}`}
-                                className="text-sm font-medium leading-none cursor-pointer text-foreground/80 hover:text-foreground transition-colors"
-                              >
-                                {sub.name}
-                              </Label>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                  </div>
-                );
-              })
-            ) : (
-              <div className="col-span-full text-center py-8 text-muted-foreground font-medium">
-                <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2 text-primary" />{" "}
-                Загрузка категорий...
-              </div>
-            )}
-          </div>
-
-          <DialogFooter className="mt-2 gap-2 sm:gap-0">
-            <DialogClose asChild>
-              <Button
-                variant="outline"
-                className="rounded-xl h-11 w-full sm:w-auto"
-              >
-                Отмена
-              </Button>
-            </DialogClose>
-            <Button
-              onClick={handleSaveCategories}
-              disabled={isSavingCategories || tempSelectedRoles.length === 0}
-              className="rounded-xl h-11 font-bold w-full sm:w-auto"
-            >
-              {isSavingCategories && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}{" "}
-              Сохранить
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Upload Dialogs */}
-      {isOwnProfile && (
-        <>
-          <FileUploadDialog
-            isOpen={isCertificateDialogOpen}
-            onClose={() => setIsCertificateDialogOpen(false)}
-            title="Загрузить сертификат"
-            description="Файл формата JPG, PNG или PDF"
-            onFileUpload={handleAddCertificateWrapper}
-          />
-          <FileUploadDialog
-            isOpen={isLetterDialogOpen}
-            onClose={() => setIsLetterDialogOpen(false)}
-            title="Загрузить рекомендацию"
-            description="Файл формата JPG, PNG или PDF"
-            onFileUpload={handleAddLetterWrapper}
-          />
-          <FileUploadDialog
-            isOpen={isGalleryDialogOpen}
-            onClose={() => setIsGalleryDialogOpen(false)}
-            title="Добавить в портфолио"
-            description="Загрузите качественное фото вашей работы"
-            onFileUpload={(file, desc) =>
-              handleAddGalleryItem(file, "Новая работа", desc)
-            }
-          />
-
-          <AudioUploadDialog
-            isOpen={isAudioDialogOpen}
-            onClose={() => setIsAudioDialogOpen(false)}
-            title="Загрузить аудио трек"
-            description="Файл формата MP3 или WAV"
-            accept="audio/mpeg, audio/wav"
-            onFileUpload={async (file, title) => {
-              if (!profile) return false;
-              try {
-                await addAudioMutation.mutateAsync({
-                  performerId: profile.id,
-                  file,
-                  title, // Теперь компонент передает правильное значение title
-                });
-                toast({ variant: "default", title: "Трек успешно загружен" });
-                return true;
-              } catch {
-                return false;
-              }
-            }}
-          />
-        </>
-      )}
-    </>
+    </div>
   );
 }

@@ -60,13 +60,7 @@ const GalleryManager: React.FC<GalleryManagerProps> = ({
 
         {/* Add Button - Only shows for owner */}
         {isOwnProfile && currentCount > 0 && (
-          <Button
-            size="sm"
-            onClick={() => onAddOrEdit(null)}
-            className="h-9"
-            // If they can't upload more, we don't disable the button.
-            // We let them click it so the parent component can show the "Upgrade Plan" toast.
-          >
+          <Button size="sm" onClick={() => onAddOrEdit(null)} className="h-9">
             {canUploadMore ? (
               <PlusCircle className="mr-2 h-4 w-4" />
             ) : (
@@ -108,8 +102,8 @@ const GalleryManager: React.FC<GalleryManagerProps> = ({
                 className="relative group overflow-hidden rounded-xl border bg-muted/30 aspect-square"
               >
                 <img
-                  src={item.image_urls[0]}
-                  alt={item.image_alt_text || item.title}
+                  src={item.imageUrls[0]}
+                  alt={item.imageAltText || item.title}
                   className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110"
                 />
 

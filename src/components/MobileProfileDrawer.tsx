@@ -25,6 +25,8 @@ import {
   Gem,
   FileText,
   Heart,
+  CircleDollarSignIcon,
+  LayoutDashboardIcon,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -262,6 +264,23 @@ export default function MobileProfileDrawer({
                               : "/customer-profile",
                           )
                         }
+                      />
+
+                      <MenuItem
+                        icon={
+                          <CircleDollarSignIcon className="text-orange-500" />
+                        }
+                        title="Финансы"
+                        subtitle="Оплата и финансы"
+                        onClick={() => handleNavigation("/finance")}
+                      />
+                      <MenuItem
+                        icon={
+                          <LayoutDashboardIcon className="text-green-500" />
+                        }
+                        title="Мои бронирования"
+                        subtitle="все ваше бронирование"
+                        onClick={() => handleNavigation("/bookings")}
                       />
 
                       {isPerformer ? (

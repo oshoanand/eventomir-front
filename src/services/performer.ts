@@ -2,36 +2,58 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/utils/api-client";
-import { BookingRequest } from "@/services/booking";
 import { UserSubscription } from "@/services/payment";
+import { FeedPost } from "@/services/feed";
+import { BookingRequest } from "@/services/booking";
 
-export type ModerationStatus = "pending_approval" | "approved" | "rejected";
+export type ModerationStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+// --- INTERFACES ---
+export interface SocialLinks {
+  vk?: string;
+  telegram?: string;
+  youtube?: string;
+  website?: string;
+}
+
+export interface BankDetails {
+  id?: string;
+  type: "CARD" | "ACCOUNT";
+  bankName: string;
+  cardType?: string;
+  bik?: string;
+  corrAccount?: string;
+  inn?: string;
+  kpp?: string;
+  accountNumber: string;
+  isDefault?: boolean;
+}
 
 export interface GalleryItem {
   id: string;
   title: string;
-  image_urls: string[];
+  imageUrls: string[];
   description: string;
-  meta_title?: string;
-  meta_description?: string;
+  metaTitle?: string;
+  metaDescription?: string;
   keywords?: string;
-  image_alt_text?: string;
+  imageAltText?: string;
   imageFiles?: File[] | null;
-  moderation_status: ModerationStatus;
+  moderationStatus: ModerationStatus;
 }
 
 export interface Certificate {
   id: string;
-  file_url: string; // Updated to match backend mapping if necessary (Prisma outputs file_url)
+  fileUrl: string;
   description?: string;
-  moderation_status: ModerationStatus;
+  moderationStatus: ModerationStatus;
 }
 
 export interface RecommendationLetter {
   id: string;
-  file_url: string;
+  fileUrl: string;
   description?: string;
-  moderation_status: ModerationStatus;
+  moderationStatus: ModerationStatus;
 }
 
 export interface Review {
@@ -43,13 +65,12 @@ export interface Review {
   date: Date;
 }
 
-// NEW: Audio Track Interface
 export interface AudioTrack {
   id: string;
-  performer_id: string;
+  performerId: string;
   title: string;
-  file_url: string;
-  created_at: string;
+  fileUrl: string;
+  createdAt: string;
 }
 
 export interface PerformerProfileBase {
@@ -64,6 +85,7 @@ export interface PerformerProfileBase {
   inn: string;
   description: string;
   contactPhone: string;
+  phone?: string;
   contactEmail: string;
   email: string;
   profilePicture?: string;
@@ -72,13 +94,15 @@ export interface PerformerProfileBase {
   backgroundPictureAltText?: string;
   roles: string[];
   city: string;
+  address: string;
   priceRange?: number[];
   latitude?: number;
   longitude?: number;
   profileMetaTitle?: string;
   profileMetaDescription?: string;
   profileKeywords?: string;
-
+  socialLinks?: SocialLinks;
+  bankDetails?: BankDetails[];
   subscriptionPlanId?: string | null;
   subscriptionEndDate?: Date | null;
   moderationStatus: ModerationStatus;
@@ -102,7 +126,8 @@ export interface PerformerProfile extends PerformerProfileBase {
   selectedDates?: Date[];
   certificates?: Certificate[];
   recommendationLetters?: RecommendationLetter[];
-  audioTracks?: AudioTrack[]; // NEW: Added to profile
+  audioTracks?: AudioTrack[];
+  feedPosts?: FeedPost[];
   reviews?: Review[];
   isVip?: boolean;
   subscription?: UserSubscription | null;
@@ -141,14 +166,12 @@ export type ArtistDetails = {
   eventStyles: string[];
 };
 
-// Extended type for Comparison/Lists
 export interface PerformerWithRating extends PerformerProfile {
   averageRating: number | null;
 }
 
-// Type for updating profile (includes optional files)
 export type UpdatePerformerProfileParams = Partial<
-  Omit<PerformerProfile, "id" | "email" | "accountType" | "inn">
+  Omit<PerformerProfile, "id" | "email" | "accountType" | "inn" | "feedPosts">
 > & {
   profilePictureFile?: File | null;
   backgroundPictureFile?: File | null;
@@ -169,7 +192,9 @@ const hydrateProfileDates = (data: any): PerformerProfile => {
     bookingRequests: Array.isArray(data.bookingRequests)
       ? data.bookingRequests.map((req: any) => ({
           ...req,
-          date: req.date ? new Date(req.date) : new Date(req.eventDate),
+          date: req.date
+            ? new Date(req.date)
+            : new Date(req.eventDate || Date.now()),
           createdAt: req.createdAt ? new Date(req.createdAt) : new Date(),
         }))
       : [],
@@ -177,6 +202,18 @@ const hydrateProfileDates = (data: any): PerformerProfile => {
       ? data.reviews.map((review: any) => ({
           ...review,
           date: review.date ? new Date(review.date) : new Date(),
+        }))
+      : [],
+    feedPosts: Array.isArray(data.feedPosts)
+      ? data.feedPosts.map((post: any) => ({
+          ...post,
+          createdAt: new Date(post.createdAt),
+          comments: Array.isArray(post.comments)
+            ? post.comments.map((c: any) => ({
+                ...c,
+                createdAt: new Date(c.createdAt),
+              }))
+            : [],
         }))
       : [],
   };
@@ -206,21 +243,22 @@ const updatePerformerProfileFn = async ({
   if (data.name) formData.append("name", data.name);
   if (data.description) formData.append("description", data.description);
   if (data.city) formData.append("city", data.city);
-  if (data.contactPhone) formData.append("phone", data.contactPhone);
+  if (data.address) formData.append("address", data.address);
+  if (data.phone) formData.append("phone", data.phone);
+  else if (data.contactPhone) formData.append("phone", data.contactPhone);
 
-  if (data.roles) {
-    formData.append("roles", JSON.stringify(data.roles));
-  }
-  if (data.priceRange) {
+  if (data.roles) formData.append("roles", JSON.stringify(data.roles));
+  if (data.priceRange)
     formData.append("priceRange", JSON.stringify(data.priceRange));
-  }
+  if (data.socialLinks)
+    formData.append("socialLinks", JSON.stringify(data.socialLinks));
+  if (data.bankDetails)
+    formData.append("bankDetails", JSON.stringify(data.bankDetails));
 
-  if (data.profilePictureFile) {
+  if (data.profilePictureFile)
     formData.append("profilePicture", data.profilePictureFile);
-  }
-  if (data.backgroundPictureFile) {
+  if (data.backgroundPictureFile)
     formData.append("backgroundPicture", data.backgroundPictureFile);
-  }
 
   const response = await apiRequest<any>({
     method: "patch",
@@ -238,55 +276,6 @@ const deletePerformerProfileFn = async (performerId: string): Promise<void> => {
     url: `/api/performers/${performerId}`,
   });
 };
-
-// -- Booking Functions --
-
-const createBookingRequestFn = async ({
-  performerId,
-  requestData,
-}: {
-  performerId: string;
-  requestData: Omit<
-    BookingRequest,
-    "id" | "status" | "performerId" | "performerName"
-  >;
-}): Promise<BookingRequest> => {
-  return await apiRequest<BookingRequest>({
-    method: "post",
-    url: "/api/bookings",
-    data: { ...requestData, performerId },
-  });
-};
-
-const acceptBookingRequestFn = async ({
-  performerId,
-  requestId,
-}: {
-  performerId: string;
-  requestId: string;
-}): Promise<void> => {
-  return await apiRequest<void>({
-    method: "patch",
-    url: `/api/bookings/${requestId}/accept`,
-    data: { performerId },
-  });
-};
-
-const rejectBookingRequestFn = async ({
-  performerId,
-  requestId,
-}: {
-  performerId: string;
-  requestId: string;
-}): Promise<void> => {
-  return await apiRequest<void>({
-    method: "patch",
-    url: `/api/bookings/${requestId}/reject`,
-    data: { performerId },
-  });
-};
-
-// -- Content Management (Gallery/Docs/Audio) --
 
 const addGalleryItemFn = async ({
   performerId,
@@ -393,7 +382,6 @@ const removeRecommendationLetterFn = async ({
   });
 };
 
-// NEW: Audio API Functions
 const addAudioTrackFn = async ({
   performerId,
   file,
@@ -412,19 +400,33 @@ const addAudioTrackFn = async ({
     method: "post",
     url: `/api/performers/audio`,
     data: formData,
-    headers: { "Content-Type": undefined }, // Axios handles multipart/form-data
+    headers: { "Content-Type": undefined },
   });
 };
 
 const removeAudioTrackFn = async ({
   trackId,
 }: {
-  performerId: string; // Included to match signature for invalidation
+  performerId: string;
   trackId: string;
 }): Promise<void> => {
   return await apiRequest<void>({
     method: "delete",
     url: `/api/performers/audio/${trackId}`,
+  });
+};
+
+const updatePerformerCalendarFn = async ({
+  performerId,
+  bookedDates,
+}: {
+  performerId: string;
+  bookedDates: Date[];
+}): Promise<{ bookedDates: Date[] }> => {
+  return await apiRequest<{ bookedDates: Date[] }>({
+    method: "patch",
+    url: `/api/performers/${performerId}/calendar`,
+    data: { bookedDates },
   });
 };
 
@@ -441,7 +443,6 @@ export const getPerformersPaginated = async (
   params: Record<string, any>,
 ): Promise<PaginatedResult<PerformerProfile>> => {
   const query = new URLSearchParams();
-
   Object.keys(params).forEach((key) => {
     const value = params[key];
     if (value !== undefined && value !== null && value !== "") {
@@ -463,7 +464,6 @@ export const searchPerformersApi = async (
   params: Record<string, any>,
 ): Promise<PerformerProfile[]> => {
   const query = new URLSearchParams();
-
   Object.keys(params).forEach((key) => {
     const value = params[key];
     if (value !== null && value !== undefined && value !== "") {
@@ -501,9 +501,7 @@ export const getPerformerProfile = async (
       method: "get",
       url: `/api/performers/${performerId}`,
     });
-
     if (!data) return null;
-
     return hydrateProfileDates(data);
   } catch (error) {
     console.error(`Ошибка загрузки профиля исполнителя ${performerId}:`, error);
@@ -541,36 +539,6 @@ export const useUpdatePerformerProfile = () => {
 export const useDeletePerformerProfile = () => {
   return useMutation({
     mutationFn: deletePerformerProfileFn,
-  });
-};
-
-export const useCreateBookingRequest = () => {
-  return useMutation({
-    mutationFn: createBookingRequestFn,
-  });
-};
-
-export const useAcceptBookingRequest = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: acceptBookingRequestFn,
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({
-        queryKey: ["performer", "profile", variables.performerId],
-      });
-    },
-  });
-};
-
-export const useRejectBookingRequest = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: rejectBookingRequestFn,
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({
-        queryKey: ["performer", "profile", variables.performerId],
-      });
-    },
   });
 };
 
@@ -655,7 +623,6 @@ export const useRemoveRecommendationLetter = () => {
   });
 };
 
-// NEW: React Query Hooks for Audio
 export const useAddAudioTrack = () => {
   const queryClient = useQueryClient();
   return useMutation({
@@ -673,6 +640,48 @@ export const useRemoveAudioTrack = () => {
   return useMutation({
     mutationFn: removeAudioTrackFn,
     onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["performer", "profile", variables.performerId],
+      });
+    },
+  });
+};
+
+export const useUpdatePerformerCalendar = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: updatePerformerCalendarFn,
+    // Optimistic UI Update for instant feedback
+    onMutate: async (newCalendarData) => {
+      await queryClient.cancelQueries({
+        queryKey: ["performer", "profile", newCalendarData.performerId],
+      });
+      const previousProfile = queryClient.getQueryData([
+        "performer",
+        "profile",
+        newCalendarData.performerId,
+      ]);
+
+      queryClient.setQueryData(
+        ["performer", "profile", newCalendarData.performerId],
+        (old: any) => ({
+          ...old,
+          bookedDates: newCalendarData.bookedDates,
+        }),
+      );
+
+      return { previousProfile };
+    },
+    onError: (err, newCalendarData, context) => {
+      // Revert if the API call fails
+      queryClient.setQueryData(
+        ["performer", "profile", newCalendarData.performerId],
+        context?.previousProfile,
+      );
+    },
+    onSettled: (data, error, variables) => {
+      // Sync strictly with backend afterwards
       queryClient.invalidateQueries({
         queryKey: ["performer", "profile", variables.performerId],
       });

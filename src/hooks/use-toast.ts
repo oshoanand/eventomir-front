@@ -6,17 +6,11 @@ import { cn } from "@/utils/utils";
 
 // --- Типизация ---
 
-type ToastAction = {
-  label: string | React.ReactNode;
-  onClick: () => void;
-};
-
-type ToastProps = {
+export type ToastProps = Omit<ExternalToast, "description"> & {
   title?: React.ReactNode;
   description?: React.ReactNode;
   variant?: "default" | "destructive" | "success";
-  action?: ToastAction;
-} & ExternalToast;
+};
 
 // --- Основная функция toast ---
 
@@ -28,15 +22,19 @@ function toast({
   className,
   ...props
 }: ToastProps) {
-  // Конфигурация для разных вариантов
+  // Sonner требует чтобы первый аргумент (message) не был пустым.
+  // Если title нет, поднимаем description наверх.
+  const message = title || description || "";
+  const displayDescription = title ? description : undefined;
+
   const commonProps = {
-    description,
+    description: displayDescription,
     action,
     ...props,
   };
 
   if (variant === "destructive") {
-    return sonnerToast.error(title, {
+    return sonnerToast.error(message, {
       ...commonProps,
       className: cn(
         "!bg-red-100 !border-red-200 !text-red-800 dark:!bg-red-900/30 dark:!border-red-900 dark:!text-red-200 rounded-2xl shadow-lg",
@@ -46,7 +44,7 @@ function toast({
   }
 
   if (variant === "success") {
-    return sonnerToast.success(title, {
+    return sonnerToast.success(message, {
       ...commonProps,
       className: cn(
         "!bg-green-100 !border-green-200 !text-green-800 dark:!bg-green-900/30 dark:!border-green-900 dark:!text-green-200 rounded-2xl shadow-lg",
@@ -56,7 +54,7 @@ function toast({
   }
 
   // Дефолтный вариант
-  return sonnerToast(title, {
+  return sonnerToast(message, {
     ...commonProps,
     className: cn("rounded-2xl shadow-lg border-border", className),
   });
@@ -76,11 +74,17 @@ function useToast() {
      * Автоматически меняет иконки (спиннер -> галочка/крестик).
      */
     promise: <T>(
-      promise: Promise<T>,
+      promise: Promise<T> | (() => Promise<T>),
       data: {
         loading: string | React.ReactNode;
-        success: string | ((data: T) => string | React.ReactNode);
-        error: string | ((error: any) => string | React.ReactNode);
+        success:
+          | string
+          | React.ReactNode
+          | ((data: T) => string | React.ReactNode);
+        error:
+          | string
+          | React.ReactNode
+          | ((error: unknown) => string | React.ReactNode);
       },
     ) => {
       return sonnerToast.promise(promise, {
