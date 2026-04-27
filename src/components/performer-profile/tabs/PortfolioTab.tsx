@@ -338,7 +338,7 @@ import { cn } from "@/utils/utils";
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8800";
 const getImageUrl = (path: string) =>
-  path?.startsWith("http") ? path : `${API_BASE}${path}`;
+  path?.startsWith("https") ? path : `${API_BASE}${path}`;
 
 export default function PortfolioTab({ profile, isOwnProfile }: any) {
   const { toast } = useToast();
@@ -361,7 +361,6 @@ export default function PortfolioTab({ profile, isOwnProfile }: any) {
   const addCert = useAddCertificate();
   const removeCert = useRemoveCertificate();
 
-  console.log(profile.roles);
   // Role Checks
   const isAudioHeavy = profile.roles?.some((r: string) =>
     ["dj", "вокал", "певец", "Диджеи", "Dj", "диджеи"].some((v) =>
@@ -369,7 +368,6 @@ export default function PortfolioTab({ profile, isOwnProfile }: any) {
     ),
   );
 
-  console.log(isAudioHeavy);
   const isChef = profile.roles?.some((r: string) =>
     ["повар", "chef", "Chef", "Повар", "catering", "кейтеринг"].some((v) =>
       r.toLowerCase().includes(v),

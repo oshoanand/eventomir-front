@@ -8,7 +8,7 @@ import { Music, PlusCircle, Trash2 } from "lucide-react";
 export interface AudioTrack {
   id: string;
   title: string;
-  file_url: string;
+  fileUrl: string;
 }
 
 interface AudioManagerProps {
@@ -61,7 +61,7 @@ const AudioManager: React.FC<AudioManagerProps> = ({
                   controls
                   className="w-full h-10 rounded-full outline-none"
                 >
-                  <source src={getImageUrl(track.file_url)} type="audio/mpeg" />
+                  <source src={getImageUrl(track.fileUrl)} type="audio/mpeg" />
                   Ваш браузер не поддерживает элемент <code>audio</code>.
                 </audio>
               </div>
