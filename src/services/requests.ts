@@ -21,11 +21,12 @@ export interface PaidRequest {
   customer?: {
     name: string;
     profile_picture?: string;
-    phone?: string; // 🚨 ADDED: Required for viewing single requests
+    phone?: string;
   };
 }
 
 export interface CreateRequestParams {
+  customerId: string;
   category: string;
   serviceDescription: string;
   budget?: string;

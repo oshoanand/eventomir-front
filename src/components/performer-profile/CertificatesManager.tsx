@@ -41,7 +41,7 @@ const CertificatesManager: React.FC<CertificatesManagerProps> = ({
                 className="relative group flex items-center gap-3 border p-3 rounded-md"
               >
                 <a
-                  href={cert.file_url}
+                  href={cert.fileUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex-grow flex items-center gap-3"

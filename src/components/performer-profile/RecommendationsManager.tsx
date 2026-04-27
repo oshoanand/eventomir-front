@@ -41,7 +41,7 @@ const RecommendationsManager: React.FC<RecommendationsManagerProps> = ({
                 className="relative group flex items-center gap-3 border p-3 rounded-md"
               >
                 <a
-                  href={letter.file_url}
+                  href={letter.fileUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex-grow flex items-center gap-3"

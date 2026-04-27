@@ -341,22 +341,22 @@ const AgencyDashboard = ({ profile }: AgencyDashboardProps) => {
                       </span>
                       <Badge
                         variant={
-                          sub.moderationStatus === "approved"
+                          sub.moderationStatus === "APPROVED"
                             ? "secondary"
-                            : sub.moderationStatus === "pending_approval"
+                            : sub.moderationStatus === "PENDING"
                               ? "outline"
                               : "destructive"
                         }
                         className={cn(
                           "text-xs font-semibold px-2.5 py-0.5",
-                          sub.moderationStatus === "approved"
+                          sub.moderationStatus === "APPROVED"
                             ? "bg-green-100 text-green-700 hover:bg-green-200 border-green-200"
                             : "",
                         )}
                       >
-                        {sub.moderationStatus === "approved"
+                        {sub.moderationStatus === "APPROVED"
                           ? "Активен"
-                          : sub.moderationStatus === "pending_approval"
+                          : sub.moderationStatus === "PENDING"
                             ? "На модерации"
                             : "Отклонен"}
                       </Badge>

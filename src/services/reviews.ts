@@ -8,7 +8,7 @@ import { apiRequest } from "@/utils/api-client";
 export interface ReviewAuthor {
   id: string;
   name: string;
-  image?: string; // Standard NextAuth/Prisma field
+  image?: string;
   profilePicture?: string;
   profile_picture?: string;
   role: string;
@@ -20,7 +20,6 @@ export interface Review {
   comment: string;
   reply?: string;
 
-  // Flexible mappings to support both camelCase and snake_case based on your backend ORM
   replyCreatedAt?: string;
   reply_created_at?: string;
   replyUpdatedAt?: string;
@@ -37,7 +36,7 @@ export interface Review {
   target_id?: string;
 
   author?: ReviewAuthor;
-  user?: ReviewAuthor; // Fallback in case backend populates relation as 'user'
+  user?: ReviewAuthor;
 }
 
 // --- Payload Interfaces ---
@@ -51,36 +50,35 @@ export interface CreateReviewPayload {
 export interface ReplyReviewPayload {
   reviewId: string;
   replyText: string;
-  targetId: string; // Needed for cache invalidation
+  targetId: string;
 }
 
 export interface DeleteReviewPayload {
   reviewId: string;
-  targetId: string; // Needed for cache invalidation
+  targetId: string;
 }
 
 export interface DeleteReplyPayload {
   reviewId: string;
-  targetId: string; // Needed for cache invalidation
+  targetId: string;
 }
 
 export interface EditReviewPayload {
   reviewId: string;
   rating: number;
   comment: string;
-  targetId: string; // Needed for cache invalidation
+  targetId: string;
 }
 
 // --- API Functions (Internal) ---
 
 const fetchReviewsForTargetFn = async (userId: string): Promise<Review[]> => {
   const response = await apiRequest<any>({
-    method: "get",
+    method: "GET", // Normalized to uppercase
     url: `/api/reviews/target/${userId}`,
   });
 
-  // 🚨 CRITICAL FIX: Ensure an array is ALWAYS returned.
-  // This prevents UI crashes if the backend wraps the response in { data: [...] } or { reviews: [...] }
+  // Ensure an array is ALWAYS returned.
   if (Array.isArray(response)) return response;
   if (response?.reviews && Array.isArray(response.reviews))
     return response.reviews;
@@ -91,7 +89,7 @@ const fetchReviewsForTargetFn = async (userId: string): Promise<Review[]> => {
 
 const createReviewFn = async (data: CreateReviewPayload): Promise<Review> => {
   return await apiRequest<Review>({
-    method: "post",
+    method: "POST",
     url: "/api/reviews",
     data,
   });
@@ -102,7 +100,7 @@ const replyToReviewFn = async ({
   replyText,
 }: ReplyReviewPayload): Promise<Review> => {
   return await apiRequest<Review>({
-    method: "patch",
+    method: "PATCH",
     url: `/api/reviews/${reviewId}/reply`,
     data: { replyText },
   });
@@ -112,7 +110,7 @@ const deleteReviewFn = async ({
   reviewId,
 }: DeleteReviewPayload): Promise<void> => {
   return await apiRequest<void>({
-    method: "delete",
+    method: "DELETE",
     url: `/api/reviews/${reviewId}`,
   });
 };
@@ -121,7 +119,7 @@ const deleteReplyFn = async ({
   reviewId,
 }: DeleteReplyPayload): Promise<void> => {
   return await apiRequest<void>({
-    method: "delete",
+    method: "DELETE",
     url: `/api/reviews/${reviewId}/reply`,
   });
 };
@@ -132,7 +130,7 @@ const editReviewFn = async ({
   comment,
 }: EditReviewPayload): Promise<Review> => {
   return await apiRequest<Review>({
-    method: "patch",
+    method: "PATCH",
     url: `/api/reviews/${reviewId}`,
     data: { rating, comment },
   });
@@ -140,28 +138,21 @@ const editReviewFn = async ({
 
 // --- React Query Hooks (Exported) ---
 
-/**
- * Fetch all reviews where the given user is the target.
- */
 export const useReviews = (targetId: string | null) => {
   return useQuery({
     queryKey: ["reviews", "target", targetId],
     queryFn: () => fetchReviewsForTargetFn(targetId!),
-    enabled: !!targetId, // Only run if a valid targetId is provided
+    enabled: !!targetId,
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
   });
 };
 
-/**
- * Submit a new review.
- */
 export const useSubmitReview = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: createReviewFn,
     onSuccess: (_, variables) => {
-      // Instantly invalidate the reviews cache to refresh the UI
       queryClient.invalidateQueries({
         queryKey: ["reviews", "target", variables.targetId],
       });
@@ -169,9 +160,6 @@ export const useSubmitReview = () => {
   });
 };
 
-/**
- * Reply to an existing review (Only for the profile owner).
- */
 export const useReplyToReview = () => {
   const queryClient = useQueryClient();
 
@@ -185,9 +173,6 @@ export const useReplyToReview = () => {
   });
 };
 
-/**
- * Delete a review (Only for the author of the review).
- */
 export const useDeleteReview = () => {
   const queryClient = useQueryClient();
 
@@ -201,9 +186,6 @@ export const useDeleteReview = () => {
   });
 };
 
-/**
- * Edit an existing review (Only for the author of the review).
- */
 export const useEditReview = () => {
   const queryClient = useQueryClient();
 
@@ -217,9 +199,6 @@ export const useEditReview = () => {
   });
 };
 
-/**
- * Delete a reply to a review.
- */
 export const useDeleteReplyToReview = () => {
   const queryClient = useQueryClient();
 
