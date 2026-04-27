@@ -361,12 +361,15 @@ export default function PortfolioTab({ profile, isOwnProfile }: any) {
   const addCert = useAddCertificate();
   const removeCert = useRemoveCertificate();
 
+  console.log(profile.roles);
   // Role Checks
   const isAudioHeavy = profile.roles?.some((r: string) =>
-    ["dj", "вокал", "певец", "Диджеи", "Dj", "диджей"].some((v) =>
+    ["dj", "вокал", "певец", "Диджеи", "Dj", "диджеи"].some((v) =>
       r.toLowerCase().includes(v),
     ),
   );
+
+  console.log(isAudioHeavy);
   const isChef = profile.roles?.some((r: string) =>
     ["повар", "chef", "Chef", "Повар", "catering", "кейтеринг"].some((v) =>
       r.toLowerCase().includes(v),
