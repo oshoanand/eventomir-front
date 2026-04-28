@@ -7,9 +7,11 @@ import React, {
   useState,
   ReactNode,
   useCallback,
+  useRef,
 } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
+import { useSession } from "next-auth/react"; // 🚨 FIX: Imported NextAuth
 import { useSocket } from "@/components/providers/SocketProvider";
 import { apiRequest } from "@/utils/api-client";
 import {
@@ -31,9 +33,19 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   const { socket } = useSocket();
   const { toast } = useToast();
   const router = useRouter();
+  const { status } = useSession(); // 🚨 FIX: Track auth status
 
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
+
+  // 🚨 FIX: Keep stable references to router and toast so the socket listener doesn't tear down
+  const routerRef = useRef(router);
+  const toastRef = useRef(toast);
+
+  useEffect(() => {
+    routerRef.current = router;
+    toastRef.current = toast;
+  }, [router, toast]);
 
   // --- Audio Helper ---
   const playNotificationSound = useCallback(() => {
@@ -48,6 +60,9 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   // --- 1. Fetch Initial Notification History from Database ---
   useEffect(() => {
     const fetchNotifications = async () => {
+      // 🚨 FIX: Do not fetch until the user is definitively authenticated
+      if (status !== "authenticated") return;
+
       try {
         const data = await apiRequest<NotificationItem[]>({
           method: "GET",
@@ -64,7 +79,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
     };
 
     fetchNotifications();
-  }, []); // Runs once on mount
+  }, [status]); // 🚨 FIX: Re-run when auth status changes
 
   // --- 2. Real-Time Socket Listeners ---
   useEffect(() => {
@@ -76,17 +91,14 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
       const type = payload.type || "SYSTEM";
       const data = payload.data || {};
 
-      // Extract title safely (from root or nested data)
       const title = payload.title || data.title || "Уведомление";
       const message = payload.message || payload.body || "Новое сообщение";
 
-      // Time Check (Prevents spam on page refresh when socket dumps history)
       const notifTime = payload.createdAt
         ? new Date(payload.createdAt).getTime()
         : Date.now();
-      const isOldMessage = Date.now() - notifTime > 10000; // Older than 10 seconds
+      const isOldMessage = Date.now() - notifTime > 10000;
 
-      // Handle "CHAT_MESSAGE" type
       if (type === "CHAT_MESSAGE") {
         const chatItem: NotificationItem = {
           id: payload.id || crypto.randomUUID(),
@@ -103,9 +115,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
         };
 
         setNotifications((prev) => [chatItem, ...prev]);
-      }
-      // Handle Generic/System/Booking types
-      else {
+      } else {
         const genericItem: NotificationItem = {
           id: payload.id || crypto.randomUUID(),
           type: type,
@@ -118,11 +128,9 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
         setNotifications((prev) => [genericItem, ...prev]);
         setUnreadCount((prev) => prev + 1);
 
-        // Only play sound and show interactive toast for NEW notifications
         if (!isOldMessage) {
           playNotificationSound();
 
-          // Map booking statuses to visual variants
           let variant: "default" | "success" | "destructive" = "default";
           if (type === "BOOKING_ACCEPTED" || type === "SUCCESS")
             variant = "success";
@@ -133,15 +141,15 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
           )
             variant = "destructive";
 
-          toast({
+          // 🚨 FIX: Use ref to prevent dependency loops
+          toastRef.current({
             variant: variant,
             title: title,
             description: message,
-            // Deep-link action button for Sonner
             action: data?.url
               ? {
                   label: "Открыть",
-                  onClick: () => router.push(data.url),
+                  onClick: () => routerRef.current.push(data.url),
                 }
               : undefined,
           });
@@ -149,7 +157,6 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
       }
     };
 
-    // Map specific message notifications to our generic handler
     const handleSpecificMessage = (payload: any) => {
       handleNotification({
         type: "CHAT_MESSAGE",
@@ -164,19 +171,16 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
       });
     };
 
-    // Attach Listeners
     socket.on("notification", handleNotification);
+    socket.on("new_notification", handleNotification); // 🚨 Added robust fallback
     socket.on("message_notification", handleSpecificMessage);
 
     return () => {
       socket.off("notification", handleNotification);
+      socket.off("new_notification", handleNotification);
       socket.off("message_notification", handleSpecificMessage);
     };
-  }, [socket, toast, router, playNotificationSound]);
-
-  // --- 3. Mark Read Logic (Optimistic UI Updates) ---
-  // Note: The actual database PATCH requests are handled inside the NotificationsPage
-  // to keep this provider lean, but we update the UI instantly here.
+  }, [socket, playNotificationSound]); // 🚨 FIX: Clean dependencies
 
   const markAllAsRead = () => {
     setUnreadCount(0);
@@ -187,7 +191,6 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
     setNotifications((prev) =>
       prev.map((n) => {
         if (n.id === id && !n.isRead) {
-          // Prevent negative count
           setUnreadCount((c) => Math.max(0, c - 1));
           return { ...n, isRead: true };
         }

@@ -228,7 +228,7 @@ const PricingContent = () => {
 
       {/* BILLING CYCLE TOGGLE */}
       <div className="flex justify-center mb-4 md:mb-16">
-        <div className="flex sm:inline-flex w-full md:max-w-[360px] mx-auto items-center p-1 sm:p-1.5 bg-muted/50 rounded-full border shadow-sm">
+        <div className="flex sm:inline-flex w-full md:max-w-[360px]  mx-auto items-center p-1 sm:p-1.5 bg-muted/50 rounded-full border shadow-sm">
           <button
             onClick={() => setBillingInterval("month")}
             className={cn(

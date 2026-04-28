@@ -14,8 +14,6 @@ import { useChatStore } from "@/store/useChatStore";
 interface SocketContextType {
   socket: Socket | null;
   isConnected: boolean;
-  // We keep this as a Set for backward compatibility with your UI components,
-  // mapping it automatically from the highly reactive Record in Zustand.
   onlineUsers: Set<string>;
 }
 
@@ -41,19 +39,12 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
 
   // 1. Connection Lifecycle Management
   useEffect(() => {
-    // Only connect if the session is fully authenticated
+    // 🚨 FIX: Placed disconnect logic in the main effect body to avoid closure traps
     if (status === "authenticated" && session?.user?.id) {
       connectSocket(session.user.id);
+    } else if (status === "unauthenticated") {
+      disconnectSocket();
     }
-
-    // Clean up on unmount or when session invalidates
-    return () => {
-      // In React 18 Strict mode this runs immediately, but our store logic
-      // handles rapid reconnects flawlessly without leaking listeners.
-      if (status === "unauthenticated") {
-        disconnectSocket();
-      }
-    };
   }, [session?.user?.id, status, connectSocket, disconnectSocket]);
 
   // 2. Track connection status dynamically
@@ -79,7 +70,6 @@ export const SocketProvider = ({ children }: { children: ReactNode }) => {
       value={{
         socket,
         isConnected,
-        // Dynamically convert Record to Set so existing components don't break
         onlineUsers: new Set(Object.keys(onlineUsersRecord)),
       }}
     >

@@ -24,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -44,8 +44,6 @@ import {
   Layers,
   Share2,
   BadgeCheck,
-  Star,
-  Send,
   Youtube,
   Globe,
   SendIcon,
@@ -60,11 +58,43 @@ import {
   type PerformerProfile,
 } from "@/services/performer";
 import { cn } from "@/utils/utils";
-
 import {
   useGeneralSettingsQuery,
   type SiteCategory,
 } from "@/services/settings";
+
+// --- LIGHTWEIGHT NLP DICTIONARIES ---
+const CATEGORY_ALIASES = [
+  { root: "фотограф", exactName: "Фотограф", paramType: "category" },
+  { root: "видео", exactName: "Видеограф", paramType: "category" },
+  { root: "диджей", exactName: "DJ", paramType: "category" },
+  { root: "dj", exactName: "DJ", paramType: "category" },
+  { root: "ведущ", exactName: "Ведущие", paramType: "category" },
+  { root: "тамад", exactName: "Ведущие", paramType: "category" },
+  { root: "дизайнер", exactName: "Дизайнер", paramType: "category" },
+  { root: "артист", exactName: "Артисты", paramType: "category" },
+  { root: "музыкант", exactName: "Артисты", paramType: "category" },
+  { root: "повар", exactName: "Повар", paramType: "category" },
+  { root: "кейтеринг", exactName: "Повар", paramType: "category" },
+  { root: "аниматор", exactName: "Аниматор", paramType: "category" },
+  { root: "ресторан", exactName: "Ресторан", paramType: "category" },
+  { root: "площадк", exactName: "Ресторан", paramType: "category" },
+  { root: "агентств", exactName: "agency", paramType: "accountType" },
+];
+
+const TOP_CITIES = [
+  { root: "москв", exactName: "Москва" },
+  { root: "санкт-петербург", exactName: "Санкт-Петербург" },
+  { root: "питер", exactName: "Санкт-Петербург" },
+  { root: "спб", exactName: "Санкт-Петербург" },
+  { root: "казан", exactName: "Казань" },
+  { root: "сочи", exactName: "Сочи" },
+  { root: "краснодар", exactName: "Краснодар" },
+  { root: "екатеринбург", exactName: "Екатеринбург" },
+  { root: "новосибирск", exactName: "Новосибирск" },
+  { root: "ростов", exactName: "Ростов-на-Дону" },
+  { root: "уф", exactName: "Уфа" },
+];
 
 const FALLBACK_CATEGORIES: SiteCategory[] = [
   {
@@ -109,7 +139,7 @@ const PAGE_SIZE = 12;
 const extractParamFromLink = (link: string | undefined, paramName: string) => {
   if (!link) return null;
   try {
-    const urlString = link.startsWith("http")
+    const urlString = link.startsWith("https")
       ? link
       : `http://dummy.com${link.startsWith("/") ? link : "/" + link}`;
     const url = new URL(urlString);
@@ -132,30 +162,23 @@ export default function SearchPage() {
     ? settings.siteCategories
     : FALLBACK_CATEGORIES;
 
-  // Filters State
-  const [cityInput, setCityInput] = useState(searchParams.get("city") || "");
-  const [minPrice, setMinPrice] = useState(searchParams.get("priceMin") || "");
-  const [maxPrice, setMaxPrice] = useState(searchParams.get("priceMax") || "");
-  const [selectedAccountType, setSelectedAccountType] = useState(
-    searchParams.get("accountType") || "all",
-  );
+  // Filters State (Local Form State)
+  const [cityInput, setCityInput] = useState("");
+  const [minPrice, setMinPrice] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
+  const [selectedAccountType, setSelectedAccountType] = useState("all");
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
-  const [onlyVip, setOnlyVip] = useState(
-    searchParams.get("onlyVip") === "true",
-  );
-
+  const [onlyVip, setOnlyVip] = useState(false);
   const [selectedService, setSelectedService] = useState<string | null>(null);
   const [selectedSubCategories, setSelectedSubCategories] = useState<string[]>(
     [],
   );
 
   // Results State
-  const [currentPage, setCurrentPage] = useState(
-    Number(searchParams.get("page")) || 1,
-  );
+  const [currentPage, setCurrentPage] = useState(1);
   const [totalResults, setTotalResults] = useState(0);
   const [searchResults, setSearchResults] = useState<PerformerProfile[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
+  const [isSearching, setIsSearching] = useState(true); // Default to true until first load
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
 
   // Autocomplete
@@ -167,30 +190,149 @@ export default function SearchPage() {
   const activeCategoryObj = categories.find((c) => c.name === selectedService);
   const availableSubCategories = activeCategoryObj?.subCategories || [];
 
-  useEffect(() => {
-    const paramCategory = searchParams.get("category");
-    const paramSubCats = searchParams.get("subCategories");
+  // --- 1. THE DATA FETCHER (Decoupled from URL updating) ---
+  const fetchResults = useCallback(
+    async (fetchArgs: any) => {
+      setIsSearching(true);
+      try {
+        const result = await getPerformersPaginated({
+          page: fetchArgs.page || 1,
+          pageSize: PAGE_SIZE,
+          category:
+            fetchArgs.category === "_all_" ? undefined : fetchArgs.category,
+          subCategories: fetchArgs.subCategories,
+          city: fetchArgs.city,
+          priceMin: fetchArgs.priceMin ? Number(fetchArgs.priceMin) : undefined,
+          priceMax: fetchArgs.priceMax ? Number(fetchArgs.priceMax) : undefined,
+          onlyVip: fetchArgs.onlyVip ? "true" : undefined,
+          accountType:
+            fetchArgs.accountType === "all" ? undefined : fetchArgs.accountType,
+          query: fetchArgs.query,
+        });
 
-    let resolvedCategoryName: string | null = null;
-    if (paramCategory && paramCategory !== "_all_") {
+        setSearchResults(result.items);
+        setTotalResults(result.total);
+      } catch (error) {
+        toast({
+          variant: "destructive",
+          title: "Ошибка",
+          description: "Не удалось загрузить результаты поиска.",
+        });
+      } finally {
+        setIsSearching(false);
+      }
+    },
+    [toast],
+  );
+
+  // --- 2. THE MASTER EFFECT: URL Parsing, NLP, & Execution ---
+  useEffect(() => {
+    if (!mounted) return;
+
+    // A. Read raw params from URL
+    const paramQuery = searchParams.get("q");
+    let resolvedCategoryName = searchParams.get("category");
+    let resolvedCityName = searchParams.get("city");
+    let resolvedAccountType = searchParams.get("accountType");
+    const paramPage = Number(searchParams.get("page")) || 1;
+    const paramMinPrice = searchParams.get("priceMin");
+    const paramMaxPrice = searchParams.get("priceMax");
+    const paramOnlyVip = searchParams.get("onlyVip");
+
+    // B. NLP PARSING
+    if (paramQuery) {
+      let remainingQuery = paramQuery.toLowerCase();
+      let queryWasModified = false;
+
+      // Try to extract City
+      if (!resolvedCityName) {
+        for (const city of TOP_CITIES) {
+          const cityRegex = new RegExp(
+            `(?:^|\\s)(?:в\\s+|во\\s+)?${city.root}[а-яА-Яa-zA-Z\\-]*(?=\\s|[.,!?]|$)`,
+            "i",
+          );
+          if (cityRegex.test(remainingQuery)) {
+            resolvedCityName = city.exactName;
+            remainingQuery = remainingQuery.replace(cityRegex, " ");
+            queryWasModified = true;
+            break;
+          }
+        }
+      }
+
+      // Try to extract Category
+      if (!resolvedCategoryName) {
+        for (const cat of CATEGORY_ALIASES) {
+          const catRegex = new RegExp(
+            `(?:^|\\s)${cat.root}[а-яА-Яa-zA-Z\\-]*(?=\\s|[.,!?]|$)`,
+            "i",
+          );
+          if (catRegex.test(remainingQuery)) {
+            if (cat.paramType === "category")
+              resolvedCategoryName = cat.exactName;
+            else if (cat.paramType === "accountType")
+              resolvedAccountType = cat.exactName;
+            remainingQuery = remainingQuery.replace(catRegex, " ");
+            queryWasModified = true;
+            break;
+          }
+        }
+      }
+
+      // If we modified the query via NLP, rewrite the URL to be clean and exit early
+      if (queryWasModified) {
+        remainingQuery = remainingQuery
+          .replace(
+            /(?:^|\s)(в|во|на|для|с|и|или|по|к|до|от|за|о)(?=\s|$)/gi,
+            " ",
+          )
+          .replace(/\s+/g, " ")
+          .trim();
+
+        const newParams = new URLSearchParams(searchParams.toString());
+        if (resolvedCategoryName)
+          newParams.set("category", resolvedCategoryName);
+        if (resolvedAccountType)
+          newParams.set("accountType", resolvedAccountType);
+        if (resolvedCityName) newParams.set("city", resolvedCityName);
+
+        if (remainingQuery) newParams.set("q", remainingQuery);
+        else newParams.delete("q");
+
+        // 🚨 EXIT EARLY: By replacing the URL here, we trigger this useEffect again with the clean data
+        // This prevents the double-fetch flicker!
+        router.replace(`${pathname}?${newParams.toString()}`, {
+          scroll: false,
+        });
+        return;
+      }
+    }
+
+    // C. CATEGORY RESOLUTION
+    if (resolvedCategoryName && resolvedCategoryName !== "_all_") {
       const matchedCat = categories.find((c) => {
         const linkCat = extractParamFromLink(c.link, "category");
         return (
-          c.name.toLowerCase() === paramCategory.toLowerCase() ||
-          (linkCat && linkCat.toLowerCase() === paramCategory.toLowerCase())
+          c.name.toLowerCase() === resolvedCategoryName!.toLowerCase() ||
+          (linkCat &&
+            linkCat.toLowerCase() === resolvedCategoryName!.toLowerCase())
         );
       });
-      resolvedCategoryName = matchedCat ? matchedCat.name : paramCategory;
+      resolvedCategoryName = matchedCat
+        ? matchedCat.name
+        : resolvedCategoryName;
     }
-    setSelectedService(resolvedCategoryName);
 
+    // D. SUBCATEGORY RESOLUTION
+    let resolvedSubCats: string[] = [];
+    const paramSubCats = searchParams.get("subCategories");
     if (paramSubCats && resolvedCategoryName) {
       const activeCat = categories.find((c) => c.name === resolvedCategoryName);
       if (activeCat && activeCat.subCategories) {
         const tokens = paramSubCats
           .split(",")
           .map((t) => t.trim().toLowerCase());
-        const resolvedSubs = tokens.map((token) => {
+        resolvedSubCats = tokens.map((token) => {
           const matchedSub = activeCat.subCategories!.find((s) => {
             const linkSub =
               extractParamFromLink(s.link, "subCategories") ||
@@ -202,17 +344,47 @@ export default function SearchPage() {
           });
           return matchedSub ? matchedSub.name : token;
         });
-        setSelectedSubCategories([...new Set(resolvedSubs)]);
+        // Deduplicate
+        resolvedSubCats = [...new Set(resolvedSubCats)];
       }
-    } else {
-      setSelectedSubCategories([]);
     }
-  }, [searchParams, categories]);
 
+    // E. SYNC LOCAL STATE (Ensure UI form matches URL)
+    setCityInput(resolvedCityName || "");
+    setSelectedService(resolvedCategoryName || null);
+    setSelectedAccountType(resolvedAccountType || "all");
+    setSelectedSubCategories(resolvedSubCats);
+    setMinPrice(paramMinPrice || "");
+    setMaxPrice(paramMaxPrice || "");
+    setOnlyVip(paramOnlyVip === "true");
+    setCurrentPage(paramPage);
+
+    // F. EXECUTE FETCH ONCE
+    fetchResults({
+      page: paramPage,
+      category: resolvedCategoryName,
+      subCategories:
+        resolvedSubCats.length > 0 ? resolvedSubCats.join(",") : undefined,
+      city: resolvedCityName,
+      priceMin: paramMinPrice,
+      priceMax: paramMaxPrice,
+      onlyVip: paramOnlyVip === "true",
+      accountType: resolvedAccountType,
+      query: paramQuery,
+    });
+  }, [searchParams, mounted, categories, fetchResults, pathname, router]);
+
+  // Fetch Cities Initial Load
+  useEffect(() => {
+    getRussianRegionsWithCities().then(setRegions).catch(console.error);
+  }, []);
+
+  // --- 3. URL UPDATER (Pushes local form state to URL) ---
   const updateURLParams = useCallback(
-    (page: number) => {
+    (pageToFetch: number) => {
       const params = new URLSearchParams();
 
+      // Preserve the raw query string if it exists
       const query = searchParams.get("q");
       if (query) params.set("q", query);
 
@@ -248,8 +420,9 @@ export default function SearchPage() {
       if (selectedAccountType !== "all")
         params.set("accountType", selectedAccountType);
       if (onlyVip) params.set("onlyVip", "true");
-      if (page > 1) params.set("page", page.toString());
+      if (pageToFetch > 1) params.set("page", pageToFetch.toString());
 
+      // 🚨 By replacing the URL here, we trigger the Master useEffect, which fetches the data safely
       router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     },
     [
@@ -268,62 +441,7 @@ export default function SearchPage() {
     ],
   );
 
-  const fetchResults = useCallback(
-    async (page: number) => {
-      setIsSearching(true);
-      try {
-        const result = await getPerformersPaginated({
-          page,
-          pageSize: PAGE_SIZE,
-          category: selectedService === "_all_" ? undefined : selectedService,
-          subCategories:
-            selectedSubCategories.length > 0
-              ? selectedSubCategories.join(",")
-              : undefined,
-          city: cityInput || undefined,
-          priceMin: minPrice ? Number(minPrice) : undefined,
-          priceMax: maxPrice ? Number(maxPrice) : undefined,
-          onlyVip: onlyVip ? "true" : undefined,
-          accountType:
-            selectedAccountType === "all" ? undefined : selectedAccountType,
-          query: searchParams.get("q") || undefined,
-        });
-
-        setSearchResults(result.items);
-        setTotalResults(result.total);
-        updateURLParams(page);
-      } catch (error) {
-        toast({
-          variant: "destructive",
-          title: "Ошибка",
-          description: "Не удалось загрузить результаты поиска.",
-        });
-      } finally {
-        setIsSearching(false);
-      }
-    },
-    [
-      selectedService,
-      selectedSubCategories,
-      cityInput,
-      minPrice,
-      maxPrice,
-      onlyVip,
-      selectedAccountType,
-      updateURLParams,
-      searchParams,
-      toast,
-    ],
-  );
-
-  useEffect(() => {
-    getRussianRegionsWithCities().then(setRegions).catch(console.error);
-  }, []);
-
-  useEffect(() => {
-    if (mounted) fetchResults(currentPage);
-  }, [mounted, searchParams]);
-
+  // --- FORM HANDLERS ---
   const handleCategoryChange = (val: string) => {
     setSelectedService(val === "_all_" ? null : val);
     setSelectedSubCategories([]);
@@ -338,13 +456,11 @@ export default function SearchPage() {
   };
 
   const handleSearchClick = () => {
-    setCurrentPage(1);
-    fetchResults(1);
+    updateURLParams(1);
   };
 
   const handlePageChange = (newPage: number) => {
-    setCurrentPage(newPage);
-    fetchResults(newPage);
+    updateURLParams(newPage);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -411,7 +527,7 @@ export default function SearchPage() {
   return (
     <div className="container mx-auto py-10 px-4 md:px-8 animate-in fade-in duration-500">
       <div className="grid gap-6">
-        {/* --- FILTERS SECTION --- */}
+        {/* FILTERS SECTION */}
         <Card className="border-primary/10 shadow-sm rounded-3xl overflow-hidden">
           <CardContent className="pt-6 space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
@@ -643,7 +759,7 @@ export default function SearchPage() {
           </CardContent>
         </Card>
 
-        {/* --- RESULTS SECTION --- */}
+        {/* RESULTS SECTION */}
         <div className="mt-4 space-y-6">
           <div className="flex justify-between items-center px-2">
             <h2 className="text-2xl font-black tracking-tight">
@@ -664,12 +780,10 @@ export default function SearchPage() {
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {searchResults.map((performer) => {
-                  // Helper to safely access social links
                   const socials = performer.socialLinks as
                     | Record<string, string>
                     | undefined;
                   const hasSocials = socials && Object.keys(socials).length > 0;
-                  // Basic Verified heuristic: either VIP or assumed verified for the aesthetic
                   const isVerified =
                     performer.isVip ||
                     performer.moderationStatus === "APPROVED";
@@ -683,7 +797,6 @@ export default function SearchPage() {
                           "ring-2 ring-yellow-400/60 border-yellow-400/20",
                       )}
                     >
-                      {/* 1. HERO COVER IMAGE */}
                       <div className="h-32 w-full relative overflow-hidden bg-muted">
                         {performer.backgroundPicture ? (
                           <img
@@ -694,10 +807,7 @@ export default function SearchPage() {
                         ) : (
                           <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-primary/5 to-background" />
                         )}
-                        {/* Soft Gradient Overlay for text readability if needed */}
                         <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
-
-                        {/* VIP Badge on Cover */}
                         {performer.isVip && (
                           <div className="absolute top-3 right-3 bg-gradient-to-r from-amber-500 to-yellow-400 text-white text-[10px] font-black px-2.5 py-1 rounded-full flex items-center gap-1 shadow-md">
                             <Crown className="w-3 h-3" /> PRO
@@ -705,7 +815,6 @@ export default function SearchPage() {
                         )}
                       </div>
 
-                      {/* 2. PROFILE PHOTO & QUICK ACTIONS */}
                       <div className="flex justify-between items-end px-5 -mt-10 relative z-10 mb-2">
                         <Avatar className="w-20 h-20 border-4 border-background shadow-md bg-muted">
                           <AvatarImage
@@ -732,7 +841,6 @@ export default function SearchPage() {
                                   </span>
                                 </a>
                               )}
-
                               {socials.telegram && (
                                 <a
                                   href={socials.telegram}
@@ -743,7 +851,6 @@ export default function SearchPage() {
                                   <SendIcon className="w-3 h-3" />
                                 </a>
                               )}
-
                               {socials.youtube && (
                                 <a
                                   href={socials.youtube}
@@ -754,7 +861,6 @@ export default function SearchPage() {
                                   <Youtube className="w-4 h-4" />
                                 </a>
                               )}
-
                               {socials.website && (
                                 <a
                                   href={socials.website}
@@ -767,7 +873,6 @@ export default function SearchPage() {
                               )}
                             </>
                           )}
-
                           <Button
                             variant="secondary"
                             size="icon"
@@ -780,14 +885,11 @@ export default function SearchPage() {
                           >
                             <Share2 className="h-4 w-4" />
                           </Button>
-
                           <CompareButton performerId={performer.id} />
                         </div>
                       </div>
 
-                      {/* 3. CONTENT BODY */}
                       <CardContent className="px-5 pt-2 pb-5 flex-grow flex flex-col">
-                        {/* Title & Verified */}
                         <div className="flex items-center gap-1.5 mb-1.5">
                           <Link
                             href={`/performer-profile?id=${performer.id}`}
@@ -801,23 +903,13 @@ export default function SearchPage() {
                           )}
                         </div>
 
-                        {/* City & Rating Row */}
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground mb-4 font-medium">
                           <span className="flex items-center gap-1">
                             <MapPin className="w-3.5 h-3.5" />{" "}
                             {performer.city || "Город не указан"}
                           </span>
-
-                          {/* Mocking rating display if real one exists */}
-                          {/* {performer.averageRating ? (
-                            <span className="flex items-center gap-1 text-amber-500 bg-amber-500/10 px-1.5 rounded-md">
-                              <Star className="w-3.5 h-3.5 fill-current" />{" "}
-                              {performer.averageRating.toFixed(1)}
-                            </span>
-                          ) : null} */}
                         </div>
 
-                        {/* Roles Badges */}
                         <div className="flex flex-wrap gap-1.5 mb-4">
                           {performer.roles.slice(0, 3).map((r) => (
                             <Badge
@@ -838,13 +930,11 @@ export default function SearchPage() {
                           )}
                         </div>
 
-                        {/* Description */}
                         <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed mb-4">
                           {performer.description ||
                             "Информация о себе пока не заполнена."}
                         </p>
 
-                        {/* Agency Tag (If applicable) */}
                         {performer.parentAgencyName && (
                           <div className="mt-auto pt-2">
                             <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-bold uppercase tracking-tight bg-muted/40 w-fit px-2.5 py-1 rounded-lg border">
@@ -855,7 +945,6 @@ export default function SearchPage() {
                         )}
                       </CardContent>
 
-                      {/* 4. FOOTER: Price & Action */}
                       <div className="px-5 py-4 border-t bg-muted/10 flex items-center justify-between mt-auto">
                         <div className="flex flex-col">
                           <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider mb-0.5">
@@ -867,7 +956,6 @@ export default function SearchPage() {
                               : "По запросу"}
                           </span>
                         </div>
-
                         <div className="flex items-center gap-3">
                           <Button
                             asChild
@@ -933,7 +1021,8 @@ export default function SearchPage() {
                   setMinPrice("");
                   setMaxPrice("");
                   setOnlyVip(false);
-                  handleSearchClick();
+                  router.replace(pathname, { scroll: false }); // Drop URL params
+                  fetchResults({ page: 1 }); // Fetch bare minimum
                 }}
               >
                 Сбросить фильтры
